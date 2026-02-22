@@ -20,7 +20,7 @@
 - Volume shadow copy (VSS) support
 - Compression (GZip, BZip2)
 - Split file support
-- Command-line interface (ODINC.exe)
+- Dual-mode operation: GUI (ODIN.exe) and Console (ODINC.exe)
 
 ## Key File Locations
 
@@ -40,7 +40,9 @@
 - **src/ODIN/WriteThread.cpp** - Disk write operations
 
 ### Command Line
-- **src/ODINC/ODINC.cpp** - Console application entry point
+- **src/ODIN/CommandLineProcessor.cpp** - Console mode implementation
+- **src/ODIN/ODIN.cpp** - GUI application entry (SubSystem=Windows)
+- **src/ODINC/ODINC.cpp** - Console wrapper (SubSystem=Console)
 
 ### Configuration
 - **src/ODIN/Config.h** - Configuration system (DECLARE_ENTRY macros)
@@ -53,7 +55,48 @@
 - `AutoFlashTargetSizeGB` - Target drive size in GB (int, default 8)
 - `AutoFlashWarningShown` - Tracks if warning was displayed (bool)
 
-## Next Steps - OdinM Multi-Drive Flash
+## 🔍 Understanding ODIN vs ODINC
+
+### Why Two Executables?
+
+**The SubSystem Problem:**
+- Windows executables are compiled with either SubSystem=WINDOWS (GUI) or SubSystem=CONSOLE
+- **ODIN.exe**: SubSystem=WINDOWS (SubSystem="2")
+  - No console window when launched in GUI mode ✓
+  - Cannot properly attach to parent console for synchronous output ✗
+  - Command-line mode exists but output doesn't display properly
+  
+- **ODINC.exe**: SubSystem=CONSOLE (SubSystem="1")  
+  - Proper console application behavior ✓
+  - Synchronous execution and visible output ✓
+  - Acts as wrapper to launch ODIN.exe and wait ✓
+
+### How ODINC Works:
+1. Receives command-line arguments
+2. Replaces "ODINC" with "ODIN" in command string
+3. Launches ODIN.exe via CreateProcess()
+4. Inherits stdin/stdout/stderr handles properly
+5. Waits for ODIN.exe to complete (synchronous)
+6. Returns exit code
+
+### Why This Design?
+- **Windows limitation**: Can't easily switch SubSystem at runtime
+- **GUI requirement**: ODIN.exe needs no console in GUI mode
+- **Console requirement**: Command-line needs synchronous, visible output
+- **Solution**: Keep both executables for their respective use cases
+
+### Usage:
+- `ODIN.exe` → GUI mode (double-click or no arguments)
+- `ODINC.exe -list` → Console mode with visible output
+- `ODINC.exe -restore -source=... -target=...` → Command-line backup/restore
+
+**Conclusion**: ODINC is NOT redundant - it's essential for proper command-line operation!
+
+---
+
+## Next Steps - Future Enhancements
+
+### OdinM Multi-Drive Flash (Future Project)
 
 ### 🎯 Project Goal
 Create OdinM application to handle up to 5 simultaneous flash operations by spawning multiple ODINC.exe processes.
@@ -70,7 +113,7 @@ Create OdinM application to handle up to 5 simultaneous flash operations by spaw
 #### Phase 1: Core Multi-Process (4-6 hours)
 - [ ] Create OdinM WTL application skeleton
 - [ ] Copy/adapt drive detection from ODIN
-- [ ] Implement ODINC command builder: `ODINC.exe -restore -source <image> -target <drive>`
+- [ ] Implement command builder: `ODINC.exe -restore -source <image> -target <drive>`
 - [ ] Process spawning with CreateProcess()
 - [ ] Track up to 5 process handles
 - [ ] Handle WM_DEVICECHANGE for auto-start
@@ -152,6 +195,7 @@ LRESULT OnDeviceChanged(UINT, WPARAM nEventType, LPARAM lParam, BOOL&)
 ## Git Status
 - Branch: `modernization`
 - Last commits:
+  - `2a53c82` - docs: Add Map.md with project state and OdinM multi-drive plan
   - `d1b8e7a` - ui: Increase main dialog window size
   - `f513378` - feat: Add one-time warning when enabling auto-flash
   - `7e40342` - feat: Improve auto-flash UI with configurable size
