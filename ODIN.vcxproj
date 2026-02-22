@@ -401,10 +401,6 @@ set /A BUILDNO=%25BUILDNO%25+1
     <Text Include="doc\todo.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="zlib.vcxproj">
-      <Project>{8f6b85c6-4226-4cb4-b2a0-f7d4435cef80}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
     <ProjectReference Include="libz2.vcxproj">
       <Project>{183c0677-b102-4918-8432-603ce2786060}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
