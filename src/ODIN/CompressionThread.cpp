@@ -106,6 +106,8 @@ void  CCompressionThread::CompressLoopZlib()
       if (readChunk)
         fTargetQueueDecompressed->ReleaseChunk(readChunk);
       readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+      if (!readChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bEOF = readChunk->IsEOF();
       zStream.next_in = (BYTE*)readChunk->GetData();
       zStream.avail_in = readChunk->GetSize();
@@ -117,6 +119,8 @@ void  CCompressionThread::CompressLoopZlib()
         fTargetQueueCompressed->ReleaseChunk(compressChunk);
       }
       compressChunk = fSourceQueueCompressed->GetChunk();
+      if (!compressChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       zStream.next_out = (BYTE*)compressChunk->GetData();
       zStream.avail_out = compressChunk->GetMaxSize();
     }
@@ -172,6 +176,8 @@ void CCompressionThread::CommpressLoopLibz2()
       if (readChunk)
         fTargetQueueDecompressed->ReleaseChunk(readChunk);
       readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+      if (!readChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bEOF = readChunk->IsEOF();
       bzsStream.next_in = (char*)readChunk->GetData();
       bzsStream.avail_in = readChunk->GetSize();
@@ -183,6 +189,8 @@ void CCompressionThread::CommpressLoopLibz2()
         fTargetQueueCompressed->ReleaseChunk(compressChunk);
       }
       compressChunk = fSourceQueueCompressed->GetChunk();
+      if (!compressChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bzsStream.next_out = (char*)compressChunk->GetData();
       bzsStream.avail_out = compressChunk->GetMaxSize();
     }
