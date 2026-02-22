@@ -35,7 +35,7 @@ using namespace std;
 
 void ECmdLineException::Init(enum ExceptionCode errCode)
 {
-  WTL::CString msg;
+  ATL::CString msg;
   fErrorCode = errCode;
 
   switch (errCode) {

@@ -52,7 +52,7 @@ LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPara
 	CenterWindow(GetParent());
   CStatic versionBox(GetDlgItem(IDC_VERNO));
   CStatic platformBox(GetDlgItem(IDC_PLATFORM));
-  WTL::CString platform;
+  ATL::CString platform;
   
   GetVersionFromResource();
   versionBox.SetWindowTextW(versionNumber.c_str());

@@ -81,7 +81,7 @@ private:
   std::list<std::wstring> fDriveNames;
   TOperationMode fMode;
   CListViewCtrl  fVolumeList;
-  WTL::CString fVolumeInfoTemplate;
+  ATL::CString fVolumeInfoTemplate;
   CMultiPaneStatusBarCtrl fStatusBar;
 
   __int64 fSourceSize;
@@ -119,7 +119,7 @@ private:
   void FillDriveList();
   void BrowseFiles(WORD wID);
   void BrowseFilesWithFileOpenDialog();
-  void GetPartitionFileSystemString(int partType, WTL::CString& fsString);
+  void GetPartitionFileSystemString(int partType, ATL::CString& fsString);
   int GetImageIndexAndUpdateImageList (LPCWSTR drive);
 
   void DeleteProcessingInfo(bool wasCancelled);
@@ -129,7 +129,7 @@ private:
   void GetNoFilesAndFileSize(LPCWSTR fileName, unsigned& fileCount,  unsigned __int64& fileSize, bool& isEntireDriveImageFile);
   void ReadWindowText(CWindow& wnd, std::wstring& str) {
     int count;
-    WTL::CString s;
+    ATL::CString s;
 		count = wnd.GetWindowTextLength() + 1;
 		wnd.GetWindowText(s.GetBuffer(count), count);
     str = s;

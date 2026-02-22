@@ -28,6 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////// 
 
 #include "stdafx.h"
+
 #include <atldlgs.h>
 #include <Dbt.h>
 #include <atlctrls.h>
@@ -35,9 +36,6 @@
 #include <sstream>
 #include <algorithm>
 //#include <atlmisc.h>
-
-// Resolve CString ambiguity between ATL and WTL - use ATL version
-using ATL::CString;
 
 #include "UserFeedback.h"
 #include "ODINDlg.h"
@@ -89,8 +87,8 @@ void CODINSplitManagerCallback::GetFileName(unsigned fileNo, std::wstring& fileN
 
 size_t CODINSplitManagerCallback::AskUserForMissingFile(LPCWSTR missingFileName, unsigned fileNo, wstring& newName)
 {
-  WTL::CString msg;
-  WTL::CString filter;
+  ATL::CString msg;
+  ATL::CString filter;
   size_t res;
   wchar_t* buffer;
   msg.FormatMessage(IDS_PROVIDE_FILENAME, fileNo);
@@ -177,7 +175,7 @@ void CODINDlg::InitControls()
   // Fill controls with data
   // fill file list box
 	CComboBox in(GetDlgItem(IDC_COMBO_FILES));
-  WTL::CString strBrowse;
+  ATL::CString strBrowse;
   strBrowse.LoadString(IDS_BROWSE);
 
   int count = 0;
@@ -206,7 +204,7 @@ void CODINDlg::InitControls()
   
   UpdateFileInfoBoxAndResetProgressControls();
   
-  WTL::CString dlgTitle;
+  ATL::CString dlgTitle;
   dlgTitle.LoadString(IDS_DIALOGTITLE);
   SetWindowText(dlgTitle);
 
@@ -248,7 +246,7 @@ void CODINDlg::RefreshDriveList()
 	InitControls();
 }
 
-void CODINDlg::GetPartitionFileSystemString(int partType, WTL::CString& fsString)
+void CODINDlg::GetPartitionFileSystemString(int partType, ATL::CString& fsString)
 {
   switch (partType) {
     case PARTITION_FAT_12:
@@ -304,7 +302,7 @@ void CODINDlg::BrowseFilesWithFileOpenDialog()
 {
   CComboBox combo(GetDlgItem(IDC_COMBO_FILES)); 
   LPCTSTR sSelectedFile;
-  WTL::CString fileDescr, defaultExt;
+  ATL::CString fileDescr, defaultExt;
   defaultExt.LoadString(IDS_DEFAULTEXT);
   fileDescr.LoadString(IDS_FILEDESCR);
   // replace separator chars from resource string
@@ -352,7 +350,7 @@ void CODINDlg::OnAbort()
 
 void CODINDlg::OnPartitionChange(int i, int n)
 {
-  CString statusText;
+  ATL::CString statusText;
 
   if (fRestoreRun) {
     if (n > 1)
@@ -371,7 +369,7 @@ void CODINDlg::OnPartitionChange(int i, int n)
 
 void CODINDlg::OnPrepareSnapshotBegin()
 {
-    CString statusText;
+    ATL::CString statusText;
     statusText.LoadString(IDS_STATUS_TAKE_SNAPSHOT);
     fStatusBar.SetWindowTextW(statusText);
 }
@@ -385,7 +383,7 @@ void CODINDlg::DeleteProcessingInfo(bool wasCancelled)
 {
   wstring msgCopy;
   LPCWSTR msg = fOdinManager.GetErrorMessage();
-  CString statusText;
+  ATL::CString statusText;
    
   KillTimer(fTimer);
   fTimer = 0;
@@ -451,7 +449,7 @@ void CODINDlg::UpdateStatus(bool bInit)
     ddTimeDifference = timer.QuadPart - startTimer.QuadPart;
     // convert to seconds
     ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart>>1) )/ performanceFrequency.QuadPart;
-    WTL::CString timeLabel;
+    ATL::CString timeLabel;
     DWORD dwTimeDifference = (DWORD) ddTimeDifference;
     timeLabel.Format(L"%02u:%02u:%02u", dwTimeDifference/3600, dwTimeDifference % 3600 / 60, dwTimeDifference % 60);
     label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
@@ -460,7 +458,7 @@ void CODINDlg::UpdateStatus(bool bInit)
     // calculate speed
     if (ddTimeDifference>0)
       MakeByteLabel(fBytesProcessed/ddTimeDifference, buffer, BUFSIZE);
-    WTL::CString labelSpeed (buffer);
+    ATL::CString labelSpeed (buffer);
     labelSpeed += L"/s";
     label = GetDlgItem(IDC_LABEL_SPEED);
     label.SetWindowText(labelSpeed);
@@ -520,7 +518,7 @@ void CODINDlg::EnterCommentModeForEditBox()
   commentTextField.SetReadOnly(FALSE);
   // verifyButton.EnableWindow(FALSE);
   if (fComment.length() == 0) {
-    WTL::CString hint;
+    ATL::CString hint;
     hint.LoadString(IDS_ENTERCOMMENT);
     commentTextField.SetWindowText(hint);
   } else
@@ -532,7 +530,7 @@ void CODINDlg::ReadCommentFromDialog()
 {
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
   // save comment if there is one
-  WTL::CString hint;
+  ATL::CString hint;
   hint.LoadString(IDS_ENTERCOMMENT);
   ReadWindowText(commentTextField, fComment);
   if (fComment.compare(hint) == 0)
@@ -545,7 +543,7 @@ void CODINDlg::ReadImageFileInformation()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   // CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_FILE));
   CEdit volumeInfoTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
   CFileImageStream imageStream;
   wstring fileName;
   // CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
@@ -629,7 +627,7 @@ void CODINDlg::DisableControlsWhileProcessing()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
 
   saveButton.EnableWindow(FALSE);
   restoreButton.EnableWindow(FALSE);
@@ -655,7 +653,7 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
 
   saveButton.EnableWindow(TRUE);
   restoreButton.EnableWindow(TRUE);
@@ -740,7 +738,7 @@ void CODINDlg::ResetRunInformation()
 LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled)
 {
   POINT ptWin = {fWndPosX, fWndPosY };
-  WTL::CString drive, name, size, label, type;
+  ATL::CString drive, name, size, label, type;
   // DlgResize_Init();
   
   if (MonitorFromPoint(ptWin, MONITOR_DEFAULTTONULL) == NULL) {
@@ -779,7 +777,7 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
   RefreshDriveList();
   
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
-  WTL::CString text;
+  ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);
   volumeInfoTextField.SetWindowText(text);
 
@@ -794,7 +792,7 @@ LRESULT CODINDlg::OnDeviceChanged(UINT /*uMsg*/, WPARAM nEventType, LPARAM lPara
   	DEV_BROADCAST_VOLUME *volume = (DEV_BROADCAST_VOLUME *)lParam;
     if (volume->dbcv_devicetype == DBT_DEVTYP_VOLUME) {
       CStatic textBox;
-      WTL::CString msgText;
+      ATL::CString msgText;
       EnableWindow(FALSE);
       msgText.LoadStringW(IDS_WAITUPDATEDRIVES);
       CRect rect(130, 150, 350, 210);
@@ -945,13 +943,13 @@ LRESULT CODINDlg::OnLvnItemchangedListVolumes(int /*idCtrl*/, LPNMHDR pNMHDR, BO
 
   if (pNMHDR->idFrom == IDC_LIST_VOLUMES && (pNMListView->uChanged & LVIF_STATE) &&
       (pNMListView->uNewState & LVIS_SELECTED)) {
-    WTL::CString text;
+    ATL::CString text;
     int index = fVolumeList.GetSelectedIndex();
     if (index < 0) {
       text.LoadString(IDS_VOLUME_NOSEL);
       volumeInfoTextField.SetWindowText(text);
     } else {
-      WTL::CString fsText;
+      ATL::CString fsText;
       CDriveInfo* di = fOdinManager.GetDriveInfo(index);
       MakeByteLabel(di->GetUsedSize(), buffer, BUFSIZE);
       GetPartitionFileSystemString(di->GetPartitionType(), fsText);
@@ -1013,7 +1011,7 @@ LRESULT CODINDlg::OnBnClickedBtVerify(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
 {
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   wstring fileName;
-  CString statusText;
+  ATL::CString statusText;
 
   ReadWindowText(comboFiles, fileName);
   fCrc32FromFileHeader = 0;
