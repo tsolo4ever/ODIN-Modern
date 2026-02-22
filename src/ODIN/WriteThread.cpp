@@ -79,8 +79,19 @@ DWORD  CWriteThread::Execute()
     fErrorMessage = e.GetMessage();
 	  fFinished = true;
     return E_FAIL;
-  } 
-} 
+  } catch (std::exception &e) {
+    fErrorFlag = true;
+    fErrorMessage = L"Write thread encountered standard exception: ";
+    fErrorMessage += CA2W(e.what());
+    fFinished = true;
+    return E_FAIL;
+  } catch (...) {
+    fErrorFlag = true;
+    fErrorMessage = L"Write thread encountered unknown exception";
+    fFinished = true;
+    return E_FAIL;
+  }
+}
 
 //---------------------------------------------------------------------------
 

@@ -84,8 +84,19 @@ DWORD CReadThread::Execute()
     fErrorMessage = e.GetMessage();
 	  fFinished = true;
     return E_FAIL;
-  } 
-} 
+  } catch (std::exception &e) {
+    fErrorFlag = true;
+    fErrorMessage = L"Read thread encountered standard exception: ";
+    fErrorMessage += CA2W(e.what());
+    fFinished = true;
+    return E_FAIL;
+  } catch (...) {
+    fErrorFlag = true;
+    fErrorMessage = L"Read thread encountered unknown exception";
+    fFinished = true;
+    return E_FAIL;
+  }
+}
 
 //---------------------------------------------------------------------------
 

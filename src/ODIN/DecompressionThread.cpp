@@ -70,11 +70,23 @@ DWORD  CDecompressionThread::Execute()
     fFinished = true;
   } catch (Exception &e) {
     fErrorFlag = true;
-    fErrorMessage = L"Compression thread encountered exception: \"";
+    fErrorMessage = L"Decompression thread encountered exception: \"";
   	fErrorMessage += e.GetMessage();
 	  fErrorMessage += L"\"";
     fFinished = true;
-	  return -1;
+	  return E_FAIL;
+  } catch (std::exception &e) {
+    fErrorFlag = true;
+    fErrorMessage = L"Decompression thread encountered standard exception: \"";
+    fErrorMessage += CA2W(e.what());
+    fErrorMessage += L"\"";
+    fFinished = true;
+    return E_FAIL;
+  } catch (...) {
+    fErrorFlag = true;
+    fErrorMessage = L"Decompression thread encountered unknown exception";
+    fFinished = true;
+    return E_FAIL;
   }
   return 0;
 }
