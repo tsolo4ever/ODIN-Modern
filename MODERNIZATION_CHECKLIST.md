@@ -1,7 +1,8 @@
 # ODIN Modernization Checklist
 
 **Created:** 2026-02-21  
-**Status:** Planning Phase  
+**Updated:** 2026-02-21  
+**Status:** Phase 1 - Critical Bug Fixes (4/6 Complete)  
 **See also:** Map.md, CODE_REVIEW.md
 
 ---
@@ -52,10 +53,11 @@
 
 ## 🔥 Phase 1: Critical Bug Fixes (4-8 hours)
 
-### 1.1 Buffer Queue Race Condition
-**File:** `src/ODIN/BufferQueue.cpp`
+### 1.1 Buffer Queue Race Condition ✅ COMPLETED
+**File:** `src/ODIN/BufferQueue.cpp`  
+**Commit:** 2ce5612
 
-- [ ] **Fix GetChunk() method**
+- [x] **Fix GetChunk() method**
   ```cpp
   // Add proper wait state handling
   - DWORD res = WaitForSingleObject(fSemaListHasElems.m_h, 1000000);
@@ -91,10 +93,11 @@
   - [ ] Run restore operation
   - [ ] Monitor for hangs
 
-### 1.2 Memory Leak in Exception Paths
-**File:** `src/ODIN/OdinManager.cpp`
+### 1.2 Memory Leak in Exception Paths ✅ COMPLETED
+**File:** `src/ODIN/OdinManager.cpp`  
+**Commit:** f7d809b
 
-- [ ] **Fix WaitToCompleteOperation()**
+- [x] **Fix WaitToCompleteOperation()**
   ```cpp
   - HANDLE* threadHandleArray = new HANDLE[threadCount];
   + std::unique_ptr<HANDLE[]> threadHandleArray(new HANDLE[threadCount]);
@@ -113,10 +116,11 @@
   - [ ] Trigger exceptions during operations
   - [ ] Use memory profiler to verify no leaks
 
-### 1.3 Integer Overflow Protection
-**Files:** `ReadThread.cpp`, `WriteThread.cpp`
+### 1.3 Integer Overflow Protection ✅ COMPLETED
+**Files:** `ReadThread.cpp`, `WriteThread.cpp`  
+**Commit:** a6ae812
 
-- [ ] **Add overflow checks before casts**
+- [x] **Add overflow checks before casts**
   ```cpp
   unsigned __int64 bytesToReadForReadRunLength = fClusterSize * runLength;
   + if (bytesToReadForReadRunLength > UINT_MAX)
@@ -387,11 +391,11 @@
 
 ## 🚀 Phase 4: Feature Additions (6-10 hours)
 
-### 4.1 Fix ODINC.cpp PowerShell Output
+### 4.1 Fix ODINC.cpp PowerShell Output ✅ COMPLETED
+**File:** `src/ODINC/ODINC.cpp`  
+**Commit:** 10641da
 
-**File:** `src/ODINC/ODINC.cpp`
-
-- [ ] **Add handle inheritance**
+- [x] **Add handle inheritance**
   ```cpp
   STARTUPINFO startupInfo;
   ZeroMemory(&startupInfo, sizeof(startupInfo));
