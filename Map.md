@@ -8,203 +8,158 @@
   - Configurable target size (default 8GB, ±10% tolerance)
   - One-time warning on enable
   - Auto-triggers restore on device insertion
-  - Works with CF cards, SD cards, USB drives
-- **UI Improvements**
-  - Dialog size increased to 320x380 (was 275x350)
-  - Auto-flash controls relocated to bottom right
-  - Removed window resize capability
-  - Input box for configurable size
+- **UI Improvements** - Dialog enlarged, controls reorganised
+- **OdinM Multi-Drive Clone Tool** - All source files implemented ✅
+  - Up to 5 simultaneous clones via ODINC.exe spawning
+  - SHA-1 and SHA-256 hash verification per drive
+  - Auto-clone on device insertion
+  - Hash config saved as sidecar `.hashcfg` file
+  - CSV export of results
+  - Activity log with timestamps
 
 ### 🔧 Working Components
-- Core backup/restore functionality
+- Core backup/restore functionality (ODIN.exe / ODINC.exe)
 - Volume shadow copy (VSS) support
-- Compression (GZip, BZip2)
-- Split file support
-- Dual-mode operation: GUI (ODIN.exe) and Console (ODINC.exe)
+- Compression (GZip, BZip2), split file support
+
+---
 
 ## Key File Locations
 
-### Main Dialog
-- **src/ODIN/ODINDlg.h** - Dialog class declaration
-- **src/ODIN/ODINDlg.cpp** - Dialog implementation, auto-flash logic
-- **src/ODIN/ODIN.rc** - Resource file (dialog layout, controls)
-- **src/ODIN/resource.h** - Resource IDs
+### ODIN Main Application
+| File | Purpose |
+|------|---------|
+| `src/ODIN/ODINDlg.h/cpp` | Main dialog (GUI + auto-flash) |
+| `src/ODIN/ODIN.rc` | Resource file |
+| `src/ODIN/resource.h` | Resource IDs |
+| `src/ODIN/OdinManager.cpp` | Core operation manager |
+| `src/ODIN/DriveList.cpp` | Drive detection |
+| `src/ODIN/ImageStream.cpp` | Image file I/O |
+| `src/ODIN/CommandLineProcessor.cpp` | Console mode |
+| `src/ODINC/ODINC.cpp` | Console wrapper (SubSystem=Console) |
 
-### Core Functionality
-- **src/ODIN/OdinManager.cpp** - Main operation manager
-- **src/ODIN/DriveList.cpp** - Drive detection and enumeration
-- **src/ODIN/ImageStream.cpp** - Image file I/O
-- **src/ODIN/CompressionThread.cpp** - Compression worker
-- **src/ODIN/DecompressionThread.cpp** - Decompression worker
-- **src/ODIN/ReadThread.cpp** - Disk read operations
-- **src/ODIN/WriteThread.cpp** - Disk write operations
-
-### Command Line
-- **src/ODIN/CommandLineProcessor.cpp** - Console mode implementation
-- **src/ODIN/ODIN.cpp** - GUI application entry (SubSystem=Windows)
-- **src/ODINC/ODINC.cpp** - Console wrapper (SubSystem=Console)
+### OdinM Multi-Drive Tool
+| File | Purpose |
+|------|---------|
+| `src/ODINM/OdinM.cpp` | Application entry point |
+| `src/ODINM/OdinM.rc` | Dialog resources (main + hash config) |
+| `src/ODINM/resource.h` | Resource ID definitions |
+| `src/ODINM/stdafx.h/cpp` | Precompiled headers (WTL 10.0 / ATL) |
+| `src/ODINM/OdinMDlg.h/cpp` | Main dialog — drive list, cloning, log |
+| `src/ODINM/DriveSlot.h/cpp` | Per-slot drive + clone state |
+| `src/ODINM/HashCalculator.h/cpp` | SHA-1 / SHA-256 via Windows CryptoAPI |
+| `src/ODINM/HashConfigDlg.h/cpp` | Hash configuration popup dialog |
 
 ### Configuration
-- **src/ODIN/Config.h** - Configuration system (DECLARE_ENTRY macros)
-- **ODIN.ini** - User settings (created at runtime)
-
-## Important Configuration Keys
-
-### Auto-Flash Settings (in ODIN.ini)
-- `AutoFlashEnabled` - Enable/disable auto-flash (bool)
-- `AutoFlashTargetSizeGB` - Target drive size in GB (int, default 8)
-- `AutoFlashWarningShown` - Tracks if warning was displayed (bool)
-
-## 🔍 Understanding ODIN vs ODINC
-
-### Why Two Executables?
-
-**The SubSystem Problem:**
-- Windows executables are compiled with either SubSystem=WINDOWS (GUI) or SubSystem=CONSOLE
-- **ODIN.exe**: SubSystem=WINDOWS (SubSystem="2")
-  - No console window when launched in GUI mode ✓
-  - Cannot properly attach to parent console for synchronous output ✗
-  - Command-line mode exists but output doesn't display properly
-  
-- **ODINC.exe**: SubSystem=CONSOLE (SubSystem="1")  
-  - Proper console application behavior ✓
-  - Synchronous execution and visible output ✓
-  - Acts as wrapper to launch ODIN.exe and wait ✓
-
-### How ODINC Works:
-1. Receives command-line arguments
-2. Replaces "ODINC" with "ODIN" in command string
-3. Launches ODIN.exe via CreateProcess()
-4. Inherits stdin/stdout/stderr handles properly
-5. Waits for ODIN.exe to complete (synchronous)
-6. Returns exit code
-
-### Why This Design?
-- **Windows limitation**: Can't easily switch SubSystem at runtime
-- **GUI requirement**: ODIN.exe needs no console in GUI mode
-- **Console requirement**: Command-line needs synchronous, visible output
-- **Solution**: Keep both executables for their respective use cases
-
-### Usage:
-- `ODIN.exe` → GUI mode (double-click or no arguments)
-- `ODINC.exe -list` → Console mode with visible output
-- `ODINC.exe -restore -source=... -target=...` → Command-line backup/restore
-
-**Conclusion**: ODINC is NOT redundant - it's essential for proper command-line operation!
+| File | Purpose |
+|------|---------|
+| `src/ODIN/Config.h` | DECLARE_ENTRY macro system |
+| `OdinM.ini` | OdinM settings (created at runtime, next to exe) |
+| `<image>.hashcfg` | Per-image hash config sidecar file |
 
 ---
 
-## Next Steps - Future Enhancements
+## OdinM Architecture
 
-### OdinM Multi-Drive Flash (Future Project)
-
-### 🎯 Project Goal
-Create OdinM application to handle up to 5 simultaneous flash operations by spawning multiple ODINC.exe processes.
-
-### Architecture Overview
-- **OdinM** - New overlay GUI application
-- Detects matching removable drives (reuse existing detection)
-- Auto-starts new ODINC.exe process for each detected drive
-- Tracks up to 5 concurrent processes
-- Displays progress in list view
-
-### Implementation Plan (Estimated: 1-2 days)
-
-#### Phase 1: Core Multi-Process (4-6 hours)
-- [ ] Create OdinM WTL application skeleton
-- [ ] Copy/adapt drive detection from ODIN
-- [ ] Implement command builder: `ODINC.exe -restore -source <image> -target <drive>`
-- [ ] Process spawning with CreateProcess()
-- [ ] Track up to 5 process handles
-- [ ] Handle WM_DEVICECHANGE for auto-start
-
-#### Phase 2: Progress Tracking (3-4 hours)
-- [ ] Create list view UI (5 rows for drives)
-- [ ] Columns: [Drive Name] [Status] [Progress %]
-- [ ] Redirect ODINC stdout/stderr (pipe)
-- [ ] Parse console output for progress
-- [ ] Update UI from process output
-- [ ] Handle process completion/errors
-- [ ] Show success/failure status
-
-#### Phase 3: Polish & Config (1-2 hours)
-- [ ] Image file selection dialog
-- [ ] Enable/disable auto-flash checkbox
-- [ ] Max concurrent limit setting (1-5)
-- [ ] Persist settings to OdinM.ini
-- [ ] Error handling and logging
-- [ ] Testing with multiple drives
-
-### Technical Notes
-
-**Process Command Format:**
 ```
-ODINC.exe -restore -source "C:\path\to\image.img" -target 0
+OdinM.exe (GUI)
+    ↓  manages
+5 × CDriveSlot objects
+    ↓  each spawns
+ODINC.exe --source <image> --target <drive>
+    ↓  on completion
+CHashCalculator reads drive device → SHA-1 / SHA-256
+    ↓  compares with
+<image>.hashcfg  (SHA1=...\r\nSHA256=...\r\n)
+    ↓  result shown in
+ListView + Activity Log
 ```
 
-**Progress Parsing:**
-- Monitor ODINC stdout for progress messages
-- Parse percentage from console output
-- Update corresponding UI row
+### Key Classes
+- `COdinMDlg` — main dialog, WM_TIMER polls every 2 sec, WM_DEVICECHANGE for hot-plug
+- `CDriveSlot` — tracks letter, name, size, status (Empty/Ready/Cloning/Verifying/Complete/Failed/Stopped), PID
+- `CHashCalculator` — static methods: `CalculateSHA1`, `CalculateSHA256`, `CalculateBothHashes`
+- `CHashConfigDlg` — takes `HashConfig&` ref, edits in-place, saves via `COdinMDlg::SaveHashConfig()`
 
-**Device Detection:**
-- Reuse `DetectCFCard()` logic from ODINDlg.cpp
-- Check for drives not already being flashed
-- Auto-start when slot available (< 5 active)
+### HashConfig Struct (in OdinMDlg.h)
+```cpp
+struct HashConfig {
+    int partitionNumber = 1;
+    bool sha1Enabled = true;   bool sha256Enabled = false;
+    std::wstring sha1Expected; std::wstring sha256Expected;
+    bool failOnSha1Mismatch = true; bool failOnSha256Mismatch = false;
+    std::wstring imagePath;
+};
+```
 
-**Advantages:**
-- No ODIN core refactoring needed
-- Each ODINC.exe process is isolated
-- OS handles resource management
-- Simple implementation
-- Easy to test and debug
+---
 
-## Known Issues
-- None currently
+## What Still Needs Doing — OdinM
+
+### 🔴 Not Yet Done (Build Setup)
+- [ ] **OdinM.vcxproj** — Visual Studio project file (add to solution in VS)
+- [ ] **OdinM.sln entry** — Add OdinM project to ODIN.sln
+- [ ] **res/OdinM.ico** — Application icon (can copy ODIN icon)
+- [ ] **WTL include path** — Set `lib/WTL10/Include` in project Additional Include Directories
+- [ ] **Linker settings** — Add `crypt32.lib`, set SubSystem=Windows, UAC=requireAdministrator
+
+### 🟡 Known Limitations / Future Work
+- `VerifyDrive` hashes the entire drive; partition-specific offset needs ODIN file header parsing
+- ODINC.exe command-line format assumed (`--source` / `--target`); verify actual args
+- Progress % during clone not tracked (would need stdout pipe from ODINC)
+
+---
+
+## ODIN vs ODINC Reminder
+
+| Executable | SubSystem | Use Case |
+|---|---|---|
+| ODIN.exe | Windows (no console) | GUI mode |
+| ODINC.exe | Console | Command-line / OdinM subprocess |
+
+OdinM spawns `ODINC.exe` with `CREATE_NO_WINDOW` for silent background cloning.
+
+---
 
 ## Important Patterns
 
-### Drive Detection
+### Auto-Flash Drive Detection (ODIN)
 ```cpp
-// Detect removable hard disks with size matching
-const unsigned __int64 targetSize = (unsigned __int64)fAutoFlashTargetSizeGB * 1024 * 1024 * 1024;
-const unsigned __int64 tolerance = targetSize / 10; // 10% tolerance
-
-if (di->IsCompleteHardDisk() && 
+if (di->IsCompleteHardDisk() &&
     di->GetDriveType() == driveRemovable &&
-    driveSize within tolerance)
+    driveSize within 10% of targetSize)
 ```
 
-### Configuration Persistence
-```cpp
-DECLARE_SECTION()
-DECLARE_ENTRY(bool, fAutoFlashEnabled)
-DECLARE_ENTRY(int, fAutoFlashTargetSizeGB)
+### INI Settings (OdinM)
+Stored in `OdinM.ini` next to `OdinM.exe`:
+```ini
+[Settings]
+ImagePath=C:\images\sentinel.img
+MaxConcurrent=2
+AutoClone=0
 ```
 
-### Device Change Notification
-```cpp
-LRESULT OnDeviceChanged(UINT, WPARAM nEventType, LPARAM lParam, BOOL&)
-{
-    if (nEventType == DBT_DEVICEARRIVAL) {
-        // Detect and trigger auto-flash
-    }
-}
+### Hash Config Sidecar
+Stored as `<imagepath>.hashcfg`:
 ```
+SHA1=FD218079E7D01CF746042EE08F05F7BD7DA2A8E2
+SHA256=5A2C8F9E...
+```
+
+---
 
 ## Git Status
 - Branch: `modernization`
-- Last commits:
-  - `2a53c82` - docs: Add Map.md with project state and OdinM multi-drive plan
-  - `d1b8e7a` - ui: Increase main dialog window size
-  - `f513378` - feat: Add one-time warning when enabling auto-flash
-  - `7e40342` - feat: Improve auto-flash UI with configurable size
-  - `6b19efb` - feat: Add auto-flash feature for 8GB removable disks
+- Recent commits:
+  - `c898822` — feat: Implement OdinM source files (HashCalculator, HashConfigDlg, OdinMDlg, OdinM.rc)
+  - `104a138` — feat: Add OdinM multi-drive clone tool project structure
+  - `38b6bff` — feat: Add -output flag to write drive list to file
+  - `f513378` — feat: Add one-time warning when enabling auto-flash
 
 ## Build Information
-- IDE: Visual Studio 2022+
+- IDE: Visual Studio 2022+ (project files exist for ODIN/ODINC; OdinM.vcxproj TBD)
 - Platform: Windows x64
-- Dependencies: WTL 10.0, ATL, bzip2, zlib
+- Dependencies: WTL 10.0 (`lib/WTL10/`), ATL, bzip2, zlib, Windows CryptoAPI
 
 ---
-*Last Updated: 2026-02-22*
+*Last Updated: 2026-02-22 — OdinM source files complete, build setup remaining*
