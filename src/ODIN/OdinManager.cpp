@@ -399,8 +399,11 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
 {
     // wait until threads are completed without blocking the user interface
   unsigned threadCount = GetThreadCount();
-  HANDLE* threadHandleArray = new HANDLE[threadCount];
-  bool ok = GetThreadHandles(threadHandleArray, threadCount);
+  
+  // Use smart pointer to prevent memory leak in exception paths
+  std::unique_ptr<HANDLE[]> threadHandleArray(new HANDLE[threadCount]);
+  
+  bool ok = GetThreadHandles(threadHandleArray.get(), threadCount);
   if (!ok)
     return;
   ATLTRACE("WaitToCompleteOperation() entered.\n");
@@ -440,7 +443,7 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
     else
       ATLTRACE("unusual return code from MsgWaitForMultipleObjects: %d\n", result);
   }
-  delete [] threadHandleArray;
+  // Smart pointer automatically cleans up - no manual delete needed
   ATLTRACE("WaitToCompleteOperation() exited.\n");
 }
 
