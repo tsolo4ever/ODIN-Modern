@@ -1,233 +1,166 @@
 # ODIN Project Map
 
-**Last Updated:** 2026-02-22  
-**Current Status:** ✅ Phase 1 Complete - All Critical Bug Fixes Implemented
+## Current State
 
----
+### ✅ Completed Features
+- **WTL 10.0 Upgrade** - Migrated from WTL 7.5 to WTL 10.0
+- **Auto-Flash Feature** - Automatic detection and restore of removable drives
+  - Configurable target size (default 8GB, ±10% tolerance)
+  - One-time warning on enable
+  - Auto-triggers restore on device insertion
+  - Works with CF cards, SD cards, USB drives
+- **UI Improvements**
+  - Dialog size increased to 320x380 (was 275x350)
+  - Auto-flash controls relocated to bottom right
+  - Removed window resize capability
+  - Input box for configurable size
 
-## 🎯 Project Overview
-
-**ODIN** = Open Disk Imager in a Nutshell  
-A Windows disk imaging tool for backup/restore of partitions and drives.
-
-**Current Version:** 0.3.x (2008-era codebase)  
-**Target:** Modernize to VS2022/C++17 + Add CF card auto-flash feature
-
----
-
-## 📍 Current State
-
-### ✅ What's Working
-- Complete backup/restore functionality
-- Compression (gzip, bzip2)
-- VSS snapshot integration
+### 🔧 Working Components
+- Core backup/restore functionality
+- Volume shadow copy (VSS) support
+- Compression (GZip, BZip2)
 - Split file support
-- GUI (WTL/ATL) and CLI (ODINC.exe) interfaces
-- Multi-threaded I/O pipeline
+- Command-line interface (ODINC.exe)
 
-### ✅ Recently Fixed (Phase 1 - Complete!)
-- ✅ Race condition in buffer queue management (commit 2ce5612)
-- ✅ Memory leaks in exception paths (commit f7d809b)
-- ✅ Integer overflow protection in size conversions (commit a6ae812)
-- ✅ Unchecked pointer dereferences (commit a6ae812)
-- ✅ Enhanced exception handling in all threads (commit 179053a)
-- ✅ Boot sector validation (commit c2f0db9)
-- ✅ PowerShell piping fixed in ODINC.exe (commit 10641da)
+## Key File Locations
 
-### 🚧 Next Steps
-- Phase 2: Build System Modernization (VS2022 migration)
-- Planning auto-flash feature for CF cards
+### Main Dialog
+- **src/ODIN/ODINDlg.h** - Dialog class declaration
+- **src/ODIN/ODINDlg.cpp** - Dialog implementation, auto-flash logic
+- **src/ODIN/ODIN.rc** - Resource file (dialog layout, controls)
+- **src/ODIN/resource.h** - Resource IDs
 
----
+### Core Functionality
+- **src/ODIN/OdinManager.cpp** - Main operation manager
+- **src/ODIN/DriveList.cpp** - Drive detection and enumeration
+- **src/ODIN/ImageStream.cpp** - Image file I/O
+- **src/ODIN/CompressionThread.cpp** - Compression worker
+- **src/ODIN/DecompressionThread.cpp** - Decompression worker
+- **src/ODIN/ReadThread.cpp** - Disk read operations
+- **src/ODIN/WriteThread.cpp** - Disk write operations
 
-## 📁 Key Files & Locations
-
-### Core Application
-- **GUI Entry Point:** `src/ODIN/ODIN.cpp` (WinMain)
-- **CLI Wrapper:** `src/ODINC/ODINC.cpp` (spawns ODIN.exe)
-- **Main Dialog:** `src/ODIN/ODINDlg.{h,cpp}` - GUI implementation
-- **Manager:** `src/ODIN/OdinManager.{h,cpp}` - Core business logic
-
-### Threading & I/O
-- **Read Thread:** `src/ODIN/ReadThread.{h,cpp}`
-- **Write Thread:** `src/ODIN/WriteThread.{h,cpp}`
-- **Compression:** `src/ODIN/CompressionThread.{h,cpp}`
-- **Buffer Queue:** `src/ODIN/BufferQueue.{h,cpp}` ⚠️ HAS RACE CONDITION
-
-### Disk Operations
-- **Image Stream:** `src/ODIN/ImageStream.{h,cpp}` - File & disk I/O
-- **Drive List:** `src/ODIN/DriveList.{h,cpp}` - Enumerate drives
-- **File Header:** `src/ODIN/FileHeader.{h,cpp}` - Image file format
-
-### CLI Interface
-- **Command Processor:** `src/ODIN/CommandLineProcessor.{h,cpp}`
-- **List Drives:** `CommandLineProcessor::ListDrives()` method
+### Command Line
+- **src/ODINC/ODINC.cpp** - Console application entry point
 
 ### Configuration
-- **Config System:** `src/ODIN/Config.{h,cpp}` - INI file wrapper
-- **INI Wrapper:** `src/ODIN/IniWrapper.{h,cpp}` - Low-level INI access
+- **src/ODIN/Config.h** - Configuration system (DECLARE_ENTRY macros)
+- **ODIN.ini** - User settings (created at runtime)
 
-### External Libraries
-- **zlib:** `src/zlib.1.2.3/` (outdated - needs update to 1.3.1)
-- **bzip2:** `src/bzip2-1.0.5/` (outdated - needs update to 1.0.8)
+## Important Configuration Keys
 
----
+### Auto-Flash Settings (in ODIN.ini)
+- `AutoFlashEnabled` - Enable/disable auto-flash (bool)
+- `AutoFlashTargetSizeGB` - Target drive size in GB (int, default 8)
+- `AutoFlashWarningShown` - Tracks if warning was displayed (bool)
 
-## 🎯 Immediate Goals
+## Next Steps - OdinM Multi-Drive Flash
 
-### Goal 1: Fix PowerShell Output (Quick Win)
-**File:** `src/ODINC/ODINC.cpp`  
-**Issue:** Output from `odinc -list` can't be piped/redirected  
-**Fix:** Add proper handle inheritance in CreateProcess call  
-**Effort:** 30 minutes
+### 🎯 Project Goal
+Create OdinM application to handle up to 5 simultaneous flash operations by spawning multiple ODINC.exe processes.
 
-### Goal 2: Add Auto-Flash Feature
-**Target Files:**
-- `src/ODIN/ODINDlg.{h,cpp}` - Add detection & UI
-- `src/ODIN/Config.h` - Add config entries
-- `src/ODIN/ODIN.rc` - Add UI elements
-- `src/ODIN/resource.h` - Add control IDs
+### Architecture Overview
+- **OdinM** - New overlay GUI application
+- Detects matching removable drives (reuse existing detection)
+- Auto-starts new ODINC.exe process for each detected drive
+- Tracks up to 5 concurrent processes
+- Displays progress in list view
 
-**Features Needed:**
-- Monitor WM_DEVICECHANGE for CF card insertion
-- Detect CF card by size/label
-- Auto-trigger restore operation
-- Optional confirmation dialog
-- Auto-eject when done
+### Implementation Plan (Estimated: 1-2 days)
 
-### Goal 3: Critical Bug Fixes
-**See:** CODE_REVIEW.md Section 2 (Critical Issues)
-- Fix buffer queue race condition
-- Fix memory leaks
-- Add overflow protection
+#### Phase 1: Core Multi-Process (4-6 hours)
+- [ ] Create OdinM WTL application skeleton
+- [ ] Copy/adapt drive detection from ODIN
+- [ ] Implement ODINC command builder: `ODINC.exe -restore -source <image> -target <drive>`
+- [ ] Process spawning with CreateProcess()
+- [ ] Track up to 5 process handles
+- [ ] Handle WM_DEVICECHANGE for auto-start
 
----
+#### Phase 2: Progress Tracking (3-4 hours)
+- [ ] Create list view UI (5 rows for drives)
+- [ ] Columns: [Drive Name] [Status] [Progress %]
+- [ ] Redirect ODINC stdout/stderr (pipe)
+- [ ] Parse console output for progress
+- [ ] Update UI from process output
+- [ ] Handle process completion/errors
+- [ ] Show success/failure status
 
-## 📋 Next Steps
+#### Phase 3: Polish & Config (1-2 hours)
+- [ ] Image file selection dialog
+- [ ] Enable/disable auto-flash checkbox
+- [ ] Max concurrent limit setting (1-5)
+- [ ] Persist settings to OdinM.ini
+- [ ] Error handling and logging
+- [ ] Testing with multiple drives
 
-### Option A: Quick Path (CF Auto-Flash Only)
-1. Fix ODINC.cpp for PowerShell (30 min)
-2. Add auto-flash to GUI (6-8 hours)
-3. Test and deploy
+### Technical Notes
 
-### Option B: Full Modernization
-1. Setup VS2022 environment
-2. Fix critical bugs (Phase 1)
-3. Update build system (Phase 2)
-4. Modernize C++ code (Phase 3)
-5. Add auto-flash feature (Phase 4)
-6. Testing & docs (Phases 5-7)
-
-**Total Effort:** 32-53 hours (~1 work week)
-
-**See:** MODERNIZATION_CHECKLIST.md for detailed task breakdown
-
----
-
-## 🔑 Important Decisions Needed
-
-1. **Auto-Flash UI Style:**
-   - [ ] Full settings dialog (professional)
-   - [ ] Simple checkbox + config file (quick)
-   - [ ] Hidden hotkey (quickest)
-
-2. **CF Card Specs:**
-   - [ ] Size: _____ MB
-   - [ ] Label: _____
-   - [ ] Multiple sizes or fixed?
-
-3. **Behavior:**
-   - [ ] Show confirmation before flashing?
-   - [ ] Auto-eject when complete?
-   - [ ] Sound notification?
-
-4. **Scope:**
-   - [ ] Quick auto-flash only?
-   - [ ] Full modernization?
-   - [ ] Hybrid approach?
-
----
-
-## 🐛 Bug Tracking
-
-### ✅ Phase 1: Critical Bugs - ALL FIXED!
-- [x] Buffer queue race condition (`BufferQueue.cpp:GetChunk()`) - commit 2ce5612
-- [x] Memory leak in `OdinManager.cpp:WaitToCompleteOperation()` - commit f7d809b
-- [x] Integer overflow in size calculations - commit a6ae812
-- [x] Unchecked pointers after `GetChunk()` - commit a6ae812
-- [x] Enhanced exception handling (catch std::exception & catch(...)) - commit 179053a
-- [x] Boot sector validation (security) - commit c2f0db9
-- [x] ODINC.cpp handle inheritance (PowerShell piping) - commit 10641da
-
-### Phase 2+: Modernization Tasks
-- [ ] VS2022 migration
-- [ ] Update zlib to 1.3.1
-- [ ] Update bzip2 to 1.0.8
-- [ ] Smart pointers migration
-- [ ] Modern threading (optional)
-
-### Future Enhancements
-- [ ] Silent volume resize failures (low priority)
-- [ ] Path traversal validation (low priority)
-- [ ] Mixed malloc/new cleanup (code quality)
-
----
-
-## 📚 Documentation
-
-- ✅ **CODE_REVIEW.md** - Comprehensive code analysis
-- ✅ **Map.md** (this file) - Project state & navigation
-- ⏳ **MODERNIZATION_CHECKLIST.md** - Detailed implementation plan
-- 📖 **doc/readme.txt** - Original docs (minimal)
-- 📖 **doc/HowToBuild.txt** - VS2008 build instructions (outdated)
-
----
-
-## 💡 Quick Reference
-
-### Build Commands (VS2008 - Current)
+**Process Command Format:**
 ```
-Open ODIN.sln in Visual C++ 2008
-Build -> Build Solution
+ODINC.exe -restore -source "C:\path\to\image.img" -target 0
 ```
 
-### Build Commands (VS2022 - After Migration)
-```
-Open ODIN.sln in Visual Studio 2022
-Build -> Build Solution
+**Progress Parsing:**
+- Monitor ODINC stdout for progress messages
+- Parse percentage from console output
+- Update corresponding UI row
+
+**Device Detection:**
+- Reuse `DetectCFCard()` logic from ODINDlg.cpp
+- Check for drives not already being flashed
+- Auto-start when slot available (< 5 active)
+
+**Advantages:**
+- No ODIN core refactoring needed
+- Each ODINC.exe process is isolated
+- OS handles resource management
+- Simple implementation
+- Easy to test and debug
+
+## Known Issues
+- None currently
+
+## Important Patterns
+
+### Drive Detection
+```cpp
+// Detect removable hard disks with size matching
+const unsigned __int64 targetSize = (unsigned __int64)fAutoFlashTargetSizeGB * 1024 * 1024 * 1024;
+const unsigned __int64 tolerance = targetSize / 10; // 10% tolerance
+
+if (di->IsCompleteHardDisk() && 
+    di->GetDriveType() == driveRemovable &&
+    driveSize within tolerance)
 ```
 
-### Run Commands
-```powershell
-# GUI
-.\ODIN.exe
-
-# CLI (current - broken piping)
-.\odinc.exe -list
-
-# CLI (after fix - working piping)
-.\odinc.exe -list > drives.txt
-.\odinc.exe -list | Select-String "Drive"
+### Configuration Persistence
+```cpp
+DECLARE_SECTION()
+DECLARE_ENTRY(bool, fAutoFlashEnabled)
+DECLARE_ENTRY(int, fAutoFlashTargetSizeGB)
 ```
+
+### Device Change Notification
+```cpp
+LRESULT OnDeviceChanged(UINT, WPARAM nEventType, LPARAM lParam, BOOL&)
+{
+    if (nEventType == DBT_DEVICEARRIVAL) {
+        // Detect and trigger auto-flash
+    }
+}
+```
+
+## Git Status
+- Branch: `modernization`
+- Last commits:
+  - `d1b8e7a` - ui: Increase main dialog window size
+  - `f513378` - feat: Add one-time warning when enabling auto-flash
+  - `7e40342` - feat: Improve auto-flash UI with configurable size
+  - `6b19efb` - feat: Add auto-flash feature for 8GB removable disks
+
+## Build Information
+- IDE: Visual Studio 2022+
+- Platform: Windows x64
+- Dependencies: WTL 10.0, ATL, bzip2, zlib
 
 ---
-
-## 🔄 Workflow Reminders
-
-1. **Always check Map.md** at start of new session
-2. **Update Map.md** when making significant changes
-3. **Commit frequently** (see git rules)
-4. **Work in small groups** (see rules)
-5. **Test after each phase**
-
----
-
-## 📞 Contact & Resources
-
-- **Original Project:** http://sourceforge.net/projects/odin-win
-- **License:** GPL v3
-- **Last Active:** ~2009 (we're reviving it!)
-
----
-
-*This Map.md file should be updated whenever project state changes significantly.*
+*Last Updated: 2026-02-22*
