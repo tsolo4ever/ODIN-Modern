@@ -35,6 +35,10 @@
 #include <sstream>
 #include <algorithm>
 //#include <atlmisc.h>
+
+// Resolve CString ambiguity between ATL and WTL - use ATL version
+using ATL::CString;
+
 #include "UserFeedback.h"
 #include "ODINDlg.h"
 #include "DriveList.h"

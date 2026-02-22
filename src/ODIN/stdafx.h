@@ -40,6 +40,8 @@
 #define _CRT_NON_CONFORMING_SWPRINTFS
 #define _CRT_SECURE_NO_DEPRECATE
 
+#include <memory>  // For std::unique_ptr
+
 #include <atlbase.h>
 
 #include <atlapp.h>

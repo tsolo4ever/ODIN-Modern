@@ -49,6 +49,7 @@ LPCWSTR EInternalException::sMessages[] = {
   L"Integer overflow detected: value too large for target type", // integerOverflow
   L"Internal thread synchronization error", // threadSyncError
   L"Buffer queue unexpectedly empty after wait", // emptyBufferQueue
+  L"Input/output error during read or write operation", // inputError
 };
 
 
