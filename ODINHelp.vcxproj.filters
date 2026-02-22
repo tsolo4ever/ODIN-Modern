@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="en">
+      <UniqueIdentifier>{99eb2ec6-40ad-4e41-a903-b8045c0aebc1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="en\HTML Help Files">
+      <UniqueIdentifier>{18affba5-45bd-4817-8930-5c9583979326}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="en\HTML Help Project">
+      <UniqueIdentifier>{8e75ff52-075e-403e-833d-5669ea7f8189}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="doc\help\en\main_index.html">
+      <Filter>en\HTML Help Files</Filter>
+    </None>
+    <None Include="doc\help\en\ODIN_en.hhc">
+      <Filter>en\HTML Help Project</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="doc\help\en\ODIN_en.hhp">
+      <Filter>en\HTML Help Project</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>

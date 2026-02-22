@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{1F5DFFEC-276B-436C-8F78-7332B5BA1407}</ProjectGuid>
+    <RootNamespace>ODINTest</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>18.0.11512.103</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <PostBuildEventUseInBuild>false</PostBuildEventUseInBuild>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\cppunit-1.12.1\include;C:\DevTools\atl30\include;C:\DevTools\WTL80\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>vssapi.lib;shlwapi.lib;cppunitud.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\lib\cppunit-1.12.1\lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Running Unit Tests...</Message>
+      <Command>"$(TargetPath)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\cppunit-1.12.1\include;C:\DevTools\atl30\include;C:\DevTools\WTL80\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>vssapi.lib;shlwapi.lib;cppunitud.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\lib\cppunit-1.12.1\lib64;C:\devtools\atl30\lib\amd64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Running Unit Tests...</Message>
+      <Command>"$(TargetPath)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\cppunit-1.12.1\include;C:\DevTools\atl30\include;C:\DevTools\WTL80\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>vssapi.lib;shlwapi.lib;cppunitu.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\lib\cppunit-1.12.1\lib32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Running Unit Tests...</Message>
+      <Command>"$(TargetPath)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)\lib\cppunit-1.12.1\include;C:\DevTools\atl30\include;C:\DevTools\WTL80\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>vssapi.lib;shlwapi.lib;cppunitu.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\lib\cppunit-1.12.1\lib64;C:\devtools\atl30\lib\amd64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Console</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Running Unit Tests...</Message>
+      <Command>"$(TargetPath)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ODIN\BufferQueue.cpp" />
+    <ClCompile Include="src\ODIN\CmdLineException.cpp" />
+    <ClCompile Include="src\ODIN\CommandLineProcessor.cpp" />
+    <ClCompile Include="src\ODIN\CompressedRunLengthStream.cpp" />
+    <ClCompile Include="src\ODIN\CompressionException.cpp" />
+    <ClCompile Include="src\ODIN\CompressionThread.cpp" />
+    <ClCompile Include="src\ODIN\Config.cpp" />
+    <ClCompile Include="src\ODIN\crc32.cpp" />
+    <ClCompile Include="src\ODIN\DecompressionThread.cpp" />
+    <ClCompile Include="src\ODIN\DriveList.cpp" />
+    <ClCompile Include="src\ODIN\DriveUtil.cpp" />
+    <ClCompile Include="src\ODIN\Exception.cpp" />
+    <ClCompile Include="src\ODIN\FileFormatException.cpp" />
+    <ClCompile Include="src\ODIN\FileHeader.cpp" />
+    <ClCompile Include="src\ODIN\FileNameUtil.cpp" />
+    <ClCompile Include="src\ODIN\ImageStream.cpp" />
+    <ClCompile Include="src\ODIN\IniWrapper.cpp" />
+    <ClCompile Include="src\ODIN\InternalException.cpp" />
+    <ClCompile Include="src\ODIN\MultiPartitionHandler.cpp" />
+    <ClCompile Include="src\ODIN\OdinManager.cpp" />
+    <ClCompile Include="src\ODIN\OSException.cpp" />
+    <ClCompile Include="src\ODIN\ParamChecker.cpp" />
+    <ClCompile Include="src\ODIN\PartitionInfoMgr.cpp" />
+    <ClCompile Include="src\ODIN\ReadThread.cpp" />
+    <ClCompile Include="src\ODIN\SplitManager.cpp" />
+    <ClCompile Include="src\ODIN\UserFeedbackConsole.cpp" />
+    <ClCompile Include="src\ODIN\Util.cpp" />
+    <ClCompile Include="src\ODIN\VSSException.cpp" />
+    <ClCompile Include="src\ODIN\VSSWrapper.cpp" />
+    <ClCompile Include="src\ODIN\WriteThread.cpp" />
+    <ClCompile Include="testsrc\ODINTest\BitArrayTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\CmdLineTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\CompressedRunLengthStreamTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\ConfigTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\CreateDeleteThread.cpp" />
+    <ClCompile Include="testsrc\ODINTest\ExceptionTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\FileHeaderTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\ImageStreamSimulator.cpp" />
+    <ClCompile Include="testsrc\ODINTest\ImageTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\OdinManagerTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\ODINTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\PartitionInfoMgrTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\RunLengthStreamSimulator.cpp" />
+    <ClCompile Include="testsrc\ODINTest\SplitFileTest.cpp" />
+    <ClCompile Include="testsrc\ODINTest\stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <XMLDocumentationFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.xdc</XMLDocumentationFileName>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <XMLDocumentationFileName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)%(Filename)1.xdc</XMLDocumentationFileName>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <XMLDocumentationFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.xdc</XMLDocumentationFileName>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <XMLDocumentationFileName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)%(Filename)1.xdc</XMLDocumentationFileName>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ODIN\BufferQueue.h" />
+    <ClInclude Include="src\ODIN\CmdLineException.h" />
+    <ClInclude Include="src\ODIN\CmdLineParser.h" />
+    <ClInclude Include="src\ODIN\CommandLineProcessor.h" />
+    <ClInclude Include="src\ODIN\CompressedRunLengthStream.h" />
+    <ClInclude Include="src\ODIN\CompressionException.h" />
+    <ClInclude Include="src\ODIN\CompressionThread.h" />
+    <ClInclude Include="src\ODIN\Config.h" />
+    <ClInclude Include="src\ODIN\crc32.h" />
+    <ClInclude Include="src\ODIN\DecompressionThread.h" />
+    <ClInclude Include="src\ODIN\DriveList.h" />
+    <ClInclude Include="src\ODIN\DriveUtil.h" />
+    <ClInclude Include="src\ODIN\Exception.h" />
+    <ClInclude Include="src\ODIN\FileFormatException.h" />
+    <ClInclude Include="src\ODIN\FileHeader.h" />
+    <ClInclude Include="src\ODIN\FileNameUtil.h" />
+    <ClInclude Include="src\ODIN\ImageStream.h" />
+    <ClInclude Include="src\ODIN\IniWrapper.h" />
+    <ClInclude Include="src\ODIN\InternalException.h" />
+    <ClInclude Include="src\ODIN\MultiPartitionHandler.h" />
+    <ClInclude Include="src\ODIN\OdinManager.h" />
+    <ClInclude Include="src\ODIN\OdinThread.h" />
+    <ClInclude Include="src\ODIN\OSException.h" />
+    <ClInclude Include="src\ODIN\ParamChecker.h" />
+    <ClInclude Include="src\ODIN\PartitionInfoMgr.h" />
+    <ClInclude Include="src\ODIN\ReadThread.h" />
+    <ClInclude Include="src\ODIN\SplitManager.h" />
+    <ClInclude Include="src\ODIN\SplitManagerCallback.h" />
+    <ClInclude Include="src\ODIN\Thread.h" />
+    <ClInclude Include="src\ODIN\UserFeedback.h" />
+    <ClInclude Include="src\ODIN\UserFeedbackGUI.h" />
+    <ClInclude Include="src\ODIN\Util.h" />
+    <ClInclude Include="src\ODIN\vsbackup_xp.h" />
+    <ClInclude Include="src\ODIN\VSSException.h" />
+    <ClInclude Include="src\ODIN\VSSWrapper.h" />
+    <ClInclude Include="src\ODIN\WriteThread.h" />
+    <ClInclude Include="testsrc\ODINTest\BitArrayTest.h" />
+    <ClInclude Include="testsrc\ODINTest\CmdLineTest.h" />
+    <ClInclude Include="testsrc\ODINTest\CompressedRunLengthStreamTest.h" />
+    <ClInclude Include="testsrc\ODINTest\ConfigTest.h" />
+    <ClInclude Include="testsrc\ODINTest\CreateDeleteThread.h" />
+    <ClInclude Include="testsrc\ODINTest\ExceptionTest.h" />
+    <ClInclude Include="testsrc\ODINTest\FileHeaderTest.h" />
+    <ClInclude Include="testsrc\ODINTest\ImageStreamSimulator.h" />
+    <ClInclude Include="testsrc\ODINTest\ImageTest.h" />
+    <ClInclude Include="testsrc\ODINTest\OdinManagerTest.h" />
+    <ClInclude Include="testsrc\ODINTest\PartitionInfoMgrTest.h" />
+    <ClInclude Include="testsrc\ODINTest\RunLengthStreamSimulator.h" />
+    <ClInclude Include="testsrc\ODINTest\SplitFileTest.h" />
+    <ClInclude Include="testsrc\ODINTest\stdafx.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

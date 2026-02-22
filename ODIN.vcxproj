@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>18.0</VCProjectVersion>
+    <ProjectGuid>{51EBA8A5-C349-4AEC-A526-5C6730D72903}</ProjectGuid>
+    <RootNamespace>ODIN</RootNamespace>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>18.0.11512.103</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <PreBuildEventUseInBuild>true</PreBuildEventUseInBuild>
+    <LinkIncremental>false</LinkIncremental>
+    <PostBuildEventUseInBuild>true</PostBuildEventUseInBuild>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(Configuration)-$(Platform)\</OutDir>
+    <IntDir>$(Configuration)-$(Platform)\$(ProjectName)\</IntDir>
+    <PreBuildEventUseInBuild>true</PreBuildEventUseInBuild>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
+    <Midl>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <GenerateStublessProxies>true</GenerateStublessProxies>
+      <TypeLibraryName>$(IntDir)ODIN.tlb</TypeLibraryName>
+      <HeaderFileName>ODIN.h</HeaderFileName>
+      <DllDataFileName />
+      <InterfaceIdentifierFileName>ODIN_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>ODIN_p.c</ProxyFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;STRICT;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
+    <Midl>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <TargetEnvironment>X64</TargetEnvironment>
+      <GenerateStublessProxies>true</GenerateStublessProxies>
+      <TypeLibraryName>$(IntDir)ODIN.tlb</TypeLibraryName>
+      <HeaderFileName>ODIN.h</HeaderFileName>
+      <DllDataFileName />
+      <InterfaceIdentifierFileName>ODIN_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>ODIN_p.c</ProxyFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN64;STRICT;DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <PreBuildEvent>
+      <Command />
+    </PreBuildEvent>
+    <Midl>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <GenerateStublessProxies>true</GenerateStublessProxies>
+      <TypeLibraryName>$(IntDir)ODIN.tlb</TypeLibraryName>
+      <HeaderFileName>ODIN.h</HeaderFileName>
+      <DllDataFileName />
+      <InterfaceIdentifierFileName>ODIN_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>ODIN_p.c</ProxyFileName>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;STRICT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat />
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Increment Build Number</Message>
+      <Command>set BUILDNO=0
+for /F "usebackq" %25%25i in ("$(SolutionDir)\BUILDNUMBER.TXT") do set BUILDNO=%25%25i
+set /A BUILDNO=%25BUILDNO%25+1
+%40echo %25BUILDNO%25 &gt; "$(SolutionDir)\BUILDNUMBER.TXT"
+%40echo // buildnumber.h generated file to count buildnumber &gt; "$(SolutionDir)\src\ODIN\buildnumber.h"
+%40echo #define BUILDNUMBER %25BUILDNO%25 &gt;&gt; "$(SolutionDir)\src\ODIN\buildnumber.h"
+%40echo #define BUILDNUMBERSTR "%25BUILDNO%25" &gt;&gt;"$(SolutionDir)\src\ODIN\buildnumber.h"
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <PreBuildEvent>
+      <Command />
+    </PreBuildEvent>
+    <Midl>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>false</MkTypLibCompatible>
+      <TargetEnvironment>X64</TargetEnvironment>
+      <GenerateStublessProxies>true</GenerateStublessProxies>
+      <TypeLibraryName>$(IntDir)ODIN.tlb</TypeLibraryName>
+      <HeaderFileName>ODIN.h</HeaderFileName>
+      <DllDataFileName />
+      <InterfaceIdentifierFileName>ODIN_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>ODIN_p.c</ProxyFileName>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN64;STRICT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat />
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+    <PostBuildEvent>
+      <Message>Increment Build Number</Message>
+      <Command>set BUILDNO=0
+for /F "usebackq" %25%25i in ("$(SolutionDir)\BUILDNUMBER.TXT") do set BUILDNO=%25%25i
+set /A BUILDNO=%25BUILDNO%25+1
+%40echo %25BUILDNO%25 &gt; "$(SolutionDir)\BUILDNUMBER.TXT"
+%40echo // buildnumber.h generated file to count buildnumber &gt; "$(SolutionDir)\src\ODIN\buildnumber.h"
+%40echo #define BUILDNUMBER %25BUILDNO%25 &gt;&gt; "$(SolutionDir)\src\ODIN\buildnumber.h"
+%40echo #define BUILDNUMBERSTR "%25BUILDNO%25" &gt;&gt;"$(SolutionDir)\src\ODIN\buildnumber.h"
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ODIN\AboutDlg.cpp" />
+    <ClCompile Include="src\ODIN\BufferQueue.cpp" />
+    <ClCompile Include="src\ODIN\CmdLineException.cpp" />
+    <ClCompile Include="src\ODIN\CommandLineProcessor.cpp" />
+    <ClCompile Include="src\ODIN\CompressedRunLengthStream.cpp" />
+    <ClCompile Include="src\ODIN\CompressionException.cpp" />
+    <ClCompile Include="src\ODIN\CompressionThread.cpp" />
+    <ClCompile Include="src\ODIN\Config.cpp" />
+    <ClCompile Include="src\ODIN\crc32.cpp" />
+    <ClCompile Include="src\ODIN\DecompressionThread.cpp" />
+    <ClCompile Include="src\ODIN\DriveList.cpp" />
+    <ClCompile Include="src\ODIN\DriveUtil.cpp" />
+    <ClCompile Include="src\ODIN\Exception.cpp" />
+    <ClCompile Include="src\ODIN\FileFormatException.cpp" />
+    <ClCompile Include="src\ODIN\FileHeader.cpp" />
+    <ClCompile Include="src\ODIN\FileNameUtil.cpp" />
+    <ClCompile Include="src\ODIN\ImageStream.cpp" />
+    <ClCompile Include="src\ODIN\IniWrapper.cpp" />
+    <ClCompile Include="src\ODIN\InternalException.cpp" />
+    <ClCompile Include="src\ODIN\MultiPartitionHandler.cpp" />
+    <ClCompile Include="src\ODIN\ODIN.cpp" />
+    <ClCompile Include="src\ODIN\ODINDlg.cpp" />
+    <ClCompile Include="src\ODIN\OdinManager.cpp" />
+    <ClCompile Include="src\ODIN\OptionsDlg.cpp" />
+    <ClCompile Include="src\ODIN\OSException.cpp" />
+    <ClCompile Include="src\ODIN\ParamChecker.cpp" />
+    <ClCompile Include="src\ODIN\PartitionInfoMgr.cpp" />
+    <ClCompile Include="src\ODIN\ReadThread.cpp" />
+    <ClCompile Include="src\ODIN\SplitManager.cpp" />
+    <ClCompile Include="src\ODIN\stdafx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\ODIN\UserFeedbackConsole.cpp" />
+    <ClCompile Include="src\ODIN\Util.cpp" />
+    <ClCompile Include="src\ODIN\VSSException.cpp" />
+    <ClCompile Include="src\ODIN\VSSWrapper.cpp" />
+    <ClCompile Include="src\ODIN\WriteThread.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ODIN\AboutDlg.h" />
+    <ClInclude Include="src\ODIN\BufferQueue.h" />
+    <ClInclude Include="src\ODIN\buildnumber.h" />
+    <ClInclude Include="src\ODIN\CmdLineException.h" />
+    <ClInclude Include="src\ODIN\CmdLineParser.h" />
+    <ClInclude Include="src\ODIN\CommandLineProcessor.h" />
+    <ClInclude Include="src\ODIN\CompressedRunLengthStream.h" />
+    <ClInclude Include="src\ODIN\Compression.h" />
+    <ClInclude Include="src\ODIN\CompressionException.h" />
+    <ClInclude Include="src\ODIN\CompressionThread.h" />
+    <ClInclude Include="src\ODIN\Config.h" />
+    <ClInclude Include="src\ODIN\crc32.h" />
+    <ClInclude Include="src\ODIN\DebugMem.h" />
+    <ClInclude Include="src\ODIN\DecompressionThread.h" />
+    <ClInclude Include="src\ODIN\DriveList.h" />
+    <ClInclude Include="src\ODIN\DriveUtil.h" />
+    <ClInclude Include="src\ODIN\Exception.h" />
+    <ClInclude Include="src\ODIN\FileFormatException.h" />
+    <ClInclude Include="src\ODIN\FileHeader.h" />
+    <ClInclude Include="src\ODIN\FileNameUtil.h" />
+    <ClInclude Include="src\ODIN\IImageStream.h" />
+    <ClInclude Include="src\ODIN\ImageStream.h" />
+    <ClInclude Include="src\ODIN\IniWrapper.h" />
+    <ClInclude Include="src\ODIN\InternalException.h" />
+    <ClInclude Include="src\ODIN\IRunLengthStreamReader.h" />
+    <ClInclude Include="src\ODIN\MultiPartitionHandler.h" />
+    <ClInclude Include="src\ODIN\ODINDlg.h" />
+    <ClInclude Include="src\ODIN\OdinManager.h" />
+    <ClInclude Include="src\ODIN\OdinThread.h" />
+    <ClInclude Include="src\ODIN\OptionsDlg.h" />
+    <ClInclude Include="src\ODIN\OSException.h" />
+    <ClInclude Include="src\ODIN\ParamChecker.h" />
+    <ClInclude Include="src\ODIN\PartitionInfoMgr.h" />
+    <ClInclude Include="src\ODIN\ReadThread.h" />
+    <ClInclude Include="src\ODIN\resource.h" />
+    <ClInclude Include="src\ODIN\SplitManager.h" />
+    <ClInclude Include="src\ODIN\SplitManagerCallback.h" />
+    <ClInclude Include="src\ODIN\stdafx.h" />
+    <ClInclude Include="src\ODIN\Thread.h" />
+    <ClInclude Include="src\ODIN\UserFeedback.h" />
+    <ClInclude Include="src\ODIN\UserFeedbackConsole.h" />
+    <ClInclude Include="src\ODIN\UserFeedbackGUI.h" />
+    <ClInclude Include="src\ODIN\Util.h" />
+    <ClInclude Include="src\ODIN\VSSException.h" />
+    <ClInclude Include="src\ODIN\VSSWrapper.h" />
+    <ClInclude Include="src\ODIN\WriteThread.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="src\ODIN\res\ODIN.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\ODIN\ODIN.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="doc\license.html">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Copying license file</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">copy "%(FullPath)" "$(OutDir)license.html"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(OutDir)license.html;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Copying license file</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">copy "%(FullPath)" "$(OutDir)license.html"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)license.html;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Copying license file</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">copy "%(FullPath)" "$(OutDir)license.html"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)license.html;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Copying license file</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">copy "%(FullPath)" "$(OutDir)license.html"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)license.html;%(Outputs)</Outputs>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="ODIN.exe.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="doc\todo.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="libz2.vcxproj">
+      <Project>{183c0677-b102-4918-8432-603ce2786060}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties RESOURCE_FILE="src\ODIN\ODIN.rc" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

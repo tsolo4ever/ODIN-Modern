@@ -1,45 +1,23 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11512.155 d18.3
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zlib", "zlib.vcproj", "{F6D18512-4118-45E6-A520-FE25C8D77385}"
 	ProjectSection(WebsiteProperties) = preProject
 		Debug.AspNetCompiler.Debug = "True"
 		Release.AspNetCompiler.Debug = "False"
 	EndProjectSection
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODIN", "ODIN.vcproj", "{51EBA8A5-C349-4AEC-A526-5C6730D72903}"
-	ProjectSection(ProjectDependencies) = postProject
-		{183C0677-B102-4918-8432-603CE2786060} = {183C0677-B102-4918-8432-603CE2786060}
-		{F6D18512-4118-45E6-A520-FE25C8D77385} = {F6D18512-4118-45E6-A520-FE25C8D77385}
-	EndProjectSection
-	ProjectSection(WebsiteProperties) = preProject
-		Debug.AspNetCompiler.Debug = "True"
-		Release.AspNetCompiler.Debug = "False"
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODIN", "ODIN.vcxproj", "{51EBA8A5-C349-4AEC-A526-5C6730D72903}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libz2", "libz2.vcproj", "{183C0677-B102-4918-8432-603CE2786060}"
-	ProjectSection(WebsiteProperties) = preProject
-		Debug.AspNetCompiler.Debug = "True"
-		Release.AspNetCompiler.Debug = "False"
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libz2", "libz2.vcxproj", "{183C0677-B102-4918-8432-603CE2786060}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINTest", "ODINTest.vcproj", "{1F5DFFEC-276B-436C-8F78-7332B5BA1407}"
-	ProjectSection(ProjectDependencies) = postProject
-		{F6D18512-4118-45E6-A520-FE25C8D77385} = {F6D18512-4118-45E6-A520-FE25C8D77385}
-		{183C0677-B102-4918-8432-603CE2786060} = {183C0677-B102-4918-8432-603CE2786060}
-	EndProjectSection
-	ProjectSection(WebsiteProperties) = preProject
-		Debug.AspNetCompiler.Debug = "True"
-		Release.AspNetCompiler.Debug = "False"
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINTest", "ODINTest.vcxproj", "{1F5DFFEC-276B-436C-8F78-7332B5BA1407}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINHelp", "ODINHelp.vcproj", "{D5241911-1B41-45CC-99D7-795A7D6221B9}"
-	ProjectSection(WebsiteProperties) = preProject
-		Debug.AspNetCompiler.Debug = "True"
-		Release.AspNetCompiler.Debug = "False"
-	EndProjectSection
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINHelp", "ODINHelp.vcxproj", "{D5241911-1B41-45CC-99D7-795A7D6221B9}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINC", "ODINC.vcproj", "{F540A81C-48F2-45F1-A9E4-664D1670CDFC}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINC", "ODINC.vcxproj", "{F540A81C-48F2-45F1-A9E4-664D1670CDFC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -100,5 +78,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A157E4D4-9C01-43D3-900C-0D7056475EA7}
 	EndGlobalSection
 EndGlobal
