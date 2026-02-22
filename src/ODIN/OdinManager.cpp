@@ -409,7 +409,7 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
   ATLTRACE("WaitToCompleteOperation() entered.\n");
 
   while (TRUE) {
-    DWORD result = MsgWaitForMultipleObjects(threadCount, threadHandleArray, FALSE, INFINITE, QS_ALLEVENTS);
+    DWORD result = MsgWaitForMultipleObjects(threadCount, threadHandleArray.get(), FALSE, INFINITE, QS_ALLEVENTS);
     if (result >= WAIT_OBJECT_0 && result < (DWORD)threadCount) {
       ATLTRACE("event arrived: %d, thread id: %x\n", result, threadHandleArray[result]);
       callback->OnThreadTerminated();

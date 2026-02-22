@@ -28,6 +28,7 @@
 #include "../zlib.1.2.3/zlib.h"
 #include "../bzip2-1.0.5/bzlib.h"
 #include "CompressionException.h"
+#include "InternalException.h"
 
 #ifdef DEBUG
   #define new DEBUG_NEW

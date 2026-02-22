@@ -29,6 +29,7 @@
 #include "BufferQueue.h"
 #include "CompressionThread.h"
 #include "CompressionException.h"
+#include "InternalException.h"
 
 #ifdef DEBUG
   #define new DEBUG_NEW
