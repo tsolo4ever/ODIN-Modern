@@ -376,6 +376,8 @@ void CCommandLineProcessor::Parse(CStlCmdLineArgsWin<wchar_t>& cmdLineParser) {
     fOperation.source = cmdLineParser[L"source"];
   if (cmdLineParser[L"target"])
     fOperation.target = cmdLineParser[L"target"];
+  if (cmdLineParser[L"output"])
+    fOperation.outputFile = cmdLineParser[L"output"];
 
   if (fOperation.source.empty() && fOperation.cmd != CCommandLineProcessor::CmdList) {
     THROW_CMD_EXC(ECmdLineException::noSource);
@@ -460,21 +462,40 @@ void CCommandLineProcessor::ListDrives() {
   const int bufSize =80;
   wchar_t buf[bufSize];
 
+  // Check if output should go to file
+  wofstream outFile;
+  wostream* pOut = &wcout;
+  
+  if (!fOperation.outputFile.empty()) {
+    outFile.open(fOperation.outputFile.c_str(), ios::out);
+    if (outFile.is_open()) {
+      pOut = &outFile;
+    } else {
+      wcerr << L"Error: Could not open output file: " << fOperation.outputFile << endl;
+      return;
+    }
+  }
+
   for (int i=0; i<noDrives; i++) {
     CDriveInfo* di = dl->GetItem(i);
-    wcout << L"Index: " << i << endl;
-    wcout << L"Device Name: " << di->GetDeviceName() << endl;
+    *pOut << L"Index: " << i << endl;
+    *pOut << L"Device Name: " << di->GetDeviceName() << endl;
     s = di->GetDisplayName();
     size_t pos1 = s.find(L'(')+1;
     size_t pos2 = s.find(L')');
     s = s.substr(pos1, pos2-pos1);
-    wcout << L"Drive: " << s << endl;
+    *pOut << L"Drive: " << s << endl;
     GetDriveTypeString(di->GetDriveType(), s);
-    wcout << L"Label: " << di->GetVolumeName() << endl;
-    wcout << L"Type: " << s.c_str() << endl;
+    *pOut << L"Label: " << di->GetVolumeName() << endl;
+    *pOut << L"Type: " << s.c_str() << endl;
     MakeByteLabel(di->GetBytes(), buf, bufSize);
-    wcout << L"Size: " << buf << endl;
-    wcout << endl;
+    *pOut << L"Size: " << buf << endl;
+    *pOut << endl;
+  }
+
+  if (outFile.is_open()) {
+    outFile.close();
+    wcout << L"Drive list written to: " << fOperation.outputFile << endl;
   }
 }
 
@@ -552,6 +573,7 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << L"  -restore  restores a disk image from a file to a volume or disk" << endl;
   wcout << L"  -verify   checks an image for damage" << endl;
   wcout << L"  -list     prints a list of available volumes on this machine" << endl;
+  wcout << L"  -output=[filename]  write -list output to file instead of console" << endl;
   wcout << L"  -force    suppress all warning messages and continue immediately (very" << endl;
   wcout << L"            dangerous!)" << endl;
   wcout << endl;
@@ -563,6 +585,8 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << L"  restores image from file myimage.dat to first partition of first disk " << endl;
   wcout << L"ODIN -list" << endl;
   wcout << L"  prints all availaible volumes and disks with their name and number" << endl;
+  wcout << L"ODIN -list -output=drives.txt" << endl;
+  wcout << L"  writes drive list to drives.txt file" << endl;
   wcout << endl;
   wcout << L"WARNING:" << endl;
   wcout << L"USING THIS PROGRAM CAN DESTROY THE COMPLETE CONTENTS OF YOUR HARD DISK!!!" << endl;
