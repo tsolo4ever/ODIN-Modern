@@ -128,6 +128,7 @@ CODINDlg::CODINDlg()
   fColumn4Width(L"VolumeColumn4Width", 80),
   fAutoFlashEnabled(L"AutoFlashEnabled", false),
   fAutoFlashTargetSizeGB(L"AutoFlashTargetSizeGB", 8),
+  fAutoFlashWarningShown(L"AutoFlashWarningShown", false),
   fSplitCB(m_hWnd),
   fVerifyRun(false),
   fTimer(0),
@@ -136,6 +137,7 @@ CODINDlg::CODINDlg()
   fChecker(fFeedback, fOdinManager)
 {
   fMode = fLastOperationWasBackup ? modeBackup : modeRestore;
+  fIsAutoFlashOperation = false;
   ResetRunInformation();
 }
 
@@ -1083,6 +1085,7 @@ LRESULT CODINDlg::OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
 LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 {
   CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
+  bool wasEnabled = fAutoFlashEnabled;
   fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
   
   // Read size from input box
@@ -1092,6 +1095,20 @@ LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, 
   int size = _wtoi(szSize);
   if (size > 0 && size < 999) {
     fAutoFlashTargetSizeGB = size;
+  }
+  
+  // Show warning when enabling for the first time
+  if (fAutoFlashEnabled && !fAutoFlashWarningShown) {
+    ATL::CString msg;
+    msg.Format(IDS_ERASE_DRIVE, L"detected removable disks");
+    int res = AtlMessageBox(m_hWnd, (LPCWSTR)msg, IDS_WARNING, MB_ICONEXCLAMATION | MB_OKCANCEL);
+    if (res != IDOK) {
+      // User cancelled, uncheck the box
+      fAutoFlashEnabled = false;
+      autoFlashCheck.SetCheck(BST_UNCHECKED);
+    } else {
+      fAutoFlashWarningShown = true;
+    }
   }
   
   return 0;

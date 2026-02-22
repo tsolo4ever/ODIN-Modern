@@ -1,4 +1,4 @@
-/******************************************************************************
+ /******************************************************************************
 
     ODIN - Open Disk Imager in a Nutshell
 
@@ -114,6 +114,8 @@ private:
   DECLARE_ENTRY(std::wstring, fLastImageFile) // path to last image file that was used
   DECLARE_ENTRY(bool, fAutoFlashEnabled) // enable auto-flash for removable disks
   DECLARE_ENTRY(int, fAutoFlashTargetSizeGB) // target size in GB for auto-flash detection
+  DECLARE_ENTRY(bool, fAutoFlashWarningShown) // tracks if user saw the auto-flash warning
+  bool fIsAutoFlashOperation; // flag to indicate current operation is auto-flash
 
   void Init();
   void InitControls();
