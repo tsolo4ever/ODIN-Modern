@@ -1,7 +1,7 @@
 # ODIN Project Map
 
 **Last Updated:** 2026-02-21  
-**Current Status:** Planning modernization and auto-flash feature
+**Current Status:** Phase 1 Critical Bug Fixes - In Progress (3/6 complete)
 
 ---
 
@@ -151,15 +151,15 @@ A Windows disk imaging tool for backup/restore of partitions and drives.
 ## 🐛 Bug Tracking
 
 ### Critical (Fix Before Release)
-- [ ] Buffer queue race condition (`BufferQueue.cpp:GetChunk()`)
-- [ ] Memory leak in `OdinManager.cpp:WaitToCompleteOperation()`
+- [x] Buffer queue race condition (`BufferQueue.cpp:GetChunk()`) - FIXED ✅
+- [x] Memory leak in `OdinManager.cpp:WaitToCompleteOperation()`) - FIXED ✅
 - [ ] Integer overflow in size calculations
 - [ ] Unchecked pointers after `GetChunk()`
 
 ### High Priority
 - [ ] Boot sector validation (security)
 - [ ] Exception handling incomplete (catch(...))
-- [ ] ODINC.cpp handle inheritance
+- [x] ODINC.cpp handle inheritance - FIXED ✅
 
 ### Medium Priority
 - [ ] Silent volume resize failures
