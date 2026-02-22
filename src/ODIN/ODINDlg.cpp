@@ -127,6 +127,7 @@ CODINDlg::CODINDlg()
   fColumn3Width(L"VolumeColumn3Width", 80),
   fColumn4Width(L"VolumeColumn4Width", 80),
   fAutoFlashEnabled(L"AutoFlashEnabled", false),
+  fAutoFlashTargetSizeGB(L"AutoFlashTargetSizeGB", 8),
   fSplitCB(m_hWnd),
   fVerifyRun(false),
   fTimer(0),
@@ -197,9 +198,13 @@ void CODINDlg::InitControls()
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetRange32(0, 100);
 
-  // set auto-flash checkbox state
+  // set auto-flash checkbox state and size input
   CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
   autoFlashCheck.SetCheck(fAutoFlashEnabled ? BST_CHECKED : BST_UNCHECKED);
+  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
+  wchar_t szSize[4];
+  wsprintf(szSize, L"%d", (int)fAutoFlashTargetSizeGB);
+  sizeEdit.SetWindowText(szSize);
 
   // fill volume list box
   FillDriveList();
@@ -1079,14 +1084,23 @@ LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, 
 {
   CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
   fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
+  
+  // Read size from input box
+  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
+  wchar_t szSize[4];
+  sizeEdit.GetWindowText(szSize, 4);
+  int size = _wtoi(szSize);
+  if (size > 0 && size < 999) {
+    fAutoFlashTargetSizeGB = size;
+  }
+  
   return 0;
 }
 
 int CODINDlg::DetectCFCard()
 {
-  // Detect 8GB hard disk (entire disk, not partition)
-  // TODO: Make target size configurable in future version
-  const unsigned __int64 targetSize = 8ULL * 1024 * 1024 * 1024; // 8GB in bytes
+  // Detect removable hard disk (entire disk, not partition) with configurable size
+  const unsigned __int64 targetSize = (unsigned __int64)fAutoFlashTargetSizeGB * 1024 * 1024 * 1024; // Convert GB to bytes
   const unsigned __int64 tolerance = targetSize / 10; // 10% tolerance
   
   int count = fOdinManager.GetDriveCount();

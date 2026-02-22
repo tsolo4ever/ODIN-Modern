@@ -112,7 +112,8 @@ private:
   DECLARE_ENTRY(int, fColumn3Width)   // width og column 3 in volume list control
   DECLARE_ENTRY(int, fColumn4Width)   // width og column 4 in volume list control
   DECLARE_ENTRY(std::wstring, fLastImageFile) // path to last image file that was used
-  DECLARE_ENTRY(bool, fAutoFlashEnabled) // enable auto-flash for 8GB CF cards
+  DECLARE_ENTRY(bool, fAutoFlashEnabled) // enable auto-flash for removable disks
+  DECLARE_ENTRY(int, fAutoFlashTargetSizeGB) // target size in GB for auto-flash detection
 
   void Init();
   void InitControls();

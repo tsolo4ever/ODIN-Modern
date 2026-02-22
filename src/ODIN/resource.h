@@ -94,6 +94,8 @@
 #define IDC_HYPER                       1048
 #define IDC_BT_SNAPSHOT                 1052
 #define IDC_CHECK_AUTOFLASH             1053
+#define IDC_EDIT_AUTOFLASH_SIZE         1054
+#define IDC_STATIC_AUTOFLASH_GB         1055
 #define IDS_ERRCMDLINE_NO_OPERATION     57346
 #define IDS_ERRCMDLINE_UNKNOWN_OPTION   57347
 #define IDS_ERRCMDLINE_USAGE            57348
@@ -135,7 +137,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        210
 #define _APS_NEXT_COMMAND_VALUE         32772
-#define _APS_NEXT_CONTROL_VALUE         1054
+#define _APS_NEXT_CONTROL_VALUE         1056
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
