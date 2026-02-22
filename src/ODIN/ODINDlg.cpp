@@ -11,7 +11,7 @@
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    GNU General Public License for more detail
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>
@@ -126,6 +126,7 @@ CODINDlg::CODINDlg()
   fColumn2Width(L"VolumeColumn2Width", 90),
   fColumn3Width(L"VolumeColumn3Width", 80),
   fColumn4Width(L"VolumeColumn4Width", 80),
+  fAutoFlashEnabled(L"AutoFlashEnabled", false),
   fSplitCB(m_hWnd),
   fVerifyRun(false),
   fTimer(0),
@@ -195,6 +196,10 @@ void CODINDlg::InitControls()
   // init progress bar to percent range
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetRange32(0, 100);
+
+  // set auto-flash checkbox state
+  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
+  autoFlashCheck.SetCheck(fAutoFlashEnabled ? BST_CHECKED : BST_UNCHECKED);
 
   // fill volume list box
   FillDriveList();
@@ -803,6 +808,14 @@ LRESULT CODINDlg::OnDeviceChanged(UINT /*uMsg*/, WPARAM nEventType, LPARAM lPara
       RefreshDriveList();
       EnableWindow(TRUE);
       textBox.DestroyWindow();
+
+      // Check for auto-flash trigger
+      if (nEventType == DBT_DEVICEARRIVAL && fAutoFlashEnabled && fMode == modeRestore) {
+        int cfIndex = DetectCFCard();
+        if (cfIndex >= 0) {
+          TriggerAutoFlash(cfIndex);
+        }
+      }
     }
   }
 
@@ -1060,5 +1073,62 @@ LRESULT CODINDlg::OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
 {
   BrowseFilesWithFileOpenDialog();
   return 0;
+}
+
+LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+{
+  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
+  fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
+  return 0;
+}
+
+int CODINDlg::DetectCFCard()
+{
+  // Detect 8GB hard disk (entire disk, not partition)
+  // TODO: Make target size configurable in future version
+  const unsigned __int64 targetSize = 8ULL * 1024 * 1024 * 1024; // 8GB in bytes
+  const unsigned __int64 tolerance = targetSize / 10; // 10% tolerance
+  
+  int count = fOdinManager.GetDriveCount();
+  for (int i = 0; i < count; i++) {
+    CDriveInfo* di = fOdinManager.GetDriveInfo(i);
+    
+    // Must be a complete hard disk (not a partition)
+    if (!di->IsCompleteHardDisk())
+      continue;
+    
+    // Must be removable type
+    if (di->GetDriveType() != driveRemovable)
+      continue;
+    
+    // Check size (8GB ± 10%)
+    unsigned __int64 driveSize = di->GetBytes();
+    if (driveSize < (targetSize - tolerance) || driveSize > (targetSize + tolerance))
+      continue;
+    
+    // Found a matching 8GB disk
+    return i;
+  }
+  
+  return -1; // Not found
+}
+
+void CODINDlg::TriggerAutoFlash(int driveIndex)
+{
+  // Verify we have an image file selected
+  CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
+  wstring fileName;
+  ReadWindowText(comboFiles, fileName);
+  
+  if (fileName.empty() || fileName == L"Browse...") {
+    return; // No image file selected, silently return
+  }
+  
+  // Select the CF card in the drive list
+  fVolumeList.SelectItem(driveIndex);
+  
+  // Trigger the restore operation by simulating OK button click
+  CWindow okButton = GetDlgItem(IDOK);
+  PostMessage(WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), (LPARAM)okButton.m_hWnd);
 }
 
