@@ -20,7 +20,17 @@ COdinMDlg::COdinMDlg() : m_autoCloneEnabled(false), m_maxConcurrent(2), m_timer(
     for (int i = 0; i < 5; i++)
         m_driveSlots.emplace_back(std::make_unique<CDriveSlot>(i + 1));
 }
-COdinMDlg::~COdinMDlg() { if (m_timer) KillTimer(m_timer); }
+COdinMDlg::~COdinMDlg() { }
+
+// --- OnDestroy ---
+// Kill the poll timer here while m_hWnd is still valid.
+// Never call KillTimer() from the destructor — the window is gone by then.
+LRESULT COdinMDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled)
+{
+    if (m_timer) { ::KillTimer(m_hWnd, m_timer); m_timer = 0; }
+    handled = FALSE;   // let DefWindowProc process WM_DESTROY too
+    return 0;
+}
 
 // --- OnInitDialog ---
 LRESULT COdinMDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL& handled)

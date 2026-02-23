@@ -38,6 +38,7 @@ public:
 
     BEGIN_MSG_MAP(COdinMDlg)
         MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
+        MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
         MESSAGE_HANDLER(WM_DEVICECHANGE, OnDeviceChange)
         MESSAGE_HANDLER(WM_TIMER, OnTimer)
         COMMAND_ID_HANDLER(IDOK, OnOK)
@@ -80,6 +81,7 @@ private:
     void SaveSettings();
     
     // Message handlers
+    LRESULT OnDestroy(UINT msg, WPARAM wParam, LPARAM lParam, BOOL& handled);
     LRESULT OnDeviceChange(UINT msg, WPARAM wParam, LPARAM lParam, BOOL& handled);
     LRESULT OnTimer(UINT msg, WPARAM wParam, LPARAM lParam, BOOL& handled);
     LRESULT OnOK(WORD code, WORD id, HWND hwnd, BOOL& handled);
