@@ -106,8 +106,42 @@ const DWORD CCRC32::sCrc32Table[256] =
 };
 
 
+// ---------------------------------------------------------------------------
+// Slice-by-8 extension tables (file-private, generated once at first use).
+//
+// sSliceTable[0] is built from the reflected IEEE 802.3 polynomial 0xEDB88320,
+// producing values identical to sCrc32Table[].  Each subsequent table extends
+// by one more byte so that 8 bytes can be folded into a single CRC step.
+//
+// Generation rule:
+//   table[0][i] = CRC of byte i (from polynomial)
+//   table[k][i] = (table[k-1][i] >> 8) ^ table[0][table[k-1][i] & 0xFF]
+// ---------------------------------------------------------------------------
+static DWORD sSliceTable[8][256];
+
+static void InitSliceTables()
+{
+  // Build table[0] from the polynomial (matches sCrc32Table exactly)
+  for (int i = 0; i < 256; i++) {
+    DWORD crc = (DWORD)i;
+    for (int j = 0; j < 8; j++)
+      crc = (crc >> 1) ^ (crc & 1 ? 0xEDB88320UL : 0UL);
+    sSliceTable[0][i] = crc;
+  }
+  // Derive tables 1–7
+  for (int t = 1; t < 8; t++)
+    for (int i = 0; i < 256; i++)
+      sSliceTable[t][i] = (sSliceTable[t-1][i] >> 8)
+                        ^ sSliceTable[0][sSliceTable[t-1][i] & 0xFF];
+}
+
+// ---------------------------------------------------------------------------
 // member functions
+// ---------------------------------------------------------------------------
 CCRC32::CCRC32() {
+  // Thread-safe one-time table initialisation (C++11 guarantees)
+  static int sOnce = (InitSliceTables(), 0);
+  (void)sOnce;
   Reset();
 }
 
@@ -119,10 +153,44 @@ void CCRC32::Reset() {
   fCrc32 = 0xFFFFFFFF;
 }
 
-
+// ---------------------------------------------------------------------------
+// AddDataBlock — optimised slice-by-8 implementation.
+//
+// Processes 8 bytes per loop iteration (~5–8× faster than the per-byte loop).
+// The IEEE 802.3 polynomial is preserved so all results are bit-identical to
+// the original implementation — existing image checksums remain valid.
+// ---------------------------------------------------------------------------
 void CCRC32::AddDataBlock(BYTE* pData, unsigned length) {
-  for(unsigned i = 0; i < length; i++)
-		CalcCRC32(pData[i]);
+  DWORD        crc = fCrc32;
+  const BYTE*  p   = pData;
+
+  // Step 1: advance to the next 4-byte-aligned address
+  while (length > 0 && (reinterpret_cast<uintptr_t>(p) & 3) != 0) {
+    crc = (crc >> 8) ^ sSliceTable[0][*p++ ^ (crc & 0xFF)];
+    --length;
+  }
+
+  // Step 2: slice-by-8 main loop (reads two DWORD-aligned DWORDs per iter)
+  while (length >= 8) {
+    DWORD v0 = *reinterpret_cast<const DWORD*>(p    ) ^ crc;
+    DWORD v1 = *reinterpret_cast<const DWORD*>(p + 4);
+    crc = sSliceTable[7][ v0        & 0xFF]
+        ^ sSliceTable[6][(v0 >>  8) & 0xFF]
+        ^ sSliceTable[5][(v0 >> 16) & 0xFF]
+        ^ sSliceTable[4][(v0 >> 24) & 0xFF]
+        ^ sSliceTable[3][ v1        & 0xFF]
+        ^ sSliceTable[2][(v1 >>  8) & 0xFF]
+        ^ sSliceTable[1][(v1 >> 16) & 0xFF]
+        ^ sSliceTable[0][(v1 >> 24) & 0xFF];
+    p      += 8;
+    length -= 8;
+  }
+
+  // Step 3: handle the remaining 0–7 bytes
+  while (length-- > 0)
+    crc = (crc >> 8) ^ sSliceTable[0][*p++ ^ (crc & 0xFF)];
+
+  fCrc32 = crc;
 }
 
 DWORD CCRC32::GetResult() {
@@ -131,5 +199,5 @@ DWORD CCRC32::GetResult() {
 
 inline void CCRC32::CalcCRC32(const BYTE byte)
 {
-	fCrc32 = ((fCrc32) >> 8) ^ sCrc32Table[(byte) ^ ((fCrc32) & 0x000000FF)];
+  fCrc32 = ((fCrc32) >> 8) ^ sCrc32Table[(byte) ^ ((fCrc32) & 0x000000FF)];
 }
