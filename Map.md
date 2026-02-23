@@ -62,33 +62,28 @@
 
 ## TODO List
 
-### ODIN / OdinM UI Upgrades
-- [ ] **Resizable main window** — Enable CDialogResize in ODINDlg.h (already partially coded),
-  add WS_THICKFRAME to ODIN.rc, complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
-
-- [ ] **Modern visual styles (app manifest)** — Add to `ODIN.exe.manifest` and create `OdinM.exe.manifest`:
-  ```xml
-  <dependency>
-    <dependentAssembly>
-      <assemblyIdentity type="win32"
-        name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
-        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
-    </dependentAssembly>
-  </dependency>
-  ```
-
-- [ ] **DPI awareness (PerMonitorV2)** — Add to manifest:
+### Priority 1 — Do Now (Hours of work)
+- [ ] **Per-monitor DPI v2 manifest** — Add to both `ODIN.exe.manifest` and new `OdinM.exe.manifest`:
   ```xml
   <dpiAware>True/PM</dpiAware>
   <dpiAwareness>PerMonitorV2</dpiAwareness>
   ```
+- [ ] **Common Controls v6 manifest** — Add to both manifests:
+  ```xml
+  <dependency><dependentAssembly>
+    <assemblyIdentity type="win32"
+      name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+      processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+  </dependentAssembly></dependency>
+  ```
+- [ ] **LVS_EX_DOUBLEBUFFER on all ListViews** — Eliminates flicker, 1 line each in `InitializeDriveList()` and `CODINDlg::OnInitDialog()`
 
-- [ ] **Dark mode support (Win10 1809+)** — Add to `OdinMDlg.cpp` / `ODINDlg.cpp`:
+### Priority 2 — Do Soon (Days of work)
+- [ ] **Dark mode support (Win10 1809+)** — Call on WM_CREATE and when system theme changes:
   ```cpp
   void ApplyDarkMode(HWND hwnd) {
-      BOOL darkMode = TRUE;
-      DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                            &darkMode, sizeof(darkMode));
+      BOOL darkMode = IsSystemDarkMode();
+      DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
   }
   bool IsSystemDarkMode() {
       DWORD value = 0, size = sizeof(value);
@@ -98,35 +93,60 @@
       return value == 0;
   }
   ```
-  Link: add `dwmapi.lib` to linker dependencies.
+  Add `dwmapi.lib` to linker deps in OdinM.vcxproj and ODIN.vcxproj.
 
-- [ ] **ListView improvements (OdinM drive list)** — In `OdinMDlg.cpp::InitializeDriveList()`:
+- [ ] **OdinM: Inline progress bar in grid cell** — Replace progress text column with drawn bar:
   ```cpp
-  // Eliminate flicker + better look
-  ListView_SetExtendedListViewStyle(hList,
-      LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER |
-      LVS_EX_GRIDLINES     | LVS_EX_HEADERDRAGDROP);
-
-  // NM_CUSTOMDRAW handler — alternating rows + status colors:
-  case NM_CUSTOMDRAW:
-      if (stage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
-      if (stage == CDDS_ITEMPREPAINT) {
-          if (nmcd->dwItemSpec % 2 == 0) nmcd->clrTextBk = RGB(245,245,250);
-          SetStatusColor(nmcd); // blue=Cloning, green=Done, red=Failed
-          return CDRF_NEWFONT;
-      }
-
-  // Draw inline progress bar inside COL_PROGRESS cell:
   void DrawProgressInCell(HDC hdc, RECT rc, int pct) {
       FillRect(hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
-      RECT fill = rc;
-      fill.right = rc.left + (rc.right - rc.left) * pct / 100;
+      RECT fill = rc; fill.right = rc.left + (rc.right - rc.left) * pct / 100;
       HBRUSH br = CreateSolidBrush(RGB(0, 120, 215)); // Win11 blue
-      FillRect(hdc, &fill, br);
-      DeleteObject(br);
-      // DrawProgressText(hdc, rc, pct);  // e.g. "67%"
+      FillRect(hdc, &fill, br); DeleteObject(br);
+      // DrawProgressText(hdc, rc, pct); // "67%"
   }
   ```
+- [ ] **OdinM: Status color badges** — NM_CUSTOMDRAW alternating rows + color by status:
+  ```cpp
+  // Alternate row colors + status: blue=Cloning, green=Done, red=Failed
+  if (nmcd->dwItemSpec % 2 == 0) nmcd->clrTextBk = RGB(245,245,250);
+  SetStatusColor(nmcd);
+  return CDRF_NEWFONT;
+  ```
+- [ ] **OdinM: Gray placeholder in empty cells** — Replace plain `-` with subtle styled text
+
+### Priority 3 — Nice to Have (Weeks of work)
+- [ ] **System accent color** — Use in progress bars, active states:
+  ```cpp
+  DWORD GetAccentColor() {  // returns ABGR format
+      DWORD color = 0, size = sizeof(color);
+      RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\DWM",
+                   L"AccentColor", RRF_RT_REG_DWORD, nullptr, &color, &size);
+      return color;
+  }
+  ```
+- [ ] **Drive type icons** — Use `SHGetFileInfo(SHGFI_ICON)` for removable/fixed drive icons in list
+- [ ] **Button hover states** — Custom draw with highlight on WM_MOUSEMOVE
+- [ ] **Rounded corners** — Automatic on Win11 via DWM, no code needed
+- [ ] **Font** — Set Segoe UI Variable (`CreateFont`) if available, fall back to Segoe UI
+- [ ] **Resizable main window** — Enable CDialogResize in ODINDlg.h (already partially coded),
+  add WS_THICKFRAME to ODIN.rc, complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
+
+### What NOT to Do
+- ✗ Don't migrate to WinUI — massive effort, wrong tool
+- ✗ Don't add .NET — breaks lightweight native nature
+- ✗ Don't redesign layout — users know where things are
+- ✗ Don't add animations — this is a serious data tool
+- ✗ Don't remove log window — power users rely on it
+
+### Modern Visual Targets
+| Element | Target |
+|---------|--------|
+| Font | Segoe UI Variable (fallback: Segoe UI) |
+| Spacing | +20% padding in controls |
+| Colors | System accent from DWM registry |
+| Borders | Rounded where possible (DWM automatic on Win11) |
+| Icons | Segoe Fluent or shell icons via SHGetFileInfo |
+| Buttons | Custom draw with hover states |
 
 ### Build / Test
 - [ ] **Fix ODINTest** — Rebuild CppUnit 1.12.1 with VS2026 (`vcpkg install cppunit:x64-windows`)
