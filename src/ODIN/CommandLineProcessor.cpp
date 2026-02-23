@@ -692,22 +692,19 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   CONSOLE_SCREEN_BUFFER_INFO coninfo;
 
 
-  // Attach a console if one exists from the parent (i.e. started from a shell)
-  // This works but does not works synchronously: The parent console returns 
-  // immediately and there is no way to get controlled input. Therefore use
-  // ODINC.exe for this purpose which just waits and starts ODIN.exe
-    bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
-    if (!consoleOutput) {
-    if (createConsole) {
-      // allocate a console for this app
-      BOOL ok = AllocConsole();
-      if (ok)
-        fConsoleCreated = true;
-      else
-        return false;
-    } else 
-      return false;
-    }
+  // Try to attach to a parent console first (works when launched from cmd/PowerShell).
+  // Note: AttachConsole returns immediately — the parent shell does not wait for us.
+  // For synchronous console use, prefer launching ODINC.exe which is a console subsystem app.
+  bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
+  if (!consoleOutput) {
+    // Parent has no console — allocate our own as fallback.
+    // We do this unconditionally (ignoring createConsole) so that command-line
+    // arguments are always processed even when no console is available.
+    BOOL ok = AllocConsole();
+    if (!ok)
+      return false;   // neither attach nor alloc worked — give up
+    fConsoleCreated = true;
+  }
 
   fHasConsole = true;
   // set the screen buffer to be big enough to let us scroll text

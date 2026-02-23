@@ -168,11 +168,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
     bool hasCommandLine = lpstrCmdLine != NULL && *lpstrCmdLine!=L'\0';
     if (hasCommandLine)
     {
-      bool consoleApp = cp.InitConsole(hasCommandLine);
-      if (consoleApp) {
-        // Process command line
-        nRet = cp.ParseAndProcess();
-      }
+      cp.InitConsole(hasCommandLine); // don't check return — try to get a console, but run either way
+      nRet = cp.ParseAndProcess();    // always process args if we have them
     } else {
       // Open main window
       CSplashDlg splashDlg;
