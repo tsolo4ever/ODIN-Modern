@@ -310,6 +310,7 @@ set /A BUILDNO=%25BUILDNO%25+1
     <ClCompile Include="src\ODIN\PartitionInfoMgr.cpp" />
     <ClCompile Include="src\ODIN\ReadThread.cpp" />
     <ClCompile Include="src\ODIN\SplitManager.cpp" />
+    <ClCompile Include="src\ODIN\compressioncompat.cpp" />
     <ClCompile Include="src\ODIN\stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
