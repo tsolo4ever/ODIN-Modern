@@ -6,7 +6,9 @@
 #define IDR_MAINFRAME           128
 #define IDD_ODINM_MAIN          200
 #define IDD_HASH_CONFIG         201
+#ifndef IDC_STATIC
 #define IDC_STATIC              -1
+#endif
 
 // Main Dialog Controls
 #define IDC_EDIT_IMAGE_PATH     1000

@@ -25,9 +25,7 @@
 #define _WIN32_IE 0x0700	// IE 7.0 or later
 #endif
 
-#define _WTL_NO_CSTRING
 #define _ATL_APARTMENT_THREADED
-#define _ATL_NO_AUTOMATIC_NAMESPACE
 #define _ATL_CSTRING_EXPLICIT_CONSTRUCTORS	// some CString constructors will be explicit
 #define _ATL_ALL_WARNINGS
 
