@@ -47,7 +47,22 @@
   - Need: WS_THICKFRAME in ODIN.rc, uncomment CDialogResize inheritance,
     complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
 
+## Icon Assets (all in src/ODIN/res/ or src/ODINM/res/)
+| File | EXE | Description | Status |
+|------|-----|-------------|--------|
+| `ODIN.ico` | ODIN.exe | Blue floppy + HDD + arrow — **chosen ✅** | Active |
+| `ODIN2.ico` | — | Dark SD card + HDD variant — rejected | Archived |
+| `OdinM.ico` | OdinM.exe | 5 coloured SD cards (=5 slots) | Active |
+| `odinc.png` | ODINC.exe | Terminal `>_` prompt style — for future use | PNG only |
+| Source PNGs | — | `modernize the provid.png`, `modernize the ODIN i.png`, `Create a Windows-sty.png` | Committed |
+
 ## Git Commits (recent, on `modernization` branch)
+- `1404e8e` — art: Add odinc.png source icon (terminal prompt, future use)
+- `60fb165` — art: Add OdinM.ico (5 coloured SD cards)
+- `47d965b` — art: Add ODIN2.ico (dark SD card variant, archived)
+- `c396deb` — art: Replace ODIN.ico with modernized flat-design icon
+- `60f937d` — fix: OdinM KillTimer assertion (OnDestroy handler)
+- `7a175d1` — docs: Clean up duplicate sections in Map.md
 - `1de9b4f` — ODIN.rc: dialog width 320→285
 - `3d30dbf` — feat: Add OdinM project (OdinM.vcxproj + sln entry + fixes)
 - `1bb6b1d` — Fix zlib include paths in Compression/Decompression threads
