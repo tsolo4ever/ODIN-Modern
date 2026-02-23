@@ -54,6 +54,8 @@ class CCompressionThread : public COdinThread
   private:
     void CompressLoopZlib();
     void CommpressLoopLibz2();
+    void CompressLoopLZ4(bool useHC);
+    void CompressLoopZSTD();
 
 };
 //---------------------------------------------------------------------------

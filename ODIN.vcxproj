@@ -163,7 +163,8 @@
       <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>$(OutDir)zlib.lib;$(OutDir)libz2.lib;version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib\lz4_win64_v1_10_0;$(ProjectDir)lib\zstd-v1.5.7-win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>liblz4_static.lib;libzstd_static.lib;$(OutDir)zlib.lib;$(OutDir)libz2.lib;version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
@@ -256,7 +257,8 @@ set /A BUILDNO=%25BUILDNO%25+1
       <AdditionalIncludeDirectories>$(IntDir);$(ProjectDir)lib\WTL10\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>$(OutDir)zlib.lib;$(OutDir)libz2.lib;version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)lib\lz4_win64_v1_10_0;$(ProjectDir)lib\zstd-v1.5.7-win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>liblz4_static.lib;libzstd_static.lib;$(OutDir)zlib.lib;$(OutDir)libz2.lib;version.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(TargetDir)$(TargetName).pdb</ProgramDatabaseFile>

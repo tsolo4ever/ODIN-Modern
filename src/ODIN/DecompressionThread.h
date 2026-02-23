@@ -51,6 +51,8 @@ class CDecompressionThread : public COdinThread
   private:
     void DecompressLoopZlib();
     void DecompressLoopLibz2();
+    void DecompressLoopLZ4();
+    void DecompressLoopZSTD();
 
 }; 
 //---------------------------------------------------------------------------

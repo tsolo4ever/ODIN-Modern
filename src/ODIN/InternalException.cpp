@@ -50,6 +50,8 @@ LPCWSTR EInternalException::sMessages[] = {
   L"Internal thread synchronization error", // threadSyncError
   L"Buffer queue unexpectedly empty after wait", // emptyBufferQueue
   L"Input/output error during read or write operation", // inputError
+  L"LZ4 frame compression/decompression error", // lz4CompressError
+  L"Zstandard (ZSTD) compression/decompression error", // zstdCompressError
 };
 
 

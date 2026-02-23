@@ -360,6 +360,12 @@ void CCommandLineProcessor::Parse(CStlCmdLineArgsWin<wchar_t>& cmdLineParser) {
     fOperation.compression = compressionGZip;
   else if (comp.compare(L"bzip") == 0)
     fOperation.compression = compressionBZIP2;
+  else if (comp.compare(L"lz4") == 0)
+    fOperation.compression = compressionLZ4;
+  else if (comp.compare(L"lz4hc") == 0)
+    fOperation.compression = compressionLZ4HC;
+  else if (comp.compare(L"zstd") == 0)
+    fOperation.compression = compressionZSTD;
   else if (comp.compare(L"none") == 0)
     fOperation.compression = noCompression;
   else if (!comp.empty())
@@ -572,7 +578,9 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << L"ODIN [operation] [options] -source=[name] -target=[name]" << endl;
   wcout << L"  [operation] is one of -backup, -restore, -verify or -list" << endl;
   wcout << L"  [options] are:" << endl;
-  wcout << L"  -compression=[bzip|gzip|none]   use bzip, gzip or no compression" << endl;
+  wcout << L"  -compression=[gzip|lz4|lz4hc|zstd|bzip|none]  use specified compression" << endl;
+  wcout << L"                gzip=deflate, lz4=fast LZ4, lz4hc=high-compression LZ4," << endl;
+  wcout << L"                zstd=Zstandard, bzip=bzip2 (read-only legacy), none=no compression" << endl;
   wcout << L"  -makeSnapshot    make snapshot (VSS) before backup (implies -usedBlocks)" << endl;
   wcout << L"  -usedBlocks      copy only used blocks of volume" << endl;
   wcout << L"  -allBlocks       copy all blocks of volume" << endl;
@@ -591,7 +599,11 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << endl;
   wcout << L"Examples:" << endl;
   wcout << L"ODIN -backup -usedBlocks -compression=gzip -source=1 -target=myimage.dat" << endl;
-  wcout << L"  backups volume number 1 to image file myimage.dat with gzip compression " << endl;
+  wcout << L"  backups volume number 1 to image file myimage.dat with gzip compression" << endl;
+  wcout << L"ODIN -backup -usedBlocks -compression=zstd -source=1 -target=myimage.dat" << endl;
+  wcout << L"  backups volume number 1 with Zstandard compression (fast + good ratio)" << endl;
+  wcout << L"ODIN -backup -usedBlocks -compression=lz4 -source=1 -target=myimage.dat" << endl;
+  wcout << L"  backups volume number 1 with LZ4 compression (fastest option)" << endl;
   wcout << L"  and only used blocks (1 refers to index 1 of devices from output of -list) " << endl;
   wcout << L"ODIN -restore -source=myimage.dat -target=\\Device\\Harddisk0\\Partition0" << endl;
   wcout << L"  restores image from file myimage.dat to first partition of first disk " << endl;
