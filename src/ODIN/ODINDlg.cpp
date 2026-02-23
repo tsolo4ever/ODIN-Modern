@@ -174,7 +174,7 @@ void CODINDlg::InitControls()
 
   // set list view style to enable row selection
   // DWORD exStyle = fVolumeList.GetExtendedListViewStyle();
-  fVolumeList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+  fVolumeList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 
   // Fill controls with data
   // fill file list box

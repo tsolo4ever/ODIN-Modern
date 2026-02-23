@@ -214,6 +214,10 @@
   <ItemGroup>
     <ResourceCompile Include="src\ODINM\OdinM.rc" />
   </ItemGroup>
+  <!-- ======== Manifest ======== -->
+  <ItemGroup>
+    <Manifest Include="OdinM.exe.manifest" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

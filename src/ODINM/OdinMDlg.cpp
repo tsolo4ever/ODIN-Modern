@@ -59,7 +59,7 @@ LRESULT COdinMDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL& handled)
 // --- InitializeDriveList ---
 void COdinMDlg::InitializeDriveList()
 {
-    m_driveList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+    m_driveList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
     struct { const wchar_t* title; int width; } cols[COL_COUNT] = {
         {L"Slot",     40}, {L"Drive",    55}, {L"Name",   110},
         {L"Size",     65}, {L"Status",   75}, {L"Progress", 60},
