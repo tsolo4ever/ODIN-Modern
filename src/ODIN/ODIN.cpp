@@ -25,7 +25,7 @@
 //
 
 #include "stdafx.h"
-#include <xdebug>
+// #include <xdebug>  // Non-standard header, not needed in VS2026
 #include <atlframe.h>
 #include <atlctrls.h>
 #include <atldlgs.h>

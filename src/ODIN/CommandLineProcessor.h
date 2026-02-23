@@ -47,6 +47,7 @@ public:
       std::wstring source;
       std::wstring target;
       std::wstring comment;
+      std::wstring outputFile;  // for -output flag with -list
       int sourceIndex;
       int targetIndex;
 	  int splitSizeMB;

@@ -45,6 +45,11 @@ LPCWSTR EInternalException::sMessages[] = {
   L"The file header information for this volume is too big for the file chunk size. Please use a bigger chunk size.", //chunkSizeTooSmall
   L"The maximum number of supported partitions of a hard disk is exceeded (internal buffer too small),", //maxPartitionNumberExceeded
   L"The partition format of this drive is not supported (only MBR format, no EFI)", // unsupportedPartitionFormat
+  L"Invalid boot sector detected: corrupted or malformed data", // invalidBootSector
+  L"Integer overflow detected: value too large for target type", // integerOverflow
+  L"Internal thread synchronization error", // threadSyncError
+  L"Buffer queue unexpectedly empty after wait", // emptyBufferQueue
+  L"Input/output error during read or write operation", // inputError
 };
 
 

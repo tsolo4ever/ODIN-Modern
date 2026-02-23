@@ -119,16 +119,39 @@ CBufferChunk *  CImageBuffer::GetChunk()
 {
   CBufferChunk *chunk = NULL;
   //ATLTRACE("CImageBuffer::GetChunk() begin, thread: %d, name: %S, size is: %d\n", GetCurrentThreadId(), fName.c_str(), fChunks.size());
-  DWORD res = WaitForSingleObject(fSemaListHasElems.m_h, 1000000);
-  if ( res == WAIT_TIMEOUT)
-    THROW_INT_EXC(EInternalException::threadSyncTimeout);
+  
+  // Wait for chunk with proper timeout (5 minutes for large operations)
+  DWORD res = WaitForSingleObject(fSemaListHasElems.m_h, 300000);
+  
+  // Handle all possible wait states
+  switch(res) {
+    case WAIT_OBJECT_0:
+      // Success - chunk is available
+      break;
+    case WAIT_TIMEOUT:
+      THROW_INT_EXC(EInternalException::threadSyncTimeout);
+    case WAIT_ABANDONED:
+      // Mutex was abandoned - critical error
+      THROW_INT_EXC(EInternalException::threadSyncError);
+    default:
+      // Unexpected return value
+      THROW_INT_EXC(EInternalException::threadSyncError);
+  }
+  
   fCritSec.Enter();
+  
+  // Defensive check: ensure queue is not empty before popping
+  if (fChunks.empty()) {
+    fCritSec.Leave();
+    THROW_INT_EXC(EInternalException::threadSyncError);
+  }
+  
   chunk = fChunks.front();
   fChunks.pop_front();
   fCritSec.Leave();
   //ATLTRACE("CImageBuffer::GetChunk() end,  thread: %d, name: %S, size is: %d\n", GetCurrentThreadId(), fName.c_str(), fChunks.size());
   return chunk;
-} 
+}
 //---------------------------------------------------------------------------
 
 

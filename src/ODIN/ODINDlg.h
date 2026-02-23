@@ -1,4 +1,4 @@
-/******************************************************************************
+ /******************************************************************************
 
     ODIN - Open Disk Imager in a Nutshell
 
@@ -81,7 +81,7 @@ private:
   std::list<std::wstring> fDriveNames;
   TOperationMode fMode;
   CListViewCtrl  fVolumeList;
-  WTL::CString fVolumeInfoTemplate;
+  ATL::CString fVolumeInfoTemplate;
   CMultiPaneStatusBarCtrl fStatusBar;
 
   __int64 fSourceSize;
@@ -112,6 +112,10 @@ private:
   DECLARE_ENTRY(int, fColumn3Width)   // width og column 3 in volume list control
   DECLARE_ENTRY(int, fColumn4Width)   // width og column 4 in volume list control
   DECLARE_ENTRY(std::wstring, fLastImageFile) // path to last image file that was used
+  DECLARE_ENTRY(bool, fAutoFlashEnabled) // enable auto-flash for removable disks
+  DECLARE_ENTRY(int, fAutoFlashTargetSizeGB) // target size in GB for auto-flash detection
+  DECLARE_ENTRY(bool, fAutoFlashWarningShown) // tracks if user saw the auto-flash warning
+  bool fIsAutoFlashOperation; // flag to indicate current operation is auto-flash
 
   void Init();
   void InitControls();
@@ -119,7 +123,7 @@ private:
   void FillDriveList();
   void BrowseFiles(WORD wID);
   void BrowseFilesWithFileOpenDialog();
-  void GetPartitionFileSystemString(int partType, WTL::CString& fsString);
+  void GetPartitionFileSystemString(int partType, ATL::CString& fsString);
   int GetImageIndexAndUpdateImageList (LPCWSTR drive);
 
   void DeleteProcessingInfo(bool wasCancelled);
@@ -129,7 +133,7 @@ private:
   void GetNoFilesAndFileSize(LPCWSTR fileName, unsigned& fileCount,  unsigned __int64& fileSize, bool& isEntireDriveImageFile);
   void ReadWindowText(CWindow& wnd, std::wstring& str) {
     int count;
-    WTL::CString s;
+    ATL::CString s;
 		count = wnd.GetWindowTextLength() + 1;
 		wnd.GetWindowText(s.GetBuffer(count), count);
     str = s;
@@ -144,6 +148,8 @@ private:
   void EnableControlsAfterProcessingComplete();
   void CleanupPartiallyWrittenFiles();
   void ResetRunInformation();
+  int DetectCFCard();
+  void TriggerAutoFlash(int driveIndex);
   virtual void OnThreadTerminated();
   virtual void OnFinished();
   virtual void OnAbort();
@@ -175,6 +181,7 @@ public:
 	COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
     COMMAND_HANDLER(IDC_RADIO_BACKUP, BN_CLICKED, OnBnClickedRadioBackup)
     COMMAND_HANDLER(IDC_RADIO_RESTORE, BN_CLICKED, OnBnClickedRadioRestore)
+    COMMAND_HANDLER(IDC_CHECK_AUTOFLASH, BN_CLICKED, OnBnClickedCheckAutoflash)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_SELCHANGE, OnCbnSelchangeComboFiles)
 	COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
     NOTIFY_HANDLER(IDC_LIST_VOLUMES, LVN_ITEMCHANGED, OnLvnItemchangedListVolumes)
@@ -216,4 +223,5 @@ public:
   LRESULT OnBnClickedBtVerify(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtOptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 };

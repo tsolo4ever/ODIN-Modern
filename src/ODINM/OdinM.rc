@@ -1,0 +1,107 @@
+// Microsoft Visual C++ generated resource script.
+// OdinM - Multi-Drive Clone Tool
+#include "resource.h"
+#include "windows.h"
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+
+/////////////////////////////////////////////////////////////////////////////
+// Icon
+
+IDI_ODINM               ICON                    "res\\OdinM.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+// Dialog: Main Window
+
+IDD_ODINM_MAIN DIALOGEX 0, 0, 620, 390
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "OdinM - Multi-Drive Clone Tool"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    // -- Image file row --
+    LTEXT           "Source Image:",  IDC_STATIC,            7,  10,  55,  8
+    EDITTEXT        IDC_EDIT_IMAGE_PATH,                    65,   8, 420, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",      IDC_BUTTON_BROWSE,    490,   7,  50, 14
+    PUSHBUTTON      "Info",           IDC_BUTTON_IMAGE_INFO,545,   7,  40, 14
+
+    // -- Drive list --
+    CONTROL         "", IDC_LIST_DRIVES, "SysListView32",
+                    LVS_REPORT | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
+                    7, 28, 606, 145
+
+    // -- Settings group --
+    GROUPBOX        "Settings",       IDC_STATIC,            7, 178, 606,  58
+    CONTROL         "Auto-clone on device insertion",
+                    IDC_CHECK_AUTO_CLONE,  "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 191, 135, 10
+    CONTROL         "Verify hash after clone",
+                    IDC_CHECK_VERIFY_HASH, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 207, 105, 10
+    PUSHBUTTON      "Configure Hashes", IDC_BUTTON_CONFIG_HASH,  125, 205,  80, 14
+    CONTROL         "Stop all on verification failure",
+                    IDC_CHECK_STOP_ON_FAIL,"Button", BS_AUTOCHECKBOX | WS_TABSTOP, 215, 207, 130, 10
+    LTEXT           "Max concurrent:",IDC_STATIC,            355, 209,  65,  8
+    COMBOBOX        IDC_COMBO_MAX_CONCURRENT,               423, 207,  35,  60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    // -- Activity log --
+    LTEXT           "Activity Log:",  IDC_STATIC,            7, 241,  55,  8
+    EDITTEXT        IDC_EDIT_LOG,                            7, 251, 606,  90,
+                    ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER
+
+    // -- Buttons --
+    PUSHBUTTON      "Start All",      IDC_BUTTON_START_ALL,  7, 350,  60, 20
+    PUSHBUTTON      "Stop All",       IDC_BUTTON_STOP_ALL,  72, 350,  60, 20
+    PUSHBUTTON      "Clear Log",      IDC_BUTTON_CLEAR_LOG, 137, 350,  60, 20
+    PUSHBUTTON      "Export Results", IDC_BUTTON_EXPORT,    202, 350,  70, 20
+    DEFPUSHBUTTON   "Close",          IDOK,                 560, 350,  53, 20
+
+    // -- Status bar --
+    LTEXT           "",               IDC_STATIC_STATUS,     7, 375, 606,  8
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Dialog: Hash Configuration
+
+IDD_HASH_CONFIG DIALOGEX 0, 0, 410, 285
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Configure Hash Verification"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    // -- Image name --
+    LTEXT           "Image:",          IDC_STATIC,              7,  9,  30,  8
+    LTEXT           "",               IDC_STATIC_IMAGE_NAME,  40,  9, 363,  8
+
+    // -- Partition selection --
+    LTEXT           "Partition:",      IDC_STATIC,              7, 24,  40,  8
+    COMBOBOX        IDC_COMBO_PARTITION,                        50, 22, 150,  80,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    // -- Expected hash values group --
+    GROUPBOX        "Expected Hash Values", IDC_STATIC,          7, 40, 396, 110
+
+    LTEXT           "SHA-1 (40 hex chars):", IDC_STATIC,        15, 55,  90,  8
+    EDITTEXT        IDC_EDIT_SHA1,                              15, 65, 375, 14, ES_AUTOHSCROLL | ES_UPPERCASE
+    CONTROL         "Enable",         IDC_CHECK_ENABLE_SHA1,  "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 83, 45, 10
+    CONTROL         "Fail on mismatch", IDC_CHECK_FAIL_SHA1,  "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 65, 83, 80, 10
+    LTEXT           "",               IDC_STATIC_STATUS_SHA1, 155, 84, 100,  8
+
+    LTEXT           "SHA-256 (64 hex chars):", IDC_STATIC,      15,100,  95,  8
+    EDITTEXT        IDC_EDIT_SHA256,                            15,110, 375, 14, ES_AUTOHSCROLL | ES_UPPERCASE
+    CONTROL         "Enable",         IDC_CHECK_ENABLE_SHA256,"Button", BS_AUTOCHECKBOX | WS_TABSTOP, 15, 128, 45, 10
+    CONTROL         "Fail on mismatch", IDC_CHECK_FAIL_SHA256,"Button", BS_AUTOCHECKBOX | WS_TABSTOP, 65, 128, 80, 10
+    LTEXT           "",               IDC_STATIC_STATUS_SHA256,155, 129, 100,  8
+
+    // -- Calculate group --
+    GROUPBOX        "Calculate from Image", IDC_STATIC,          7, 157, 396,  55
+    PUSHBUTTON      "Calculate All",  IDC_BUTTON_CALC_ALL,      15, 172,  75, 20
+    PUSHBUTTON      "SHA-1 Only",     IDC_BUTTON_CALC_SHA1,     95, 172,  65, 20
+    PUSHBUTTON      "SHA-256 Only",   IDC_BUTTON_CALC_SHA256,  165, 172,  75, 20
+    PUSHBUTTON      "Load from File", IDC_BUTTON_LOAD_FILE,    250, 172,  75, 20
+
+    // -- Buttons --
+    DEFPUSHBUTTON   "Save",           IDOK,                      7, 257,  50, 20
+    PUSHBUTTON      "Cancel",         IDCANCEL,                 62, 257,  50, 20
+END

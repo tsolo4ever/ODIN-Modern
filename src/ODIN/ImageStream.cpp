@@ -790,6 +790,28 @@ void CDiskImageStream::CalculateFATExtraOffset()
   Read(bootSector, sizeof(TWinBootSector), &bytesRead);
   Seek(0, FILE_BEGIN);
   if (bytesRead == sizeof(TWinBootSector)) {
+      // Validate boot sector before using its values to prevent crashes from corrupted data
+      // Check for valid boot signature
+      if (bootSector->EndOfSector != 0xAA55) {
+        ATLTRACE("Warning: Invalid boot sector signature: 0x%04X (expected 0xAA55)\n", bootSector->EndOfSector);
+        delete bootSector;
+        return; // Not a valid boot sector, skip FAT offset calculation
+      }
+      
+      // Validate BytesPerSector (must be power of 2 between 512 and 4096)
+      if (bootSector->BytesPerSector == 0 || bootSector->BytesPerSector > 4096 ||
+          (bootSector->BytesPerSector & (bootSector->BytesPerSector - 1)) != 0) {
+        ATLTRACE("Warning: Invalid BytesPerSector: %u\n", bootSector->BytesPerSector);
+        THROW_INT_EXC(EInternalException::invalidBootSector);
+      }
+      
+      // Validate SectorsPerCluster (must be power of 2 and reasonable)
+      if (bootSector->SectorsPerCluster == 0 || bootSector->SectorsPerCluster > 128 ||
+          (bootSector->SectorsPerCluster & (bootSector->SectorsPerCluster - 1)) != 0) {
+        ATLTRACE("Warning: Invalid SectorsPerCluster: %u\n", bootSector->SectorsPerCluster);
+        THROW_INT_EXC(EInternalException::invalidBootSector);
+      }
+      
       ATLTRACE("Bytes per cluster from boot sector is: %u\n", bootSector->SectorsPerCluster * fBytesPerSector);
       ATLTRACE("CalculateFATExtraOffset() OEMID is: %s\n", bootSector->OEMID);
       ATLTRACE("CalculateFATExtraOffset() partition type is: %d\n", fPartitionType);

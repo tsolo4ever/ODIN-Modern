@@ -37,8 +37,9 @@ public:
   CThread(HANDLE hThread, DWORD dwThreadId = 0)
 		: m_hThread(hThread), m_dwThreadId(dwThreadId)
 	{
-		if ( m_hThread != NULL && m_dwThreadId == 0 )
-			m_dwThreadId = ::GetThreadId(m_hThread);
+		// Note: ::GetThreadId() is Windows Vista+ only (WINVER >= 0x0600)
+		// For Windows XP compatibility, thread ID must be passed in constructor
+		// or obtained through other means
 	}
 
 	virtual ~CThread()

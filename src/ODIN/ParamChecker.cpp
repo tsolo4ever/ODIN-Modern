@@ -92,7 +92,7 @@ bool CParamChecker::CheckUniqueFileName(LPCWSTR path, LPCWSTR filePattern, bool 
     if (count > 0) {
       if (useConfirmMessage) {
         wostringstream msg;
-        WTL::CString prefix, postfix;
+        ATL::CString prefix, postfix;
                    
         prefix.Format(IDS_ASK_DELETE_FILES, dir.c_str(), count);
         postfix.LoadString(IDS_ASK_CONTINUE);
@@ -119,7 +119,7 @@ bool CParamChecker::CheckUniqueFileName(LPCWSTR path, LPCWSTR filePattern, bool 
           wstring file = dir + (*itBegin).c_str();
           success = DeleteFile(file.c_str()) != FALSE;
           if (!success) {
-            WTL::CString msg;
+            ATL::CString msg;
             msg.Format(IDS_CANNOTDELETEFILE, file.c_str());
             msgRes = fFeedback.UserMessage(IUserFeedback::TError, IUserFeedback::TOkCancel, (LPCWSTR)msg);
 			break;
@@ -139,7 +139,7 @@ IUserFeedback::TFeedbackResult CParamChecker::CheckConditionsForSavePartition(co
   unsigned __int64 freeBytesAvailable, totalNumberOfBytes;
   const size_t cBufferSize = 64;
   wchar_t buffer[cBufferSize];
-  WTL::CString msgStr;
+  ATL::CString msgStr;
 
   if (index < 0) {
     msgStr.LoadString(IDS_VOLUME_NOSEL);
@@ -270,7 +270,7 @@ IUserFeedback::TFeedbackResult CParamChecker::CheckConditionsForSavePartition(co
   if (fOdinManager.GetSplitSize() > 0 && fOdinManager.GetSplitSize() < fOdinManager.GetReadBlockSize()) {
     const int BUFSIZE=80;
     wchar_t buffer[BUFSIZE];
-    WTL::CString msgStr;
+    ATL::CString msgStr;
     MakeByteLabel( fOdinManager.GetReadBlockSize(), buffer, BUFSIZE);
     msgStr.Format(IDS_SPLITSIZETOOSMALL, buffer);
     res = fFeedback.UserMessage(IUserFeedback::TError, IUserFeedback::TConfirm, (LPCWSTR)msgStr);
@@ -300,7 +300,7 @@ IUserFeedback::TFeedbackResult CParamChecker::CheckConditionsForVerifyPartition(
 {
   CFileImageStream fileStream;
   IUserFeedback::TFeedbackResult res = IUserFeedback::TOk;
-  WTL::CString msgStr;
+  ATL::CString msgStr;
   wstring openName = fileName;
   wstring splitFileName = fileName;
   splitCB.GetFileName(0, splitFileName);
@@ -348,7 +348,7 @@ IUserFeedback::TFeedbackResult CParamChecker::CheckConditionsForRestorePartition
   CFileImageStream fileStream;
   IUserFeedback::TFeedbackResult res = IUserFeedback::TOk;
   int volType;
-  WTL::CString msgStr;
+  ATL::CString msgStr;
   wstring openName = fileName;
   
   noFiles = 0;
@@ -449,7 +449,7 @@ IUserFeedback::TFeedbackResult CParamChecker::CheckConditionsForRestorePartition
   }
 
   if (res == IUserFeedback::TOk) {
-    WTL::CString msg;
+    ATL::CString msg;
     msg.Format(IDS_ERASE_DRIVE, fOdinManager.GetDriveInfo(index)->GetMountPoint().c_str());
     res = fFeedback.UserMessage(IUserFeedback::TWarning, IUserFeedback::TOkCancel, (LPCWSTR)msg);
     if (res != IUserFeedback::TOk)
@@ -470,7 +470,7 @@ bool CParamChecker::CheckForExistingConflictingFilesSimple(LPCWSTR fileName, ISp
   } else if (CFileNameUtil::IsFileReadable(fileName)) {
     ok = DeleteFile(fileName) == TRUE;
     if (!ok) {
-      WTL::CString msg;
+      ATL::CString msg;
       msg.Format(IDS_CANNOTDELETEFILE, fileName);
       fFeedback.UserMessage(IUserFeedback::TError, IUserFeedback::TConfirm, (LPCWSTR)msg);
     }
@@ -485,7 +485,7 @@ bool CParamChecker::CheckForExistingConflictingFilesEntireDisk(LPCWSTR volumeFil
   CFileNameUtil::GenerateFileNameForMBRBackupFile(mbrFileName);
 
   if (CFileNameUtil::IsFileReadable(mbrFileName.c_str())) {
-    WTL::CString msgStr;
+    ATL::CString msgStr;
     msgStr.Format(IDS_FILE_EXISTS, mbrFileName.c_str());
     IUserFeedback::TFeedbackResult res = fFeedback.UserMessage(IUserFeedback::TWarning, IUserFeedback::TOkCancel, (LPCWSTR)msgStr);
 
@@ -493,7 +493,7 @@ bool CParamChecker::CheckForExistingConflictingFilesEntireDisk(LPCWSTR volumeFil
       return false;
     ok = DeleteFile(mbrFileName.c_str()) == TRUE;
     if (!ok) {
-      WTL::CString msg;
+      ATL::CString msg;
       msg.Format(IDS_CANNOTDELETEFILE, mbrFileName.c_str());
       fFeedback.UserMessage(IUserFeedback::TError, IUserFeedback::TConfirm, (LPCWSTR)msg);
     }

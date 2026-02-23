@@ -66,8 +66,15 @@ int wmain(int argc, wchar_t* argv[])
   secAttr.nLength = sizeof(secAttr);
   secAttr.lpSecurityDescriptor = NULL;
   secAttr.bInheritHandle = TRUE;
+  
   STARTUPINFO  startupInfo;
   ZeroMemory(&startupInfo, sizeof(startupInfo));
+  startupInfo.cb = sizeof(startupInfo);
+  startupInfo.dwFlags = STARTF_USESTDHANDLES;
+  startupInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+  startupInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+  startupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+  
   PROCESS_INFORMATION procInfo;
   ZeroMemory(&procInfo, sizeof(procInfo));
   BOOL ok = CreateProcess(NULL, cmdLine, &secAttr, &secAttr, TRUE, 0, NULL, NULL, &startupInfo, &procInfo);

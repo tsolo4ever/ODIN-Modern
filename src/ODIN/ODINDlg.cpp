@@ -11,7 +11,7 @@
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    GNU General Public License for more detail
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>
@@ -28,6 +28,7 @@
 ///////////////////////////////////////////////////////////////////////////// 
 
 #include "stdafx.h"
+
 #include <atldlgs.h>
 #include <Dbt.h>
 #include <atlctrls.h>
@@ -35,6 +36,7 @@
 #include <sstream>
 #include <algorithm>
 //#include <atlmisc.h>
+
 #include "UserFeedback.h"
 #include "ODINDlg.h"
 #include "DriveList.h"
@@ -85,8 +87,8 @@ void CODINSplitManagerCallback::GetFileName(unsigned fileNo, std::wstring& fileN
 
 size_t CODINSplitManagerCallback::AskUserForMissingFile(LPCWSTR missingFileName, unsigned fileNo, wstring& newName)
 {
-  WTL::CString msg;
-  WTL::CString filter;
+  ATL::CString msg;
+  ATL::CString filter;
   size_t res;
   wchar_t* buffer;
   msg.FormatMessage(IDS_PROVIDE_FILENAME, fileNo);
@@ -124,6 +126,9 @@ CODINDlg::CODINDlg()
   fColumn2Width(L"VolumeColumn2Width", 90),
   fColumn3Width(L"VolumeColumn3Width", 80),
   fColumn4Width(L"VolumeColumn4Width", 80),
+  fAutoFlashEnabled(L"AutoFlashEnabled", false),
+  fAutoFlashTargetSizeGB(L"AutoFlashTargetSizeGB", 8),
+  fAutoFlashWarningShown(L"AutoFlashWarningShown", false),
   fSplitCB(m_hWnd),
   fVerifyRun(false),
   fTimer(0),
@@ -132,6 +137,7 @@ CODINDlg::CODINDlg()
   fChecker(fFeedback, fOdinManager)
 {
   fMode = fLastOperationWasBackup ? modeBackup : modeRestore;
+  fIsAutoFlashOperation = false;
   ResetRunInformation();
 }
 
@@ -173,7 +179,7 @@ void CODINDlg::InitControls()
   // Fill controls with data
   // fill file list box
 	CComboBox in(GetDlgItem(IDC_COMBO_FILES));
-  WTL::CString strBrowse;
+  ATL::CString strBrowse;
   strBrowse.LoadString(IDS_BROWSE);
 
   int count = 0;
@@ -194,6 +200,14 @@ void CODINDlg::InitControls()
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetRange32(0, 100);
 
+  // set auto-flash checkbox state and size input
+  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
+  autoFlashCheck.SetCheck(fAutoFlashEnabled ? BST_CHECKED : BST_UNCHECKED);
+  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
+  wchar_t szSize[4];
+  wsprintf(szSize, L"%d", (int)fAutoFlashTargetSizeGB);
+  sizeEdit.SetWindowText(szSize);
+
   // fill volume list box
   FillDriveList();
 
@@ -202,7 +216,7 @@ void CODINDlg::InitControls()
   
   UpdateFileInfoBoxAndResetProgressControls();
   
-  WTL::CString dlgTitle;
+  ATL::CString dlgTitle;
   dlgTitle.LoadString(IDS_DIALOGTITLE);
   SetWindowText(dlgTitle);
 
@@ -244,7 +258,7 @@ void CODINDlg::RefreshDriveList()
 	InitControls();
 }
 
-void CODINDlg::GetPartitionFileSystemString(int partType, WTL::CString& fsString)
+void CODINDlg::GetPartitionFileSystemString(int partType, ATL::CString& fsString)
 {
   switch (partType) {
     case PARTITION_FAT_12:
@@ -300,7 +314,7 @@ void CODINDlg::BrowseFilesWithFileOpenDialog()
 {
   CComboBox combo(GetDlgItem(IDC_COMBO_FILES)); 
   LPCTSTR sSelectedFile;
-  WTL::CString fileDescr, defaultExt;
+  ATL::CString fileDescr, defaultExt;
   defaultExt.LoadString(IDS_DEFAULTEXT);
   fileDescr.LoadString(IDS_FILEDESCR);
   // replace separator chars from resource string
@@ -348,7 +362,7 @@ void CODINDlg::OnAbort()
 
 void CODINDlg::OnPartitionChange(int i, int n)
 {
-  CString statusText;
+  ATL::CString statusText;
 
   if (fRestoreRun) {
     if (n > 1)
@@ -367,7 +381,7 @@ void CODINDlg::OnPartitionChange(int i, int n)
 
 void CODINDlg::OnPrepareSnapshotBegin()
 {
-    CString statusText;
+    ATL::CString statusText;
     statusText.LoadString(IDS_STATUS_TAKE_SNAPSHOT);
     fStatusBar.SetWindowTextW(statusText);
 }
@@ -381,7 +395,7 @@ void CODINDlg::DeleteProcessingInfo(bool wasCancelled)
 {
   wstring msgCopy;
   LPCWSTR msg = fOdinManager.GetErrorMessage();
-  CString statusText;
+  ATL::CString statusText;
    
   KillTimer(fTimer);
   fTimer = 0;
@@ -447,7 +461,7 @@ void CODINDlg::UpdateStatus(bool bInit)
     ddTimeDifference = timer.QuadPart - startTimer.QuadPart;
     // convert to seconds
     ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart>>1) )/ performanceFrequency.QuadPart;
-    WTL::CString timeLabel;
+    ATL::CString timeLabel;
     DWORD dwTimeDifference = (DWORD) ddTimeDifference;
     timeLabel.Format(L"%02u:%02u:%02u", dwTimeDifference/3600, dwTimeDifference % 3600 / 60, dwTimeDifference % 60);
     label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
@@ -456,7 +470,7 @@ void CODINDlg::UpdateStatus(bool bInit)
     // calculate speed
     if (ddTimeDifference>0)
       MakeByteLabel(fBytesProcessed/ddTimeDifference, buffer, BUFSIZE);
-    WTL::CString labelSpeed (buffer);
+    ATL::CString labelSpeed (buffer);
     labelSpeed += L"/s";
     label = GetDlgItem(IDC_LABEL_SPEED);
     label.SetWindowText(labelSpeed);
@@ -516,7 +530,7 @@ void CODINDlg::EnterCommentModeForEditBox()
   commentTextField.SetReadOnly(FALSE);
   // verifyButton.EnableWindow(FALSE);
   if (fComment.length() == 0) {
-    WTL::CString hint;
+    ATL::CString hint;
     hint.LoadString(IDS_ENTERCOMMENT);
     commentTextField.SetWindowText(hint);
   } else
@@ -528,7 +542,7 @@ void CODINDlg::ReadCommentFromDialog()
 {
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
   // save comment if there is one
-  WTL::CString hint;
+  ATL::CString hint;
   hint.LoadString(IDS_ENTERCOMMENT);
   ReadWindowText(commentTextField, fComment);
   if (fComment.compare(hint) == 0)
@@ -541,7 +555,7 @@ void CODINDlg::ReadImageFileInformation()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   // CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_FILE));
   CEdit volumeInfoTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
   CFileImageStream imageStream;
   wstring fileName;
   // CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
@@ -625,7 +639,7 @@ void CODINDlg::DisableControlsWhileProcessing()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
 
   saveButton.EnableWindow(FALSE);
   restoreButton.EnableWindow(FALSE);
@@ -651,7 +665,7 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
   CEdit commentTextField(GetDlgItem(IDC_EDIT_FILE));
-  WTL::CString text;
+  ATL::CString text;
 
   saveButton.EnableWindow(TRUE);
   restoreButton.EnableWindow(TRUE);
@@ -736,7 +750,7 @@ void CODINDlg::ResetRunInformation()
 LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled)
 {
   POINT ptWin = {fWndPosX, fWndPosY };
-  WTL::CString drive, name, size, label, type;
+  ATL::CString drive, name, size, label, type;
   // DlgResize_Init();
   
   if (MonitorFromPoint(ptWin, MONITOR_DEFAULTTONULL) == NULL) {
@@ -775,7 +789,7 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
   RefreshDriveList();
   
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
-  WTL::CString text;
+  ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);
   volumeInfoTextField.SetWindowText(text);
 
@@ -790,7 +804,7 @@ LRESULT CODINDlg::OnDeviceChanged(UINT /*uMsg*/, WPARAM nEventType, LPARAM lPara
   	DEV_BROADCAST_VOLUME *volume = (DEV_BROADCAST_VOLUME *)lParam;
     if (volume->dbcv_devicetype == DBT_DEVTYP_VOLUME) {
       CStatic textBox;
-      WTL::CString msgText;
+      ATL::CString msgText;
       EnableWindow(FALSE);
       msgText.LoadStringW(IDS_WAITUPDATEDRIVES);
       CRect rect(130, 150, 350, 210);
@@ -801,6 +815,14 @@ LRESULT CODINDlg::OnDeviceChanged(UINT /*uMsg*/, WPARAM nEventType, LPARAM lPara
       RefreshDriveList();
       EnableWindow(TRUE);
       textBox.DestroyWindow();
+
+      // Check for auto-flash trigger
+      if (nEventType == DBT_DEVICEARRIVAL && fAutoFlashEnabled && fMode == modeRestore) {
+        int cfIndex = DetectCFCard();
+        if (cfIndex >= 0) {
+          TriggerAutoFlash(cfIndex);
+        }
+      }
     }
   }
 
@@ -941,13 +963,13 @@ LRESULT CODINDlg::OnLvnItemchangedListVolumes(int /*idCtrl*/, LPNMHDR pNMHDR, BO
 
   if (pNMHDR->idFrom == IDC_LIST_VOLUMES && (pNMListView->uChanged & LVIF_STATE) &&
       (pNMListView->uNewState & LVIS_SELECTED)) {
-    WTL::CString text;
+    ATL::CString text;
     int index = fVolumeList.GetSelectedIndex();
     if (index < 0) {
       text.LoadString(IDS_VOLUME_NOSEL);
       volumeInfoTextField.SetWindowText(text);
     } else {
-      WTL::CString fsText;
+      ATL::CString fsText;
       CDriveInfo* di = fOdinManager.GetDriveInfo(index);
       MakeByteLabel(di->GetUsedSize(), buffer, BUFSIZE);
       GetPartitionFileSystemString(di->GetPartitionType(), fsText);
@@ -1009,7 +1031,7 @@ LRESULT CODINDlg::OnBnClickedBtVerify(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
 {
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   wstring fileName;
-  CString statusText;
+  ATL::CString statusText;
 
   ReadWindowText(comboFiles, fileName);
   fCrc32FromFileHeader = 0;
@@ -1058,5 +1080,86 @@ LRESULT CODINDlg::OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
 {
   BrowseFilesWithFileOpenDialog();
   return 0;
+}
+
+LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+{
+  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
+  bool wasEnabled = fAutoFlashEnabled;
+  fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
+  
+  // Read size from input box
+  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
+  wchar_t szSize[4];
+  sizeEdit.GetWindowText(szSize, 4);
+  int size = _wtoi(szSize);
+  if (size > 0 && size < 999) {
+    fAutoFlashTargetSizeGB = size;
+  }
+  
+  // Show warning when enabling for the first time
+  if (fAutoFlashEnabled && !fAutoFlashWarningShown) {
+    ATL::CString msg;
+    msg.Format(IDS_ERASE_DRIVE, L"detected removable disks");
+    int res = AtlMessageBox(m_hWnd, (LPCWSTR)msg, IDS_WARNING, MB_ICONEXCLAMATION | MB_OKCANCEL);
+    if (res != IDOK) {
+      // User cancelled, uncheck the box
+      fAutoFlashEnabled = false;
+      autoFlashCheck.SetCheck(BST_UNCHECKED);
+    } else {
+      fAutoFlashWarningShown = true;
+    }
+  }
+  
+  return 0;
+}
+
+int CODINDlg::DetectCFCard()
+{
+  // Detect removable hard disk (entire disk, not partition) with configurable size
+  const unsigned __int64 targetSize = (unsigned __int64)fAutoFlashTargetSizeGB * 1024 * 1024 * 1024; // Convert GB to bytes
+  const unsigned __int64 tolerance = targetSize / 10; // 10% tolerance
+  
+  int count = fOdinManager.GetDriveCount();
+  for (int i = 0; i < count; i++) {
+    CDriveInfo* di = fOdinManager.GetDriveInfo(i);
+    
+    // Must be a complete hard disk (not a partition)
+    if (!di->IsCompleteHardDisk())
+      continue;
+    
+    // Must be removable type
+    if (di->GetDriveType() != driveRemovable)
+      continue;
+    
+    // Check size (8GB ± 10%)
+    unsigned __int64 driveSize = di->GetBytes();
+    if (driveSize < (targetSize - tolerance) || driveSize > (targetSize + tolerance))
+      continue;
+    
+    // Found a matching 8GB disk
+    return i;
+  }
+  
+  return -1; // Not found
+}
+
+void CODINDlg::TriggerAutoFlash(int driveIndex)
+{
+  // Verify we have an image file selected
+  CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
+  wstring fileName;
+  ReadWindowText(comboFiles, fileName);
+  
+  if (fileName.empty() || fileName == L"Browse...") {
+    return; // No image file selected, silently return
+  }
+  
+  // Select the CF card in the drive list
+  fVolumeList.SelectItem(driveIndex);
+  
+  // Trigger the restore operation by simulating OK button click
+  CWindow okButton = GetDlgItem(IDOK);
+  PostMessage(WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), (LPARAM)okButton.m_hWnd);
 }
 

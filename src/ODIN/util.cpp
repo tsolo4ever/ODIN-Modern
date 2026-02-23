@@ -71,7 +71,7 @@ void MakeByteLabel(unsigned __int64 byteCount, LPWSTR buffer, size_t bufsize) {
 
 void GetDriveTypeString(enum TDeviceType driveType, std::wstring& driveTypeStr)
 {
-  WTL::CString driveTypeString;
+  ATL::CString driveTypeString;
   switch (driveType) {
     case driveFixed:
       driveTypeString.LoadString(IDS_DRIVE_TYPE_FIXED);

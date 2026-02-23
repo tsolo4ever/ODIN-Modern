@@ -79,8 +79,19 @@ DWORD  CWriteThread::Execute()
     fErrorMessage = e.GetMessage();
 	  fFinished = true;
     return E_FAIL;
-  } 
-} 
+  } catch (std::exception &e) {
+    fErrorFlag = true;
+    fErrorMessage = L"Write thread encountered standard exception: ";
+    fErrorMessage += CA2W(e.what());
+    fFinished = true;
+    return E_FAIL;
+  } catch (...) {
+    fErrorFlag = true;
+    fErrorMessage = L"Write thread encountered unknown exception";
+    fFinished = true;
+    return E_FAIL;
+  }
+}
 
 //---------------------------------------------------------------------------
 
@@ -109,6 +120,11 @@ void CWriteThread::WriteLoopRunLength()
     runLength = fRunLengthReader->GetNextRunLength();
     dbgNoUsedClustersTotal+=(unsigned)runLength;
     ATLTRACE("Write thread: Reading run length of used clusters, size: %d\n", (DWORD) runLength);
+    
+    // Overflow protection: Check if multiplication would overflow
+    if (runLength > 0 && fClusterSize > ULLONG_MAX / runLength) {
+      THROW_INT_EXC(EInternalException::inputError);
+    }
     bytesToReadForReadRunLength = fClusterSize * runLength;
     //ATLTRACE("  size in bytes is: %d\n", (DWORD) bytesToReadForReadRunLength);
         

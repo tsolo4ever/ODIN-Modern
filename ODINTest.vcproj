@@ -44,7 +44,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;C:\DevTools\atl30\include;C:\DevTools\WTL80\include"
+				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;$(SolutionDir)lib\WTL10\Include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -125,7 +125,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;C:\DevTools\atl30\include;C:\DevTools\WTL80\include"
+				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;$(SolutionDir)lib\WTL10\Include"
 				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -205,7 +205,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;C:\DevTools\atl30\include;C:\DevTools\WTL80\include"
+				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;$(SolutionDir)lib\WTL10\Include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="2"
@@ -286,7 +286,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;C:\DevTools\atl30\include;C:\DevTools\WTL80\include"
+				AdditionalIncludeDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\include&quot;;$(SolutionDir)lib\WTL10\Include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="2"
@@ -307,7 +307,7 @@
 				Name="VCLinkerTool"
 				AdditionalDependencies="vssapi.lib shlwapi.lib cppunitu.lib"
 				LinkIncremental="1"
-				AdditionalLibraryDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\lib64&quot;;C:\devtools\atl30\lib\amd64"
+				AdditionalLibraryDirectories="&quot;$(SolutionDir)\lib\cppunit-1.12.1\lib64&quot;"
 				GenerateDebugInformation="true"
 				SubSystem="1"
 				OptimizeReferences="2"

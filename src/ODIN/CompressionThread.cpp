@@ -22,13 +22,14 @@
 ******************************************************************************/
  
 #include "stdafx.h"
-#include "../zlib.1.2.3/zlib.h"
+#include "../zlib-1.3.2/zlib.h"
 #include "../bzip2-1.0.5/bzlib.h"
 #include "Compression.h"
 #include <string>
 #include "BufferQueue.h"
 #include "CompressionThread.h"
 #include "CompressionException.h"
+#include "InternalException.h"
 
 #ifdef DEBUG
   #define new DEBUG_NEW
@@ -80,8 +81,20 @@ DWORD CCompressionThread::Execute()
   	fErrorMessage += e.GetMessage();
 	  fErrorMessage += L"\"";
     fFinished = true;
-	  return -1;
-  } 
+	  return E_FAIL;
+  } catch (std::exception &e) {
+    fErrorFlag = true;
+    fErrorMessage = L"Compression thread encountered standard exception: \"";
+    fErrorMessage += CA2W(e.what());
+    fErrorMessage += L"\"";
+    fFinished = true;
+    return E_FAIL;
+  } catch (...) {
+    fErrorFlag = true;
+    fErrorMessage = L"Compression thread encountered unknown exception";
+    fFinished = true;
+    return E_FAIL;
+  }
   return 0;
 }  
 
@@ -106,6 +119,8 @@ void  CCompressionThread::CompressLoopZlib()
       if (readChunk)
         fTargetQueueDecompressed->ReleaseChunk(readChunk);
       readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+      if (!readChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bEOF = readChunk->IsEOF();
       zStream.next_in = (BYTE*)readChunk->GetData();
       zStream.avail_in = readChunk->GetSize();
@@ -117,6 +132,8 @@ void  CCompressionThread::CompressLoopZlib()
         fTargetQueueCompressed->ReleaseChunk(compressChunk);
       }
       compressChunk = fSourceQueueCompressed->GetChunk();
+      if (!compressChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       zStream.next_out = (BYTE*)compressChunk->GetData();
       zStream.avail_out = compressChunk->GetMaxSize();
     }
@@ -172,6 +189,8 @@ void CCompressionThread::CommpressLoopLibz2()
       if (readChunk)
         fTargetQueueDecompressed->ReleaseChunk(readChunk);
       readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+      if (!readChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bEOF = readChunk->IsEOF();
       bzsStream.next_in = (char*)readChunk->GetData();
       bzsStream.avail_in = readChunk->GetSize();
@@ -183,6 +202,8 @@ void CCompressionThread::CommpressLoopLibz2()
         fTargetQueueCompressed->ReleaseChunk(compressChunk);
       }
       compressChunk = fSourceQueueCompressed->GetChunk();
+      if (!compressChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       bzsStream.next_out = (char*)compressChunk->GetData();
       bzsStream.avail_out = compressChunk->GetMaxSize();
     }

@@ -1,228 +1,180 @@
 # ODIN Project Map
 
-**Last Updated:** 2026-02-21  
-**Current Status:** Planning modernization and auto-flash feature
+## Current State (All builds: 6/7 succeeded, 1 blocked)
 
----
+### ✅ What Builds
+| Project | Status | Notes |
+|---------|--------|-------|
+| zlib | ✅ | Static lib from src/zlib-1.3.2/ |
+| libz2 | ✅ | bzip2 static lib |
+| ODIN | ✅ | Main GUI app builds and runs |
+| ODINC | ✅ | Console version |
+| ODINHelp | ✅ | CHM built successfully |
+| OdinM | ✅ | **NEW** — Multi-drive clone tool builds (Debug-x64) |
+| ODINTest | ❌ | 33 errors from cppunit ABI incompatibility |
 
-## 🎯 Project Overview
+### ❌ ODINTest — Root Cause:
+- `cppunitud.lib`/`cppunitu.lib` compiled with VS2008 (old debug STL ABI)
+- Fix: `vcpkg install cppunit:x64-windows` or replace with Catch2/Google Test
 
-**ODIN** = Open Disk Imager in a Nutshell  
-A Windows disk imaging tool for backup/restore of partitions and drives.
+## Key File Locations
 
-**Current Version:** 0.3.x (2008-era codebase)  
-**Target:** Modernize to VS2022/C++17 + Add CF card auto-flash feature
+| File | Purpose |
+|------|---------|
+| `ODIN.sln` | Solution — 7 projects (zlib, libz2, ODIN, ODINC, OdinM, ODINTest, ODINHelp) |
+| `OdinM.vcxproj` | NEW — Multi-drive clone with SHA hash verification |
+| `ODIN.vcxproj` | Main GUI application |
+| `ODINC.vcxproj` | Console version |
+| `zlib.vcxproj` | zlib 1.3.2 static library |
+| `libz2.vcxproj` | bzip2 static library |
+| `ODINTest.vcxproj` | Unit tests — blocked on cppunit ABI |
+| `lib/WTL10/Include/` | WTL 10.0 headers |
+| `src/ODINM/` | OdinM source (all files complete) |
+| `src/ODIN/` | Main ODIN source |
+| `src/zlib-1.3.2/` | zlib 1.3.2 sources |
 
----
+## OdinM Feature Summary
+- Clone one ODIN image to up to **5 USB drives simultaneously**
+- **SHA-1 and SHA-256** hash verification post-clone
+- Auto-clone on device insertion (WM_DEVICECHANGE)
+- Activity log with timestamps + CSV export
+- Settings persisted to `OdinM.ini` (next to executable)
+- ODINC.exe must be in same folder as OdinM.exe
 
-## 📍 Current State
+## ODIN Dialog Layout
+- Dialog width changed from 320 → 285 dialog units
+- **TODO**: Make window resizable (CDialogResize framework partially coded in ODINDlg.h)
+  - Need: WS_THICKFRAME in ODIN.rc, uncomment CDialogResize inheritance,
+    complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
 
-### ✅ What's Working
-- Complete backup/restore functionality
-- Compression (gzip, bzip2)
-- VSS snapshot integration
-- Split file support
-- GUI (WTL/ATL) and CLI (ODINC.exe) interfaces
-- Multi-threaded I/O pipeline
+## Icon Assets (all in src/ODIN/res/ or src/ODINM/res/)
+| File | EXE | Description | Status |
+|------|-----|-------------|--------|
+| `ODIN.ico` | ODIN.exe | Blue floppy + HDD + arrow — **chosen ✅** | Active |
+| `ODIN2.ico` | — | Dark SD card + HDD variant — rejected | Archived |
+| `OdinM.ico` | OdinM.exe | 5 coloured SD cards (=5 slots) | Active |
+| `odinc.png` | ODINC.exe | Terminal `>_` prompt style — for future use | PNG only |
+| Source PNGs | — | `modernize the provid.png`, `modernize the ODIN i.png`, `Create a Windows-sty.png` | Committed |
 
-### ⚠️ Known Issues (from CODE_REVIEW.md)
-- Race condition in buffer queue management
-- Memory leaks in exception paths
-- Integer overflow risks in size conversions
-- Unchecked pointer dereferences
-- Security vulnerabilities (boot sector validation)
-- PowerShell piping doesn't work with ODINC.exe
+## Git Commits (recent, on `modernization` branch)
+- `1404e8e` — art: Add odinc.png source icon (terminal prompt, future use)
+- `60fb165` — art: Add OdinM.ico (5 coloured SD cards)
+- `47d965b` — art: Add ODIN2.ico (dark SD card variant, archived)
+- `c396deb` — art: Replace ODIN.ico with modernized flat-design icon
+- `60f937d` — fix: OdinM KillTimer assertion (OnDestroy handler)
+- `7a175d1` — docs: Clean up duplicate sections in Map.md
+- `1de9b4f` — ODIN.rc: dialog width 320→285
+- `3d30dbf` — feat: Add OdinM project (OdinM.vcxproj + sln entry + fixes)
+- `1bb6b1d` — Fix zlib include paths in Compression/Decompression threads
+- `068e151` — ODINTest: add zlib.lib+libz2.lib; remove C:\devtools path
 
-### 🚧 In Progress
-- Code review completed (see CODE_REVIEW.md)
-- Modernization roadmap created
-- Planning auto-flash feature for CF cards
+## Important Context
+- VS2026 = Version 18, MSBuild at `C:\Program Files\Microsoft Visual Studio\18\...`
+- Output dirs: `Debug-x64\`, `Debug-Win32\`, `Release-x64\`, `Release-Win32\`
+- ODINC.exe may trigger AV false positives (Gen:Variant.Fugrafa) — add output folder to exclusions
+- WTL path in all projects: `$(SolutionDir)lib\WTL10\Include`
+- OdinM: no `_ATL_NO_AUTOMATIC_NAMESPACE` (breaks CDialogImpl), IDC_STATIC needs #ifndef guard
 
----
+## TODO List
 
-## 📁 Key Files & Locations
+### Priority 1 — Do Now (Hours of work)
+- [ ] **Per-monitor DPI v2 manifest** — Add to both `ODIN.exe.manifest` and new `OdinM.exe.manifest`:
+  ```xml
+  <dpiAware>True/PM</dpiAware>
+  <dpiAwareness>PerMonitorV2</dpiAwareness>
+  ```
+- [ ] **Common Controls v6 manifest** — Add to both manifests:
+  ```xml
+  <dependency><dependentAssembly>
+    <assemblyIdentity type="win32"
+      name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+      processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+  </dependentAssembly></dependency>
+  ```
+- [ ] **LVS_EX_DOUBLEBUFFER on all ListViews** — Eliminates flicker, 1 line each in `InitializeDriveList()` and `CODINDlg::OnInitDialog()`
 
-### Core Application
-- **GUI Entry Point:** `src/ODIN/ODIN.cpp` (WinMain)
-- **CLI Wrapper:** `src/ODINC/ODINC.cpp` (spawns ODIN.exe)
-- **Main Dialog:** `src/ODIN/ODINDlg.{h,cpp}` - GUI implementation
-- **Manager:** `src/ODIN/OdinManager.{h,cpp}` - Core business logic
+### Priority 2 — Do Soon (Days of work)
+- [ ] **Dark mode support (Win10 1809+)** — Call on WM_CREATE and when system theme changes:
+  ```cpp
+  void ApplyDarkMode(HWND hwnd) {
+      BOOL darkMode = IsSystemDarkMode();
+      DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+  }
+  bool IsSystemDarkMode() {
+      DWORD value = 0, size = sizeof(value);
+      RegGetValueW(HKEY_CURRENT_USER,
+          L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+          L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
+      return value == 0;
+  }
+  ```
+  Add `dwmapi.lib` to linker deps in OdinM.vcxproj and ODIN.vcxproj.
 
-### Threading & I/O
-- **Read Thread:** `src/ODIN/ReadThread.{h,cpp}`
-- **Write Thread:** `src/ODIN/WriteThread.{h,cpp}`
-- **Compression:** `src/ODIN/CompressionThread.{h,cpp}`
-- **Buffer Queue:** `src/ODIN/BufferQueue.{h,cpp}` ⚠️ HAS RACE CONDITION
+- [ ] **OdinM: Inline progress bar in grid cell** — Replace progress text column with drawn bar:
+  ```cpp
+  void DrawProgressInCell(HDC hdc, RECT rc, int pct) {
+      FillRect(hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+      RECT fill = rc; fill.right = rc.left + (rc.right - rc.left) * pct / 100;
+      HBRUSH br = CreateSolidBrush(RGB(0, 120, 215)); // Win11 blue
+      FillRect(hdc, &fill, br); DeleteObject(br);
+      // DrawProgressText(hdc, rc, pct); // "67%"
+  }
+  ```
+- [ ] **OdinM: Status color badges** — NM_CUSTOMDRAW alternating rows + color by status:
+  ```cpp
+  // Alternate row colors + status: blue=Cloning, green=Done, red=Failed
+  if (nmcd->dwItemSpec % 2 == 0) nmcd->clrTextBk = RGB(245,245,250);
+  SetStatusColor(nmcd);
+  return CDRF_NEWFONT;
+  ```
+- [ ] **OdinM: Gray placeholder in empty cells** — Replace plain `-` with subtle styled text
 
-### Disk Operations
-- **Image Stream:** `src/ODIN/ImageStream.{h,cpp}` - File & disk I/O
-- **Drive List:** `src/ODIN/DriveList.{h,cpp}` - Enumerate drives
-- **File Header:** `src/ODIN/FileHeader.{h,cpp}` - Image file format
+### Priority 3 — Nice to Have (Weeks of work)
+- [ ] **System accent color** — Use in progress bars, active states:
+  ```cpp
+  DWORD GetAccentColor() {  // returns ABGR format
+      DWORD color = 0, size = sizeof(color);
+      RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\DWM",
+                   L"AccentColor", RRF_RT_REG_DWORD, nullptr, &color, &size);
+      return color;
+  }
+  ```
+- [ ] **Drive type icons** — Use `SHGetFileInfo(SHGFI_ICON)` for removable/fixed drive icons in list
+- [ ] **Button hover states** — Custom draw with highlight on WM_MOUSEMOVE
+- [ ] **Rounded corners** — Automatic on Win11 via DWM, no code needed
+- [ ] **Font** — Set Segoe UI Variable (`CreateFont`) if available, fall back to Segoe UI
+- [ ] **Resizable main window** — Enable CDialogResize in ODINDlg.h (already partially coded),
+  add WS_THICKFRAME to ODIN.rc, complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
 
-### CLI Interface
-- **Command Processor:** `src/ODIN/CommandLineProcessor.{h,cpp}`
-- **List Drives:** `CommandLineProcessor::ListDrives()` method
+### What NOT to Do
+- ✗ Don't migrate to WinUI — massive effort, wrong tool
+- ✗ Don't add .NET — breaks lightweight native nature
+- ✗ Don't redesign layout — users know where things are
+- ✗ Don't add animations — this is a serious data tool
+- ✗ Don't remove log window — power users rely on it
 
-### Configuration
-- **Config System:** `src/ODIN/Config.{h,cpp}` - INI file wrapper
-- **INI Wrapper:** `src/ODIN/IniWrapper.{h,cpp}` - Low-level INI access
+### Modern Visual Targets
+| Element | Target |
+|---------|--------|
+| Font | Segoe UI Variable (fallback: Segoe UI) |
+| Spacing | +20% padding in controls |
+| Colors | System accent from DWM registry |
+| Borders | Rounded where possible (DWM automatic on Win11) |
+| Icons | Segoe Fluent or shell icons via SHGetFileInfo |
+| Buttons | Custom draw with hover states |
 
-### External Libraries
-- **zlib:** `src/zlib.1.2.3/` (outdated - needs update to 1.3.1)
-- **bzip2:** `src/bzip2-1.0.5/` (outdated - needs update to 1.0.8)
+### Build / Test
+- [ ] **Fix ODINTest** — Rebuild CppUnit 1.12.1 with VS2026 (`vcpkg install cppunit:x64-windows`)
+  or replace with Catch2/Google Test (header-only, no prebuilt libs)
 
----
+## Build Optimization Notes — /Gm Removal
+`/Gm` (Enable Minimal Rebuild) was deprecated and removed in newer MSVC.
+All projects are already clean — no `<MinimalRebuild>` in any .vcxproj.
 
-## 🎯 Immediate Goals
-
-### Goal 1: Fix PowerShell Output (Quick Win)
-**File:** `src/ODINC/ODINC.cpp`  
-**Issue:** Output from `odinc -list` can't be piped/redirected  
-**Fix:** Add proper handle inheritance in CreateProcess call  
-**Effort:** 30 minutes
-
-### Goal 2: Add Auto-Flash Feature
-**Target Files:**
-- `src/ODIN/ODINDlg.{h,cpp}` - Add detection & UI
-- `src/ODIN/Config.h` - Add config entries
-- `src/ODIN/ODIN.rc` - Add UI elements
-- `src/ODIN/resource.h` - Add control IDs
-
-**Features Needed:**
-- Monitor WM_DEVICECHANGE for CF card insertion
-- Detect CF card by size/label
-- Auto-trigger restore operation
-- Optional confirmation dialog
-- Auto-eject when done
-
-### Goal 3: Critical Bug Fixes
-**See:** CODE_REVIEW.md Section 2 (Critical Issues)
-- Fix buffer queue race condition
-- Fix memory leaks
-- Add overflow protection
-
----
-
-## 📋 Next Steps
-
-### Option A: Quick Path (CF Auto-Flash Only)
-1. Fix ODINC.cpp for PowerShell (30 min)
-2. Add auto-flash to GUI (6-8 hours)
-3. Test and deploy
-
-### Option B: Full Modernization
-1. Setup VS2022 environment
-2. Fix critical bugs (Phase 1)
-3. Update build system (Phase 2)
-4. Modernize C++ code (Phase 3)
-5. Add auto-flash feature (Phase 4)
-6. Testing & docs (Phases 5-7)
-
-**Total Effort:** 32-53 hours (~1 work week)
-
-**See:** MODERNIZATION_CHECKLIST.md for detailed task breakdown
-
----
-
-## 🔑 Important Decisions Needed
-
-1. **Auto-Flash UI Style:**
-   - [ ] Full settings dialog (professional)
-   - [ ] Simple checkbox + config file (quick)
-   - [ ] Hidden hotkey (quickest)
-
-2. **CF Card Specs:**
-   - [ ] Size: _____ MB
-   - [ ] Label: _____
-   - [ ] Multiple sizes or fixed?
-
-3. **Behavior:**
-   - [ ] Show confirmation before flashing?
-   - [ ] Auto-eject when complete?
-   - [ ] Sound notification?
-
-4. **Scope:**
-   - [ ] Quick auto-flash only?
-   - [ ] Full modernization?
-   - [ ] Hybrid approach?
-
----
-
-## 🐛 Bug Tracking
-
-### Critical (Fix Before Release)
-- [ ] Buffer queue race condition (`BufferQueue.cpp:GetChunk()`)
-- [ ] Memory leak in `OdinManager.cpp:WaitToCompleteOperation()`
-- [ ] Integer overflow in size calculations
-- [ ] Unchecked pointers after `GetChunk()`
-
-### High Priority
-- [ ] Boot sector validation (security)
-- [ ] Exception handling incomplete (catch(...))
-- [ ] ODINC.cpp handle inheritance
-
-### Medium Priority
-- [ ] Silent volume resize failures
-- [ ] Path traversal validation
-- [ ] Mixed malloc/new usage
-
----
-
-## 📚 Documentation
-
-- ✅ **CODE_REVIEW.md** - Comprehensive code analysis
-- ✅ **Map.md** (this file) - Project state & navigation
-- ⏳ **MODERNIZATION_CHECKLIST.md** - Detailed implementation plan
-- 📖 **doc/readme.txt** - Original docs (minimal)
-- 📖 **doc/HowToBuild.txt** - VS2008 build instructions (outdated)
-
----
-
-## 💡 Quick Reference
-
-### Build Commands (VS2008 - Current)
-```
-Open ODIN.sln in Visual C++ 2008
-Build -> Build Solution
-```
-
-### Build Commands (VS2022 - After Migration)
-```
-Open ODIN.sln in Visual Studio 2022
-Build -> Build Solution
-```
-
-### Run Commands
-```powershell
-# GUI
-.\ODIN.exe
-
-# CLI (current - broken piping)
-.\odinc.exe -list
-
-# CLI (after fix - working piping)
-.\odinc.exe -list > drives.txt
-.\odinc.exe -list | Select-String "Drive"
-```
-
----
-
-## 🔄 Workflow Reminders
-
-1. **Always check Map.md** at start of new session
-2. **Update Map.md** when making significant changes
-3. **Commit frequently** (see git rules)
-4. **Work in small groups** (see rules)
-5. **Test after each phase**
-
----
-
-## 📞 Contact & Resources
-
-- **Original Project:** http://sourceforge.net/projects/odin-win
-- **License:** GPL v3
-- **Last Active:** ~2009 (we're reviving it!)
-
----
-
-*This Map.md file should be updated whenever project state changes significantly.*
+**Recommended build speed alternatives (no code changes needed):**
+| Technique | How to enable |
+|-----------|--------------|
+| Incremental linking | Linker → General → Enable Incremental Linking (`/INCREMENTAL`) |
+| Parallel builds | MSBuild `/m` flag or VS: Tools → Options → Build and Run → max parallel project builds |
+| Precompiled headers | Already enabled in all projects (`stdafx.h` / PCH) |
+| MSBuild incremental | Automatic — MSBuild detects changed files, no flag needed |
