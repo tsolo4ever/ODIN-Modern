@@ -607,9 +607,20 @@ void CCommandLineProcessor::PrintUsage() {
 }
 
 void CCommandLineProcessor::Reset() {
-  memset(&fOperation, 0, sizeof(fOperation));
-  fOperation.sourceIndex = fOperation.targetIndex = -1;
-  fTimer = NULL;
+  // Do NOT use memset — TOdinOperation contains std::wstring members.
+  // Zeroing their internal pointers causes heap corruption on next use/dtor.
+  fOperation.cmd          = CmdBackup;          // overwritten before first use
+  fOperation.source.clear();
+  fOperation.target.clear();
+  fOperation.comment.clear();
+  fOperation.outputFile.clear();
+  fOperation.sourceIndex  = -1;
+  fOperation.targetIndex  = -1;
+  fOperation.splitSizeMB  = 0;
+  fOperation.mode         = modeOnlyUsedBlocks;
+  fOperation.compression  = compressionGZip;
+  fOperation.force        = false;
+  fTimer      = NULL;
   fLastPercent = 0;
   delete fFeedback;
   fFeedback = NULL;
@@ -700,7 +711,7 @@ void CCommandLineProcessor::ReportFeedback()
 static const WORD MAX_CONSOLE_LINES = 500;
 bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   int hConHandle;
-  long lStdHandle;
+  intptr_t lStdHandle;
   CONSOLE_SCREEN_BUFFER_INFO coninfo;
 
 
@@ -725,7 +736,7 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE),
   coninfo.dwSize);
   // redirect unbuffered STDOUT to the console
-  lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
+  lStdHandle = (intptr_t)GetStdHandle(STD_OUTPUT_HANDLE);
   hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
   if (hConHandle > 0) {
     fpOut = _fdopen( hConHandle, "w" );
@@ -733,7 +744,7 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
     setvbuf( stdout, NULL, _IONBF, 0 );
   }
   // redirect unbuffered STDIN to the console
-  lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
+  lStdHandle = (intptr_t)GetStdHandle(STD_INPUT_HANDLE);
   hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
   if (hConHandle > 0) {
     fpIn = _fdopen( hConHandle, "r" );
@@ -741,16 +752,21 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
     setvbuf( stdin, NULL, _IONBF, 0 );
   }
   // redirect unbuffered STDERR to the console
-  lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
+  lStdHandle = (intptr_t)GetStdHandle(STD_ERROR_HANDLE);
   hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
   if (hConHandle > 0) {
     fpErr = _fdopen( hConHandle, "w" );
     *stderr = *fpErr;
     setvbuf( stderr, NULL, _IONBF, 0 );
   }
-  // make cout, wcout, cin, wcin, wcerr, cerr, wclog and clog
-  // point to console as well
-  ios::sync_with_stdio();
+  // Re-sync the C++ wide streams (wcout, wcin, wcerr) with the new C handles.
+  // Pass true explicitly — the no-arg form is implementation-defined in older
+  // headers and may not actually enable syncing after a handle redirect.
+  ios::sync_with_stdio(true);
+  // Flush and reset any error bits on wcout so the first write succeeds
+  // against the newly redirected handle.
+  wcout.flush();
+  wcout.clear();
   return true;
 }
 
