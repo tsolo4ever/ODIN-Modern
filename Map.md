@@ -61,8 +61,74 @@
 - OdinM: no `_ATL_NO_AUTOMATIC_NAMESPACE` (breaks CDialogImpl), IDC_STATIC needs #ifndef guard
 
 ## TODO List
+
+### ODIN / OdinM UI Upgrades
 - [ ] **Resizable main window** — Enable CDialogResize in ODINDlg.h (already partially coded),
   add WS_THICKFRAME to ODIN.rc, complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
+
+- [ ] **Modern visual styles (app manifest)** — Add to `ODIN.exe.manifest` and create `OdinM.exe.manifest`:
+  ```xml
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32"
+        name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
+  ```
+
+- [ ] **DPI awareness (PerMonitorV2)** — Add to manifest:
+  ```xml
+  <dpiAware>True/PM</dpiAware>
+  <dpiAwareness>PerMonitorV2</dpiAwareness>
+  ```
+
+- [ ] **Dark mode support (Win10 1809+)** — Add to `OdinMDlg.cpp` / `ODINDlg.cpp`:
+  ```cpp
+  void ApplyDarkMode(HWND hwnd) {
+      BOOL darkMode = TRUE;
+      DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                            &darkMode, sizeof(darkMode));
+  }
+  bool IsSystemDarkMode() {
+      DWORD value = 0, size = sizeof(value);
+      RegGetValueW(HKEY_CURRENT_USER,
+          L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+          L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &value, &size);
+      return value == 0;
+  }
+  ```
+  Link: add `dwmapi.lib` to linker dependencies.
+
+- [ ] **ListView improvements (OdinM drive list)** — In `OdinMDlg.cpp::InitializeDriveList()`:
+  ```cpp
+  // Eliminate flicker + better look
+  ListView_SetExtendedListViewStyle(hList,
+      LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER |
+      LVS_EX_GRIDLINES     | LVS_EX_HEADERDRAGDROP);
+
+  // NM_CUSTOMDRAW handler — alternating rows + status colors:
+  case NM_CUSTOMDRAW:
+      if (stage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+      if (stage == CDDS_ITEMPREPAINT) {
+          if (nmcd->dwItemSpec % 2 == 0) nmcd->clrTextBk = RGB(245,245,250);
+          SetStatusColor(nmcd); // blue=Cloning, green=Done, red=Failed
+          return CDRF_NEWFONT;
+      }
+
+  // Draw inline progress bar inside COL_PROGRESS cell:
+  void DrawProgressInCell(HDC hdc, RECT rc, int pct) {
+      FillRect(hdc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+      RECT fill = rc;
+      fill.right = rc.left + (rc.right - rc.left) * pct / 100;
+      HBRUSH br = CreateSolidBrush(RGB(0, 120, 215)); // Win11 blue
+      FillRect(hdc, &fill, br);
+      DeleteObject(br);
+      // DrawProgressText(hdc, rc, pct);  // e.g. "67%"
+  }
+  ```
+
+### Build / Test
 - [ ] **Fix ODINTest** — Rebuild CppUnit 1.12.1 with VS2026 (`vcpkg install cppunit:x64-windows`)
   or replace with Catch2/Google Test (header-only, no prebuilt libs)
 
