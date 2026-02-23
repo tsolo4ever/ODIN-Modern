@@ -405,6 +405,10 @@ set /A BUILDNO=%25BUILDNO%25+1
       <Project>{183c0677-b102-4918-8432-603ce2786060}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="zlib.vcxproj">
+      <Project>{f6d18512-4118-45e6-a520-fe25c8d77385}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
