@@ -36,6 +36,8 @@
 #include <fcntl.h>
 #include <iostream>
 #include <fstream>
+#include <locale>
+#include <codecvt>
 #include <crtdbg.h>
 #include "CmdLineException.h"
 #include "DriveList.h"
@@ -467,8 +469,18 @@ void CCommandLineProcessor::ListDrives() {
   wostream* pOut = &wcout;
   
   if (!fOperation.outputFile.empty()) {
-    outFile.open(fOperation.outputFile.c_str(), ios::out);
+    outFile.open(fOperation.outputFile.c_str(), ios::out | ios::trunc);
     if (outFile.is_open()) {
+      // Apply UTF-8 encoding so the file is readable by standard text tools.
+      // codecvt_utf8 is deprecated in C++17 but still available in MSVC.
+      // Temporarily disable DEBUG_NEW so the placement-new from the macro
+      // doesn't conflict with codecvt_utf8's constructor signature.
+#pragma push_macro("new")
+#undef new
+#pragma warning(suppress: 4996)
+      outFile.imbue(std::locale(outFile.getloc(),
+                                new std::codecvt_utf8<wchar_t>));
+#pragma pop_macro("new")
       pOut = &outFile;
     } else {
       wcerr << L"Error: Could not open output file: " << fOperation.outputFile << endl;
