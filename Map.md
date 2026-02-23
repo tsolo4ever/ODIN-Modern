@@ -59,3 +59,21 @@
 - ODINC.exe may trigger AV false positives (Gen:Variant.Fugrafa) — add output folder to exclusions
 - WTL path in all projects: `$(SolutionDir)lib\WTL10\Include`
 - OdinM: no `_ATL_NO_AUTOMATIC_NAMESPACE` (breaks CDialogImpl), IDC_STATIC needs #ifndef guard
+
+## TODO List
+- [ ] **Resizable main window** — Enable CDialogResize in ODINDlg.h (already partially coded),
+  add WS_THICKFRAME to ODIN.rc, complete anchor map for all ~30 controls, add WM_GETMINMAXINFO
+- [ ] **Fix ODINTest** — Rebuild CppUnit 1.12.1 with VS2026 (`vcpkg install cppunit:x64-windows`)
+  or replace with Catch2/Google Test (header-only, no prebuilt libs)
+
+## Build Optimization Notes — /Gm Removal
+`/Gm` (Enable Minimal Rebuild) was deprecated and removed in newer MSVC.
+All projects are already clean — no `<MinimalRebuild>` in any .vcxproj.
+
+**Recommended build speed alternatives (no code changes needed):**
+| Technique | How to enable |
+|-----------|--------------|
+| Incremental linking | Linker → General → Enable Incremental Linking (`/INCREMENTAL`) |
+| Parallel builds | MSBuild `/m` flag or VS: Tools → Options → Build and Run → max parallel project builds |
+| Precompiled headers | Already enabled in all projects (`stdafx.h` / PCH) |
+| MSBuild incremental | Automatic — MSBuild detects changed files, no flag needed |
