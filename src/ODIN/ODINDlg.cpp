@@ -787,7 +787,23 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
   fVolumeList.SetColumnWidth(4, fColumn4Width);
 
   RefreshDriveList();
-  
+
+  // ── Snapshot radio button: greyed out until VSS is implemented in v0.5 ──
+  // Disable the button so it cannot be selected.
+  CButton snapshotBtn(GetDlgItem(IDC_BT_SNAPSHOT));
+  snapshotBtn.EnableWindow(FALSE);
+  // Attach a tooltip to the *parent* rect so it fires even on a disabled child.
+  // TTF_SUBCLASS lets the tooltip control relay WM_MOUSEMOVE from the parent
+  // automatically; no PreTranslateMessage plumbing required.
+  RECT rcBtn;
+  snapshotBtn.GetWindowRect(&rcBtn);
+  ScreenToClient(&rcBtn);
+  fSnapshotTip.Create(m_hWnd, NULL, NULL, TTS_ALWAYSTIP);
+  fSnapshotTip.Activate(TRUE);
+  CToolInfo ti(TTF_SUBCLASS, m_hWnd, IDC_BT_SNAPSHOT, &rcBtn,
+               L"VSS snapshot - coming in v0.5");
+  fSnapshotTip.AddTool(&ti);
+
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
   ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);

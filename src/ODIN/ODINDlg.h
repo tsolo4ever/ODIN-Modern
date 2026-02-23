@@ -83,6 +83,7 @@ private:
   CListViewCtrl  fVolumeList;
   ATL::CString fVolumeInfoTemplate;
   CMultiPaneStatusBarCtrl fStatusBar;
+  CToolTipCtrl fSnapshotTip;   // tooltip for disabled snapshot radio button
 
   __int64 fSourceSize;
   __int64 fMaxTargetSize;
