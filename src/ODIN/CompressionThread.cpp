@@ -22,7 +22,7 @@
 ******************************************************************************/
  
 #include "stdafx.h"
-#include "../zlib.1.2.3/zlib.h"
+#include "../zlib-1.3.2/zlib.h"
 #include "../bzip2-1.0.5/bzlib.h"
 #include "Compression.h"
 #include <string>
