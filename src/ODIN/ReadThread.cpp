@@ -116,10 +116,10 @@ void  CReadThread::ReadLoopCombined(void) // ReadLoopFromPartition(void)
   // CompressedRunLengthStreamReader allocMapReader(fAllocMapFileName.c_str(), (DWORD) fAllocMapOffset, (DWORD) fAllocMapLen);
   ATLASSERT( fRunLengthReader != NULL);
   CBufferChunk *writeChunk = fSourceQueue->GetChunk(); // may block
+  if (!writeChunk)
+    THROW_INT_EXC(EInternalException::getChunkError);
   buffer = (BYTE*)writeChunk->GetData();
   bufferBytesUsed = 0;
-  if (!writeChunk)
-    THROW_INT_EXC(EInternalException::getChunkError); 
 
   remainingBufferSize = writeChunk->GetMaxSize();
   if (!fReadStore->IsDrive()) {
@@ -172,6 +172,8 @@ void  CReadThread::ReadLoopCombined(void) // ReadLoopFromPartition(void)
          if (fCancel)
            Terminate(-1);  // terminate thread after releasing buffer and before acquiring next one
          writeChunk = fSourceQueue->GetChunk(); // may block
+         if (!writeChunk)
+           THROW_INT_EXC(EInternalException::getChunkError);
          remainingBufferSize = writeChunk->GetSize();
          buffer = (BYTE*)writeChunk->GetData();
          bufferBytesUsed = 0;
@@ -216,6 +218,8 @@ void  CReadThread::ReadLoopSimple(void)
 
   while (!bEOF ) {
     CBufferChunk *chunk = fSourceQueue->GetChunk(); // may block
+    if (!chunk)
+      THROW_INT_EXC(EInternalException::getChunkError);
     fReadStore->Read(chunk->GetData(), chunk->GetSize(), &nBytesRead);
 
     // If we didn't get as much data as we expected, then we're at the end of the file.  Set the EOF marker

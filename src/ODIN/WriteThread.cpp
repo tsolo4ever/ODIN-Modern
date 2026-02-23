@@ -108,10 +108,10 @@ void CWriteThread::WriteLoopRunLength()
   
   // CompressedRunLengthStreamReader allocMapReader(fAllocMapFileHandle, (DWORD) fAllocMapOffset, (DWORD) fAllocMapLen);
   CBufferChunk *chunk = fSourceQueue->GetChunk(); // may block
+  if (!chunk)
+    THROW_INT_EXC(EInternalException::getChunkError);
   buffer = (BYTE*)chunk->GetData();
   bufferBytesUsed = 0;
-  if (!chunk)
-    THROW_INT_EXC(EInternalException::getChunkError); 
 
   remainingBufferSize = chunk->GetSize();
 
@@ -164,6 +164,8 @@ void CWriteThread::WriteLoopRunLength()
            Terminate(-1);  // terminate thread after releasing buffer and before acquiring next one
          if (!eof) {
           chunk = fSourceQueue->GetChunk(); // may block
+          if (!chunk)
+            THROW_INT_EXC(EInternalException::getChunkError);
           remainingBufferSize = chunk->GetSize();
           buffer = (BYTE*)chunk->GetData();
           bufferBytesUsed = 0;
@@ -203,6 +205,8 @@ void CWriteThread::WriteLoopSimple()
 
   while (!bEOF) {
       CBufferChunk *ReadChunk = fSourceQueue->GetChunk();
+      if (!ReadChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       nWriteCount = ReadChunk->IsEmpty() ? 0 : ReadChunk->GetSize();
 	    bEOF = ReadChunk->IsEOF();
 
@@ -242,6 +246,8 @@ void CWriteThread::WriteLoopVerify()
 
   while (!bEOF) {
       CBufferChunk *ReadChunk = fSourceQueue->GetChunk();
+      if (!ReadChunk)
+        THROW_INT_EXC(EInternalException::getChunkError);
       nWriteCount = ReadChunk->IsEmpty() ? 0 : ReadChunk->GetSize();
 	    bEOF = ReadChunk->IsEOF();
       fBytesProcessed += nWriteCount;
