@@ -10,6 +10,11 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 #pragma code_page(1252)
 
 /////////////////////////////////////////////////////////////////////////////
+// Icon
+
+IDI_ODINM               ICON                    "res\\OdinM.ico"
+
+/////////////////////////////////////////////////////////////////////////////
 // Dialog: Main Window
 
 IDD_ODINM_MAIN DIALOGEX 0, 0, 620, 390

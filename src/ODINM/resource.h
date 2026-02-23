@@ -10,6 +10,8 @@
 #define IDC_STATIC              -1
 #endif
 
+#define IDI_ODINM               100
+
 // Main Dialog Controls
 #define IDC_EDIT_IMAGE_PATH     1000
 #define IDC_BUTTON_BROWSE       1001
