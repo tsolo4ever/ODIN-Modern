@@ -323,6 +323,7 @@ git checkout 72aa6f8  # Initial commit
 
 | Commit | Type | Description |
 |--------|------|-------------|
+| da95404 | fix | DriveList GPT support — fixes Size:0/Type:Unknown on all modern drives |
 | f340c57 | fix | Switch _O_U16TEXT→_O_U8TEXT — fix space-between-chars output |
 | 936094d | fix | Replace _open_osfhandle with freopen(CONOUT$) in InitConsole |
 | 680df8d | fix | Add _setmode(_O_U16TEXT) to InitConsole (superseded by 936094d) |
@@ -357,4 +358,4 @@ git checkout 72aa6f8  # Initial commit
 
 ---
 
-*Last updated: 2026-02-23. Phase 3 complete. Next: Phase 7 release prep (v0.4.0) or investigate Size/Type Unknown in -list (pre-existing, needs admin/elevation for DeviceIoControl).*
+*Last updated: 2026-02-23. Phase 3 complete. GPT drive size/type bug fixed. Next: Phase 7 release prep (v0.4.0).*
