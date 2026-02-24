@@ -94,7 +94,7 @@ bool CImageFileHeader::IsSupportedChecksumMethod() const {
 }
 
 bool CImageFileHeader::IsSupportedCompressionFormat() const {
-  return fHeader.compressionScheme >= noCompression && fHeader.compressionScheme <= compressionBZIP2;
+  return fHeader.compressionScheme >= noCompression && fHeader.compressionScheme <= compressionZSTD;
 }
 
 bool CImageFileHeader::IsSupportedVolumeEncodingFormat() const {

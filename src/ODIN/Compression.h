@@ -25,6 +25,13 @@
 #ifndef __COMPRESSION_H__
 #define __COMPRESSION_H__
 
-typedef enum { noCompression = 0, compressionGZip = 1,  compressionBZIP2 = 2} TCompressionFormat;
+typedef enum {
+  noCompression    = 0,
+  compressionGZip  = 1,
+  compressionBZIP2 = 2,  // read-only: legacy files only — write support retired in v0.4
+  compressionLZ4   = 3,
+  compressionLZ4HC = 4,
+  compressionZSTD  = 5
+} TCompressionFormat;
 
 #endif
