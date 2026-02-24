@@ -241,14 +241,14 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
   - [ ] Buffer queue thread safety tests
   - [ ] Integer overflow tests
   - [ ] Exception handling tests
-  - [ ] Auto-flash detection tests
+  - [ ] Auto-flash detection tests 
 
-### 5.2 Integration Testing
+### 5.2 Integration Testing <need to be at work for this one>
 - [ ] **Create test images**
 - [ ] **Test scenarios** — Backup/restore, compression, split files, verify
 
 ### 5.3 Stress Testing
-- [ ] Long-running operations
+- [ ] Long-running operations <need to be at work for this one>
 - [ ] Error injection
 
 ---
