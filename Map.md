@@ -41,7 +41,7 @@ All smart pointer and malloc/free work complete. Deferred by design:
 
 | Issue | Severity | Notes |
 |-------|----------|-------|
-| `-list` shows `Size: 0.000B` and `Type: Unknown` | Low | Pre-existing; DriveList needs admin/elevation for `DeviceIoControl` geometry queries |
+| ~~`-list` shows `Size: 0.000B` and `Type: Unknown`~~ | ~~Low~~ | Fixed da95404 — GPT partition style was resetting all geometry to 0 |
 | ODINTest — 33 build errors | Medium | cppunit ABI mismatch (VS2008 libs vs VS2026); fix: `vcpkg install cppunit:x64-windows` |
 
 ---
