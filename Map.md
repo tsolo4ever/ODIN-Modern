@@ -24,17 +24,25 @@
 |-------|--------|
 | Phase 1 — Critical bug fixes | ✅ Complete (6/6) |
 | Phase 2 — Build system / VS2026 migration | ✅ Complete |
-| Phase 3 — C++ modernization | 🔄 Partial |
+| Phase 3 — C++ modernization | ✅ Complete (3.3/3.4 deferred by design) |
 | Phase 4 — Feature additions | ✅ Complete |
 | Phase 5 — Testing | ⏳ Pending |
 | Phase 6 — Documentation | ⏳ Partial |
 | Phase 7 — Release | ⏳ Pending |
 
-### Phase 3 Remaining Work
-- [ ] `CommandLineProcessor.h/cpp` — raw pointer audit
-- [ ] `ODINDlg.h/cpp` — raw pointer audit
-- [ ] `SplitManager.h/cpp` — raw pointer audit
-- [ ] `ImageStream.cpp::StoreVolumeBitmap()` — replace `malloc` with `std::vector`
+### Phase 3 — Done
+All smart pointer and malloc/free work complete. Deferred by design:
+- **3.3 Threading** — `CREATE_SUSPENDED`/`WaitForMultipleObjects`/`TerminateThread` have no `std::thread` equivalents without full architecture redesign
+- **3.4 Strings** — `ATL::CString` kept in UI code (appropriate for `LoadString`/`FormatMessage`); `std::wstring` already used in core
+
+---
+
+## Known Issues
+
+| Issue | Severity | Notes |
+|-------|----------|-------|
+| `-list` shows `Size: 0.000B` and `Type: Unknown` | Low | Pre-existing; DriveList needs admin/elevation for `DeviceIoControl` geometry queries |
+| ODINTest — 33 build errors | Medium | cppunit ABI mismatch (VS2008 libs vs VS2026); fix: `vcpkg install cppunit:x64-windows` |
 
 ---
 
@@ -91,15 +99,16 @@
 
 | Commit | Type | Description |
 |--------|------|-------------|
+| f340c57 | fix | _O_U8TEXT — fix space-between-chars in -list output |
+| 936094d | fix | freopen(CONOUT$) — fix wcout silent-drop over inherited handles |
+| bfb5731 | refactor | CommandLineProcessor + ODINDlg: raw ptrs → unique_ptr |
+| a894723 | refactor | ImageStream: malloc→vector; threading/strings deferred |
+| f6e56cf | chore | scripts/build.bat |
 | 9f5ee84 | chore | Remove legacy zlib 1.2.3 source tree |
 | 67a883b | feat | Expand TCompressionFormat enum for LZ4/LZ4HC/ZSTD |
-| 6358b8e | fix | C4244 wchar_t→char narrowing in SaveHashConfig |
 | cfdddbc | refactor | COdinManager: 12 raw ptrs → unique_ptr (Phase 3) |
-| 42b8e9e | fix | ___chkstk_ms linker error from MinGW LZ4/ZSTD libs |
 | 63b843c | feat | Add LZ4/LZ4HC/ZSTD compression support |
-| 145b603 | ui | Disable snapshot button + tooltip |
 | e94b31f | perf | CRC32 slice-by-8 (~5-8x faster) |
-| 2f91129 | feat | DPI v2, Common Controls v6, LVS_EX_DOUBLEBUFFER |
 
 ---
 

@@ -1,8 +1,8 @@
 # ODIN Modernization Checklist
 
-**Created:** 2026-02-21  
+**Created:** 2026-02-21
 **Updated:** 2026-02-23
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | ✅ Phase 3 Complete (3.3/3.4 deferred by design) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | ✅ Phase 3 Complete (3.3/3.4 deferred by design) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added | ✅ `-list` confirmed working
 **See also:** Map.md, CODE_REVIEW.md
 
 ---
@@ -28,7 +28,7 @@
   - [x] Windows 11 SDK installed
   - [x] C++ ATL for v143/v144 build tools
 
-- [ ] **Install vcpkg (optional)** *(not done — not needed)*
+~~- [ ] **Install vcpkg (optional)** *(not done — not needed)*~~
 
 - [x] **Create build scripts directory** — `scripts/build.bat` (Debug/Release, configurable via args)
 
@@ -179,15 +179,21 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
 
 ## 🚀 Phase 4: Feature Additions ✅ COMPLETED (all major features done)
 
-### 4.1 Fix ODINC.cpp PowerShell Output ✅ COMPLETED
-**File:** `src/ODINC/ODINC.cpp`  
-**Commits:** 10641da, 6d4a277, c14e91f
+### 4.1 Fix ODINC / Console Output ✅ COMPLETED
+**Files:** `src/ODINC/ODINC.cpp`, `src/ODIN/CommandLineProcessor.cpp`
+**Commits:** 10641da, 6d4a277, c14e91f, 680df8d, 936094d, f340c57
 
 - [x] **Add handle inheritance** — `STARTF_USESTDHANDLES`, `bInheritHandle = TRUE`
 - [x] **Fix UTF-8 output file encoding** for `-output` flag
 - [x] **Fix `sync_with_stdio(true)`** + `wcout` flush + `intptr_t` handle cast
 - [x] **Add `-output` flag** to write drive list to file (`38b6bff`)
-- [x] **Test PowerShell piping** — PowerShell output confirmed working
+- [x] **Fix InitConsole CRT stream wiring** — replace `_open_osfhandle/_fdopen/*stdout=*fpOut` with `freopen("CONOUT$"/"CONIN$")` (936094d)
+  - Root cause: CRT fd table already owns the inherited handle so `_open_osfhandle` returns the claimed fd; `hConHandle > 0` guard fails silently; `*stdout` never gets updated
+  - `freopen("CONOUT$")` bypasses fd ownership entirely by opening the console device by name
+- [x] **Fix wide-char encoding mode** — `_O_U16TEXT` → `_O_U8TEXT` (f340c57)
+  - `_O_U16TEXT` fell back to raw UTF-16LE bytes when `freopen` handle wasn't detected as console by CRT → `I n d e x :  0` spacing artifact
+  - `_O_U8TEXT` converts wchar_t → UTF-8 bytes which the console displays correctly
+- [x] **`-list` output confirmed working** — drive names, labels, device paths all display correctly
 
 ### 4.2 Auto-Flash Mode Implementation ✅ COMPLETED
 **Commits:** 6b19efb, 7e40342, f513378
@@ -317,6 +323,14 @@ git checkout 72aa6f8  # Initial commit
 
 | Commit | Type | Description |
 |--------|------|-------------|
+| f340c57 | fix | Switch _O_U16TEXT→_O_U8TEXT — fix space-between-chars output |
+| 936094d | fix | Replace _open_osfhandle with freopen(CONOUT$) in InitConsole |
+| 680df8d | fix | Add _setmode(_O_U16TEXT) to InitConsole (superseded by 936094d) |
+| bfb5731 | refactor | CommandLineProcessor + ODINDlg: raw ptrs → unique_ptr (Phase 3.1) |
+| a894723 | refactor | ImageStream: malloc→vector (Phase 3.2); threading/strings deferred |
+| f6e56cf | chore | Create scripts/build.bat |
+| 9f5ee84 | chore | Remove legacy zlib 1.2.3 source tree |
+| 97cc408 | docs | MODERNIZATION_CHECKLIST Phase 3 OdinManager complete |
 | cfdddbc | refactor | COdinManager: 12 raw ptrs → unique_ptr (Phase 3) |
 | 42b8e9e | fix | ___chkstk_ms linker stub for MinGW LZ4/ZSTD libs |
 | 63b843c | feat | LZ4, LZ4HC, ZSTD compression/decompression support |
@@ -343,4 +357,4 @@ git checkout 72aa6f8  # Initial commit
 
 ---
 
-*Last updated: 2026-02-23. Next priority: Phase 3 remaining (CommandLineProcessor, ODINDlg, SplitManager) or Phase 7 release prep.*
+*Last updated: 2026-02-23. Phase 3 complete. Next: Phase 7 release prep (v0.4.0) or investigate Size/Type Unknown in -list (pre-existing, needs admin/elevation for DeviceIoControl).*
