@@ -462,7 +462,14 @@ bool COdinMDlg::SaveHashConfig(const std::wstring& imagePath)
     std::wstring cfg = imagePath + L".hashcfg";
     HANDLE hf = CreateFileW(cfg.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hf == INVALID_HANDLE_VALUE) return false;
-    auto n = [](const std::wstring& w){ return std::string(w.begin(), w.end()); };
+    // Hash strings are pure ASCII hex (0-9, a-f) — explicit cast is lossless
+    auto n = [](const std::wstring& w) {
+        std::string s;
+        s.reserve(w.size());
+        for (wchar_t c : w)
+            s += static_cast<char>(c);
+        return s;
+    };
     std::string content = "SHA1="   + n(m_hashConfig.sha1Expected)   + "\r\n"
                         + "SHA256=" + n(m_hashConfig.sha256Expected) + "\r\n";
     DWORD w; WriteFile(hf, content.c_str(), (DWORD)content.size(), &w, NULL);
