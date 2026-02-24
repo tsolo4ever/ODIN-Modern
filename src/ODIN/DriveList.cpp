@@ -159,9 +159,15 @@ void CDriveInfo::Refresh(void)
       if (partition.PartitionStyle == PARTITION_STYLE_MBR) {
           fPartitionType = (int) partition.Mbr.PartitionType;
           fKnownType = partition.Mbr.RecognizedPartition != 0;
-      } else {// partition.PartitionStyle == PARTITION_STYLE_GPT or PARTITION_STYLE_RAW
-        fBytes = 0; fSectors = 0; fBytesPerSector = 0; fSectorsPerTrack = 0; fDriveType = driveUnknown;
-        fKnownType = fReadable = false;
+      } else if (partition.PartitionStyle == PARTITION_STYLE_GPT) {
+          // GPT: fBytes, fDriveType, fBytesPerSector, fSectors etc. are already
+          // set from geometry + partition.PartitionLength above — keep them.
+          // GPT has no legacy partition-type byte; all GPT data partitions are known.
+          fKnownType = true;
+      } else {
+          // PARTITION_STYLE_RAW or unrecognised — genuinely unreadable, reset.
+          fBytes = 0; fSectors = 0; fBytesPerSector = 0; fSectorsPerTrack = 0; fDriveType = driveUnknown;
+          fKnownType = fReadable = false;
       }
       fIsMounted = DeviceIoControl(hDrive, FSCTL_IS_VOLUME_MOUNTED, NULL, 0, NULL, 0, &nCount, NULL) != FALSE;
       // This seems to be a reliable indicator whether you are able to get the list of used blocks later
