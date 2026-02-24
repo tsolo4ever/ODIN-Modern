@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-21  
 **Updated:** 2026-02-23  
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔄 Phase 3 Partial | ✅ Phase 4 Complete  
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔄 Phase 3 Partial | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
 **See also:** Map.md, CODE_REVIEW.md
 
 ---
@@ -134,19 +134,17 @@
 
 ### 3.1 Smart Pointers Migration (Partial)
 
-#### OdinManager.h/cpp
+#### OdinManager.h/cpp ✅ COMPLETED
 - [x] **Fix WaitToCompleteOperation()** — `std::unique_ptr<HANDLE[]>` for thread handle array (commit f7d809b)
-- [ ] **Replace raw thread pointers** — `fReadThread`, `fWriteThread`, `fCompDecompThread` still raw pointers
-  ```cpp
-  // TODO: convert to unique_ptr
-  - CReadThread *fReadThread;
-  + std::unique_ptr<CReadThread> fReadThread;
-  ```
-- [ ] **Replace image stream raw pointers** — `fSourceImage`, `fTargetImage`
-- [ ] **Update Reset() to use .reset()** instead of `delete`
-- [ ] **Update creation sites to make_unique**
+- [x] **Replace raw thread pointers** — `fReadThread`, `fWriteThread`, `fCompDecompThread` → `unique_ptr` (commit cfdddbc)
+- [x] **Replace image stream raw pointers** — `fSourceImage`, `fTargetImage` → `unique_ptr` (commit cfdddbc)
+- [x] **Replace buffer queue pointers** — all 4 `CImageBuffer*` queues → `unique_ptr` (commit cfdddbc)
+- [x] **Replace `fSplitCallback`, `fVSS`, `fDriveList`** → `unique_ptr` (commit cfdddbc)
+- [x] **Update Reset() to use .reset()** — all 12 members converted (commit cfdddbc)
+- [x] **Update creation sites to make_unique** — DoCopy, MakeSnapshot, RefreshDriveList updated
+- [x] **Bonus: fixed pre-existing bug** — fSplitCallback leak in multi-volume Reset() path
 
-#### Other Files
+#### Other Files (remaining)
 - [ ] Update `CommandLineProcessor.h/cpp`
 - [ ] Update `ODINDlg.h/cpp`
 - [ ] Update `SplitManager.h/cpp`
@@ -271,7 +269,6 @@
 ---
 
 ## ✅ Completion Criteria
-
 - [x] All critical bugs fixed (Phase 1 — 6/6)
 - [x] Builds successfully in VS2022/2026 (Debug x64, 0 errors)
 - [x] ODINC PowerShell output works
@@ -305,6 +302,9 @@ git checkout 72aa6f8  # Initial commit
 
 | Commit | Type | Description |
 |--------|------|-------------|
+| cfdddbc | refactor | COdinManager: 12 raw ptrs → unique_ptr (Phase 3) |
+| 42b8e9e | fix | ___chkstk_ms linker stub for MinGW LZ4/ZSTD libs |
+| 63b843c | feat | LZ4, LZ4HC, ZSTD compression/decompression support |
 | 145b603 | ui | Disable snapshot button + tooltip |
 | e94b31f | perf | CRC32 slice-by-8 |
 | e694f43 | fix | Null checks in Read/WriteThread |
@@ -328,4 +328,4 @@ git checkout 72aa6f8  # Initial commit
 
 ---
 
-*Last updated: 2026-02-23. Next priority: Phase 3 smart pointer migration or Phase 7 release prep.*
+*Last updated: 2026-02-23. Next priority: Phase 3 remaining (CommandLineProcessor, ODINDlg, SplitManager) or Phase 7 release prep.*
