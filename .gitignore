@@ -17,6 +17,7 @@ Release-x64/
 *.VC.db
 *.VC.VC.opendb
 ipch/
+.vscode/
 
 # --- Compiled object / intermediate files ---
 *.obj
@@ -43,3 +44,29 @@ ehthumbs.db
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# Add these:
+
+# --- Legacy VS2008 files ---
+*.vcproj
+*.ncb
+*.aps
+*.bak
+
+# --- Executables ---
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+
+# --- Precompiled headers ---
+*.gch
+
+# --- zstd/lz4 if using local builds ---
+# (if not committing the libs)
+# src/ODIN/lib/
+
+# --- OdinM settings (runtime generated) ---
+OdinM.ini
+*.hashcfg
