@@ -744,9 +744,13 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   setvbuf(stdout, NULL, _IONBF, 0);
   setvbuf(stderr, NULL, _IONBF, 0);
 
-  // Switch to UTF-16 mode so wcout/wcerr emit wide chars correctly.
-  _setmode(_fileno(stdout), _O_U16TEXT);
-  _setmode(_fileno(stderr), _O_U16TEXT);
+  // Switch to UTF-8 mode so wcout/wcerr emit wide chars correctly.
+  // _O_U8TEXT converts wchar_t to UTF-8 bytes before writing, which works
+  // regardless of whether the CRT recognises the handle as a true console.
+  // _O_U16TEXT would write raw UTF-16LE bytes when WriteConsoleW detection
+  // fails (freopen("CONOUT$") handle), causing space-between-every-char output.
+  _setmode(_fileno(stdout), _O_U8TEXT);
+  _setmode(_fileno(stderr), _O_U8TEXT);
 
   // Re-sync C++ wide streams with the new C streams.
   ios::sync_with_stdio(true);
