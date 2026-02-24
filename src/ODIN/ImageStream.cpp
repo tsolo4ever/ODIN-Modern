@@ -27,6 +27,7 @@
 #include "InternalException.h"
 #include "FileFormatException.h"
 #include "CompressedRunLengthStream.h"
+#include <vector>
 
 #ifdef DEBUG
   #define new DEBUG_NEW
@@ -682,7 +683,6 @@ void  CDiskImageStream::GetVolumeBitmapInfo()
 unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HANDLE hOutHandle, LPCWSTR fileName)
 {
   unsigned nBitmapBytes;
-  VOLUME_BITMAP_BUFFER *volumeBitmap;
   unsigned __int64 startCluster, stopCluster;
   unsigned noClustersPerChunk, noClusters;
   DWORD nBytesReturned;
@@ -694,7 +694,7 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
   newPos.QuadPart = 0LL;
   ok = SetFilePointerEx(hOutHandle, newPos, &curPos, FILE_END);
   startOffset = curPos.QuadPart;
-   
+
   noClustersPerChunk = chunkSize * 8;
   noClusters = (unsigned) (fSize / fBytesPerCluster);
   unsigned noIterations = (unsigned) (noClusters + noClustersPerChunk - 1)/ noClustersPerChunk;
@@ -702,15 +702,16 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
   // Determine the number of clusters in a chunk, and the number of cluster bitmap bytes that are taken by a chunk.
   // noClustersPerChunk = (chunkSize + fBytesPerCluster - 1) / fBytesPerCluster;
   nBitmapBytes = (noClustersPerChunk + 7) / 8;
-  // nBitmanBytes is actually one larger than we need because there is one bitmap byte already in the VOLUME_BITMAP_BUFFER
-  // struct. 
-  volumeBitmap = (VOLUME_BITMAP_BUFFER *)malloc(sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1);
-  memset(volumeBitmap, 0, sizeof(VOLUME_BITMAP_BUFFER));
+  // nBitmapBytes is actually one larger than we need because there is one bitmap byte already in the VOLUME_BITMAP_BUFFER
+  // struct.
+  const size_t bitmapBufSize = sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1;
+  std::vector<BYTE> bitmapStorage(bitmapBufSize, 0);
+  VOLUME_BITMAP_BUFFER* volumeBitmap = reinterpret_cast<VOLUME_BITMAP_BUFFER*>(bitmapStorage.data());
   startCluster = stopCluster = 0;
 
   for (unsigned i=0; i<noIterations; i++ ) {
       stopCluster = startCluster + noClustersPerChunk;
-      int ret = DeviceIoControl(fHandle, FSCTL_GET_VOLUME_BITMAP, &startCluster, sizeof(startCluster), volumeBitmap, sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1, &nBytesReturned, NULL);
+      int ret = DeviceIoControl(fHandle, FSCTL_GET_VOLUME_BITMAP, &startCluster, sizeof(startCluster), volumeBitmap, static_cast<DWORD>(bitmapBufSize), &nBytesReturned, NULL);
       if (ret == 0 && GetLastError() != ERROR_MORE_DATA)
         CHECK_OS_EX_PARAM1(ret, EWinException::ioControlError, L"FSCTL_GET_VOLUME_BITMAP");
 
@@ -721,7 +722,6 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
       writer.AddBuffer(&(volumeBitmap->Buffer[0]), (nBytesReturned - sizeof(VOLUME_BITMAP_BUFFER) + 1) * 8);
    }
   writer.Flush();
-  free(volumeBitmap);
   ok = SetFilePointerEx(hOutHandle, newPos, &curPos, FILE_END);
   CHECK_OS_EX_PARAM1(ok, EWinException::seekError, L"");
 

@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-21  
 **Updated:** 2026-02-23
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔄 Phase 3 Partial (smart ptrs done, malloc/free + threading remain) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | ✅ Phase 3 Complete (3.3/3.4 deferred by design) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
 **See also:** Map.md, CODE_REVIEW.md
 
 ---
@@ -158,16 +158,22 @@
 #### SplitManager.h/cpp ✅ REVIEWED — no changes needed
 - `fStream` and `fCallback` are non-owning (caller-managed), destructor correctly omits `delete`
 
-### 3.2 Replace malloc/free
-- [ ] **Find all malloc/free usage** *(ImageStream.cpp::StoreVolumeBitmap() uses malloc)*
-- [ ] **Replace with new[] or std::vector**
+### 3.2 Replace malloc/free ✅ COMPLETED
+- [x] `StoreVolumeBitmap()` — `malloc`/`memset`/`free` → `std::vector<BYTE>(bitmapBufSize, 0)` + `reinterpret_cast<VOLUME_BITMAP_BUFFER*>`
+- [x] `DeviceIoControl` buffer size cast to `DWORD` via `static_cast` (cleaned up implicit narrowing)
 
-### 3.3 Modern Threading (Advanced - Optional)
-- [ ] Thread adapter class using `std::thread`
+### 3.3 Modern Threading ⏸ DEFERRED
+Reason: Windows threading model is too tightly coupled to migrate safely.
+- `CREATE_SUSPENDED` start — no `std::thread` equivalent
+- `WaitForMultipleObjects` on N thread handles — no `std::thread` equivalent
+- `TerminateThread` hard-kill used — no `std::thread` equivalent
+- `SetThreadPriority` — not exposed by `std::thread`
+- Would require full queue/sync architecture redesign → Phase 5+
 
-### 3.4 String Handling
-- [ ] **Replace CString with std::wstring** incrementally
-- [ ] **Use std::filesystem::path**
+### 3.4 String Handling ⏸ DEFERRED (incremental)
+- `ATL::CString` intentionally kept in UI/dialog code (ODINDlg) — appropriate for `LoadString`/`FormatMessage`
+- `std::wstring` already used throughout core logic (CommandLineProcessor, OdinManager, threads)
+- `std::filesystem::path` — apply incrementally as path-manipulation files are touched (FileNameUtil, etc.)
 
 ---
 
@@ -196,9 +202,9 @@
 
 ### 4.3 Enhanced Output Formats (Partial)
 - [x] **Add `-output` flag** — Write drive list to file (`38b6bff`)
-- [ ] JSON output format
-- [ ] CSV output format
-- [ ] Table output format
+- [ ] JSON output format <uses INI for now low prioity>
+- [ ] CSV output format <uses INI for now low prioity>
+- [ ] Table output format <uses INI for now low prioity>
 
 ### 4.4 CRC32 Performance ✅ COMPLETED (bonus — not in original plan)
 **File:** `src/ODIN/crc32.cpp`  
