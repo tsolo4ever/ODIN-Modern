@@ -35,6 +35,7 @@
 #include <atlctrlx.h>
 #include <sstream>
 #include <algorithm>
+#include <vector>
 //#include <atlmisc.h>
 
 #include "UserFeedback.h"
@@ -90,24 +91,22 @@ size_t CODINSplitManagerCallback::AskUserForMissingFile(LPCWSTR missingFileName,
   ATL::CString msg;
   ATL::CString filter;
   size_t res;
-  wchar_t* buffer;
   msg.FormatMessage(IDS_PROVIDE_FILENAME, fileNo);
   filter.LoadString(IDS_FILTERSTRING);
 
   const int bufsize = filter.GetLength()+7;
-  buffer = new wchar_t[bufsize];
-  wcsncpy_s(buffer, bufsize, filter, filter.GetLength()+1);
-  memcpy(buffer+filter.GetLength()+1, L"\0*.*\0\0", 12);
+  std::vector<wchar_t> buffer(bufsize);
+  wcsncpy_s(buffer.data(), bufsize, filter, filter.GetLength()+1);
+  memcpy(buffer.data()+filter.GetLength()+1, L"\0*.*\0\0", 12);
 
   CFileDialog fileDlg ( true, NULL, missingFileName, OFN_FILEMUSTEXIST,
-            buffer, fhWnd );
- 
+            buffer.data(), fhWnd );
+
   if ( res = fileDlg.DoModal() ) {
     if (res == IDOK) {
       newName = fileDlg.m_szFileName;
     }
   }
-  delete buffer;
   return res;
 }
 
@@ -692,14 +691,13 @@ void CODINDlg::CleanupPartiallyWrittenFiles()
 
   if (isHardDisk && fOdinManager.GetSaveOnlyUsedBlocksOption()) {
     wstring mbrFileName, volumeFileName, filePattern;
-    CDriveInfo **pContainedVolumes = NULL;
     mbrFileName = fileName;
     CFileNameUtil::GenerateFileNameForMBRBackupFile(mbrFileName);
     DeleteFile(mbrFileName.c_str());
 
     int subPartitions = pDriveInfo->GetContainedVolumes();
-    pContainedVolumes = new CDriveInfo* [subPartitions];
-    int res = fOdinManager.GetDriveList()->GetVolumes(pDriveInfo, pContainedVolumes, subPartitions);
+    std::vector<CDriveInfo*> pContainedVolumes(subPartitions);
+    int res = fOdinManager.GetDriveList()->GetVolumes(pDriveInfo, pContainedVolumes.data(), subPartitions);
 
     // check  if there are file names in conflict with files created during backup
     for (int i=0; i<subPartitions; i++) {
@@ -707,7 +705,6 @@ void CODINDlg::CleanupPartiallyWrittenFiles()
       CFileNameUtil::GetEntireDiskFilePattern(volumeFileName.c_str(), filePattern);
       fChecker.CheckUniqueFileName(volumeFileName.c_str(), filePattern.c_str(), false);
     }
-    delete [] pContainedVolumes;
   } else {
     if (fOdinManager.GetSplitSize() > 0) {
       wstring filePattern;

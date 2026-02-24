@@ -267,10 +267,8 @@ CCommandLineProcessor::CCommandLineProcessor() {
   // _CrtSetBreakAlloc(186);
   fHasConsole = false;
   fConsoleCreated = false;
-  fFeedback = NULL;
   Reset();
-  fOdinManager = NULL;
-  fSplitCB = new CConsoleSplitManagerCallback();
+  fSplitCB = std::make_unique<CConsoleSplitManagerCallback>();
   fVerifyRun = false;
   fCrc32 = 0;
   fExitCode = 0;
@@ -278,9 +276,6 @@ CCommandLineProcessor::CCommandLineProcessor() {
 }
 
 CCommandLineProcessor::~CCommandLineProcessor() {
-  delete fOdinManager;
-  delete fSplitCB;
-  delete fFeedback;
   TerminateConsole();
 }
 
@@ -301,8 +296,8 @@ int CCommandLineProcessor::ParseAndProcess() {
 }
 
 void CCommandLineProcessor::Init() {
-  if (fOdinManager == NULL) {
-    fOdinManager = new COdinManager();
+  if (!fOdinManager) {
+    fOdinManager = std::make_unique<COdinManager>();
     fOdinManager->RefreshDriveList();
   }
 }
@@ -424,7 +419,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
   
   fLastPercent = 0;
   fCrc32 = 0;
-  fFeedback = new CUserFeedbackConsole(fOperation.force);
+  fFeedback = std::make_unique<CUserFeedbackConsole>(fOperation.force);
   CParamChecker checker(*fFeedback, *fOdinManager);
 
   // perform operation
@@ -436,7 +431,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
         fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
         if (fOperation.comment.length() > 0)
            fOdinManager->SetComment(fOperation.comment.c_str());
-        CMultiPartitionHandler::BackupPartitionOrDisk(fOperation.sourceIndex, fOperation.target.c_str(), *fOdinManager, fSplitCB, this, *fFeedback);
+        CMultiPartitionHandler::BackupPartitionOrDisk(fOperation.sourceIndex, fOperation.target.c_str(), *fOdinManager, fSplitCB.get(), this, *fFeedback);
       } 
   }
   else if (fOperation.cmd == CmdRestore) {
@@ -447,7 +442,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
     if (res == IUserFeedback::TOk || res == IUserFeedback::TYes) {
       // do restore
       fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
-      CMultiPartitionHandler::RestorePartitionOrDisk(fOperation.targetIndex, fOperation.source.c_str(), *fOdinManager, fSplitCB, this);
+      CMultiPartitionHandler::RestorePartitionOrDisk(fOperation.targetIndex, fOperation.source.c_str(), *fOdinManager, fSplitCB.get(), this);
     }
   }
   else if (fOperation.cmd == CmdVerify) {
@@ -456,7 +451,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
     fVerifyRun = true;
     fCrc32 = 0; //TODO: get from header
     fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
-    CMultiPartitionHandler::VerifyPartitionOrDisk(fOperation.source.c_str(), *fOdinManager, fCrc32, fSplitCB, this, *fFeedback);
+    CMultiPartitionHandler::VerifyPartitionOrDisk(fOperation.source.c_str(), *fOdinManager, fCrc32, fSplitCB.get(), this, *fFeedback);
   }
   else
     wcerr << L"Internal error illegal program state:  " << __WFILE__ << L" " << __LINE__; // should not happen
@@ -634,8 +629,7 @@ void CCommandLineProcessor::Reset() {
   fOperation.force        = false;
   fTimer      = NULL;
   fLastPercent = 0;
-  delete fFeedback;
-  fFeedback = NULL;
+  fFeedback.reset();
 }
 
 void CCommandLineProcessor::OnThreadTerminated()
@@ -650,8 +644,7 @@ void CCommandLineProcessor::OnFinished()
     CloseHandle(fTimer);
     fTimer = NULL;
     wcout << endl;
-    delete fFeedback;
-    fFeedback = NULL;
+    fFeedback.reset();
     if (fVerifyRun) {
       crc32 = fOdinManager->GetVerifiedChecksum();
       if (crc32 == fCrc32)
@@ -674,8 +667,7 @@ void CCommandLineProcessor::OnAbort()
     TerminateThread(fTimer, 0);
     CloseHandle(fTimer);
     fTimer = NULL;
-    delete fFeedback;
-    fFeedback = NULL;
+    fFeedback.reset();
     wcout << endl;
     fLastPercent = 0;
     fCrc32 = 0;

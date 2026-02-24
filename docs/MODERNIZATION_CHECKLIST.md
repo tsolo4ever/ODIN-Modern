@@ -1,8 +1,8 @@
 # ODIN Modernization Checklist
 
 **Created:** 2026-02-21  
-**Updated:** 2026-02-23  
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔄 Phase 3 Partial | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
+**Updated:** 2026-02-23
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | 🔄 Phase 3 Partial (smart ptrs done, malloc/free + threading remain) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added
 **See also:** Map.md, CODE_REVIEW.md
 
 ---
@@ -144,10 +144,19 @@
 - [x] **Update creation sites to make_unique** — DoCopy, MakeSnapshot, RefreshDriveList updated
 - [x] **Bonus: fixed pre-existing bug** — fSplitCallback leak in multi-volume Reset() path
 
-#### Other Files (remaining)
-- [ ] Update `CommandLineProcessor.h/cpp`
-- [ ] Update `ODINDlg.h/cpp`
-- [ ] Update `SplitManager.h/cpp`
+#### CommandLineProcessor.h/cpp ✅ COMPLETED
+- [x] `fOdinManager`, `fSplitCB`, `fFeedback` → `unique_ptr` (header + `make_unique` in .cpp)
+- [x] Destructor `delete` calls removed (RAII handles cleanup)
+- [x] `fSplitCB.get()` at 3 call sites (BackupPartitionOrDisk, RestorePartitionOrDisk, VerifyPartitionOrDisk)
+- [x] `fFeedback.reset()` replaces 3× `delete fFeedback; fFeedback = NULL`
+- [x] `if (!fOdinManager)` replaces `== NULL` null check
+
+#### ODINDlg.cpp ✅ COMPLETED
+- [x] `new wchar_t[bufsize]` / `delete buffer` → `std::vector<wchar_t>` (also fixes pre-existing `delete`/`delete[]` mismatch)
+- [x] `new CDriveInfo*[subPartitions]` / `delete[]` → `std::vector<CDriveInfo*>`
+
+#### SplitManager.h/cpp ✅ REVIEWED — no changes needed
+- `fStream` and `fCallback` are non-owning (caller-managed), destructor correctly omits `delete`
 
 ### 3.2 Replace malloc/free
 - [ ] **Find all malloc/free usage** *(ImageStream.cpp::StoreVolumeBitmap() uses malloc)*
