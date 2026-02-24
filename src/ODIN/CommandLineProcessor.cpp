@@ -763,6 +763,12 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
     *stderr = *fpErr;
     setvbuf( stderr, NULL, _IONBF, 0 );
   }
+  // Switch stdout/stderr to UTF-16 mode so wcout/wcerr output wide chars
+  // correctly over inherited or attached console handles.  Without this the
+  // CRT silently drops wide-char output when the handle was passed via
+  // STARTF_USESTDHANDLES (i.e. when odinc.exe launches odin.exe).
+  _setmode(_fileno(stdout), _O_U16TEXT);
+  _setmode(_fileno(stderr), _O_U16TEXT);
   // Re-sync the C++ wide streams (wcout, wcin, wcerr) with the new C handles.
   // Pass true explicitly — the no-arg form is implementation-defined in older
   // headers and may not actually enable syncing after a handle redirect.
