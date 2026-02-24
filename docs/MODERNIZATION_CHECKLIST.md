@@ -30,7 +30,7 @@
 
 - [ ] **Install vcpkg (optional)** *(not done — not needed)*
 
-- [ ] **Create build scripts directory** *(not done)*
+- [x] **Create build scripts directory** — `scripts/build.bat` (Debug/Release, configurable via args)
 
 ### Documentation
 - [x] **Document current state**
