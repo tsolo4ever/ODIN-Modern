@@ -28,6 +28,8 @@ COdinMDlg::~COdinMDlg() { }
 LRESULT COdinMDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled)
 {
     if (m_timer) { ::KillTimer(m_hWnd, m_timer); m_timer = 0; }
+    if (m_darkBgBrush)   { ::DeleteObject(m_darkBgBrush);   m_darkBgBrush   = nullptr; }
+    if (m_darkEditBrush) { ::DeleteObject(m_darkEditBrush); m_darkEditBrush = nullptr; }
     handled = FALSE;   // let DefWindowProc process WM_DESTROY too
     return 0;
 }
@@ -52,6 +54,8 @@ LRESULT COdinMDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL& handled)
     m_timer = SetTimer(POLL_TIMER_ID, POLL_INTERVAL);
     CenterWindow();
     Log(L"OdinM started. Ready.");
+    ApplyDarkMode(m_hWnd);       // create brushes before first paint
+    PostMessage(WM_APP, 0, 0);   // deferred: repaint after window is fully visible
     handled = TRUE;
     return TRUE;
 }
@@ -546,4 +550,238 @@ std::wstring COdinMDlg::GetDriveName(const std::wstring& root)
     wchar_t label[MAX_PATH] = {};
     GetVolumeInformationW(root.c_str(), label, MAX_PATH, NULL, NULL, NULL, NULL, 0);
     return label[0] ? std::wstring(label) : L"Removable";
+}
+
+// ── Dark mode ────────────────────────────────────────────────────────────────
+// Title bar:  DwmSetWindowAttribute (loaded at runtime via dwmapi.dll)
+// Client area: AllowDarkModeForWindow (uxtheme ordinal 133) + WM_CTLCOLOR* +
+//              SetWindowTheme on native controls.
+// GetSysColor(COLOR_WINDOW/WINDOWTEXT/BTNFACE/BTNTEXT) returns correct dark
+// values once SetPreferredAppMode(AllowDark) is called in _tWinMain.
+
+static bool IsDarkModeEnabled() {
+    // ShouldAppsUseDarkMode (uxtheme ordinal 132): only trust TRUE; always
+    // fall through to the registry on FALSE (ordinal may be wrong/inactive).
+    typedef BOOL (WINAPI* PFN_ShouldDark)();
+    static bool s_tried = false;
+    static PFN_ShouldDark s_pfn = nullptr;
+    if (!s_tried) {
+        s_tried = true;
+        HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+        if (h) s_pfn = (PFN_ShouldDark)::GetProcAddress(h, MAKEINTRESOURCEA(132));
+    }
+    if (s_pfn && s_pfn() != FALSE)
+        return true;
+
+    // Definitive ground truth: AppsUseLightTheme = 0 means dark.
+    DWORD value = 1, size = sizeof(value);
+    HKEY hKey = NULL;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+          L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+          0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS) {
+        RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
+                         reinterpret_cast<LPBYTE>(&value), &size);
+        RegCloseKey(hKey);
+    }
+    return value == 0;
+}
+
+using PFN_AllowDarkM = BOOL (WINAPI*)(HWND, BOOL);
+struct DarkEnumCtxM { PFN_AllowDarkM fn; BOOL dark; };
+static BOOL CALLBACK s_AllowDarkChildM(HWND child, LPARAM lp) {
+    auto& ctx = *reinterpret_cast<DarkEnumCtxM*>(lp);
+    if (ctx.fn) ctx.fn(child, ctx.dark);
+    ::SendMessage(child, WM_THEMECHANGED, 0, 0);
+    return TRUE;
+}
+
+// EnumChildWindows callback: apply the correct uxtheme subapp string per control class.
+using PFN_SwtM = HRESULT (WINAPI*)(HWND, LPCWSTR, LPCWSTR);
+struct ThemeEnumCtxM { PFN_SwtM swt; bool dark; };
+static BOOL CALLBACK s_ThemeChildM(HWND child, LPARAM lp) {
+    auto& c = *reinterpret_cast<ThemeEnumCtxM*>(lp);
+    wchar_t cls[64] = {};
+    ::GetClassNameW(child, cls, _countof(cls));
+    const wchar_t* theme = nullptr;
+    if (_wcsicmp(cls, L"Button") == 0) {
+        LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
+        BYTE type = (BYTE)(style & 0x0FL);
+        if (type == BS_GROUPBOX) { c.swt(child, nullptr, nullptr); return TRUE; }
+        theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+    }
+    else if (_wcsicmp(cls, L"Edit")          == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
+    else if (_wcsicmp(cls, L"ComboBox")      == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
+    else if (_wcsicmp(cls, L"SysListView32") == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+    else if (_wcsicmp(cls, L"SysHeader32")   == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+    else if (_wcsicmp(cls, L"Static")        == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+    c.swt(child, theme, nullptr);
+    return TRUE;
+}
+
+LRESULT COdinMDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
+    ApplyDarkMode(m_hWnd);
+    return 0;
+}
+
+void COdinMDlg::ApplyDarkMode(HWND hwnd) {
+    // ── title bar (DWM) ──────────────────────────────────────────────────
+    typedef HRESULT (WINAPI *PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
+    static PFN_Dwm pfnDwm = nullptr;
+    if (!pfnDwm) {
+        HMODULE h = ::GetModuleHandleW(L"dwmapi.dll");
+        if (h) pfnDwm = (PFN_Dwm)::GetProcAddress(h, "DwmSetWindowAttribute");
+    }
+    BOOL dark = IsDarkModeEnabled() ? TRUE : FALSE;
+    if (pfnDwm) {
+        if (FAILED(pfnDwm(hwnd, 20, &dark, sizeof(dark))))
+            pfnDwm(hwnd, 19, &dark, sizeof(dark));
+    }
+
+    // ── client area (AllowDarkModeForWindow, uxtheme ordinal 133) ────────
+    static PFN_AllowDarkM pfnAllow = nullptr;
+    if (!pfnAllow) {
+        HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+        if (!h) h = ::LoadLibraryW(L"uxtheme.dll");
+        if (h) pfnAllow = (PFN_AllowDarkM)::GetProcAddress(h, MAKEINTRESOURCEA(133));
+    }
+    if (pfnAllow) {
+        pfnAllow(hwnd, dark);
+        DarkEnumCtxM ctx{ pfnAllow, dark };
+        ::EnumChildWindows(hwnd, s_AllowDarkChildM, reinterpret_cast<LPARAM>(&ctx));
+    }
+
+    // Recreate dark brushes to match current mode
+    if (m_darkBgBrush)   { ::DeleteObject(m_darkBgBrush);   m_darkBgBrush   = nullptr; }
+    if (m_darkEditBrush) { ::DeleteObject(m_darkEditBrush); m_darkEditBrush = nullptr; }
+    if (dark) {
+        m_darkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
+        m_darkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
+    }
+
+    ApplyThemeToControls();
+    ::RedrawWindow(hwnd, nullptr, nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+void COdinMDlg::ApplyThemeToControls() {
+    static PFN_SwtM pfnSwt = nullptr;
+    if (!pfnSwt) {
+        HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+        if (h) pfnSwt = (PFN_SwtM)::GetProcAddress(h, "SetWindowTheme");
+    }
+    if (!pfnSwt) return;
+
+    bool dark = IsDarkModeEnabled();
+
+    // Apply the correct uxtheme subapp string to every child control based on its class.
+    // This covers buttons, checkboxes, statics, edits, combos, listview, and its header.
+    ThemeEnumCtxM ctx{ pfnSwt, dark };
+    ::EnumChildWindows(m_hWnd, s_ThemeChildM, reinterpret_cast<LPARAM>(&ctx));
+
+    // ListView also needs explicit color assignments beyond the theme string.
+    HWND hList = GetDlgItem(IDC_LIST_DRIVES);
+    ListView_SetBkColor(hList,     dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
+    ListView_SetTextBkColor(hList, dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
+    ListView_SetTextColor(hList,   dark ? RGB(212, 212, 212) : CLR_DEFAULT);
+    ::InvalidateRect(hList, nullptr, TRUE);
+}
+
+LRESULT COdinMDlg::OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+    if (!IsDarkModeEnabled() || !m_darkBgBrush) { bHandled = FALSE; return 0; }
+    HDC hdc = reinterpret_cast<HDC>(wParam);
+    if (uMsg == WM_CTLCOLOREDIT || uMsg == WM_CTLCOLORLISTBOX) {
+        ::SetTextColor(hdc, RGB(212, 212, 212));
+        ::SetBkColor(hdc,   RGB(45,  45,  48));
+        bHandled = TRUE;
+        return reinterpret_cast<LRESULT>(m_darkEditBrush);
+    }
+    ::SetTextColor(hdc, RGB(212, 212, 212));
+    ::SetBkMode(hdc, TRANSPARENT);  // group box labels need transparent bg mode
+    ::SetBkColor(hdc,   RGB(32,  32,  32));
+    bHandled = TRUE;
+    return reinterpret_cast<LRESULT>(m_darkBgBrush);
+}
+
+LRESULT COdinMDlg::OnEraseBkgnd(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+    if (!IsDarkModeEnabled() || !m_darkBgBrush) { bHandled = FALSE; return 1; }
+    RECT rc;
+    GetClientRect(&rc);
+    ::FillRect(reinterpret_cast<HDC>(wParam), &rc, m_darkBgBrush);
+    return 1;
+}
+
+LRESULT COdinMDlg::OnSettingChange(UINT, WPARAM, LPARAM lParam, BOOL&) {
+    if (lParam && wcscmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0)
+        ApplyDarkMode(m_hWnd);
+    return 0;
+}
+
+// ── ListView NM_CUSTOMDRAW ───────────────────────────────────────────────────
+
+COLORREF COdinMDlg::StatusColor(CloneStatus s) {
+    switch (s) {
+    case CloneStatus::Cloning:    return RGB(0,   120, 215);  // blue
+    case CloneStatus::Verifying:  return RGB(200, 140,   0);  // amber
+    case CloneStatus::Complete:   return RGB(0,   150,   0);  // green
+    case CloneStatus::Failed:     return RGB(200,   0,   0);  // red
+    case CloneStatus::Empty:
+    case CloneStatus::Stopped:    return RGB(128, 128, 128);  // gray
+    default:                      return CLR_DEFAULT;
+    }
+}
+
+void COdinMDlg::DrawProgressCell(HDC hdc, RECT rc, int progress) {
+    // Background: system window color (adapts to dark/light mode)
+    FillRect(hdc, &rc, ::GetSysColorBrush(COLOR_WINDOW));
+    // Blue filled portion
+    RECT fill = rc;
+    fill.right = rc.left + (rc.right - rc.left) * progress / 100;
+    HBRUSH blueBrush = CreateSolidBrush(RGB(0, 120, 215));
+    FillRect(hdc, &fill, blueBrush);
+    DeleteObject(blueBrush);
+    // Percentage text centered (white over fill, system text color over bg)
+    wchar_t buf[8];
+    swprintf_s(buf, L"%d%%", progress);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, progress > 50 ? RGB(255, 255, 255) : ::GetSysColor(COLOR_WINDOWTEXT));
+    DrawTextW(hdc, buf, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
+LRESULT COdinMDlg::OnListCustomDraw(int, LPNMHDR pnmh, BOOL& handled) {
+    LPNMLVCUSTOMDRAW pcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(pnmh);
+    handled = FALSE;
+
+    switch (pcd->nmcd.dwDrawStage) {
+    case CDDS_PREPAINT:
+        return CDRF_NOTIFYITEMDRAW;
+
+    case CDDS_ITEMPREPAINT:
+        return CDRF_NOTIFYSUBITEMDRAW;
+
+    case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
+        int item    = static_cast<int>(pcd->nmcd.dwItemSpec);
+        int subItem = pcd->iSubItem;
+        if (item < 0 || item >= static_cast<int>(m_driveSlots.size()))
+            return CDRF_DODEFAULT;
+
+        CloneStatus status = m_driveSlots[item]->GetStatus();
+
+        if (subItem == COL_STATUS) {
+            COLORREF c = StatusColor(status);
+            if (c != CLR_DEFAULT) pcd->clrText = c;
+            return CDRF_NEWFONT;
+        }
+        if (subItem == COL_PROGRESS && status == CloneStatus::Cloning) {
+            DrawProgressCell(pcd->nmcd.hdc, pcd->nmcd.rc, m_driveSlots[item]->GetProgress());
+            return CDRF_SKIPDEFAULT;
+        }
+        if (status == CloneStatus::Empty) {
+            pcd->clrText = RGB(160, 160, 160);
+            return CDRF_NEWFONT;
+        }
+        return CDRF_DODEFAULT;
+    }
+    default:
+        return CDRF_DODEFAULT;
+    }
 }

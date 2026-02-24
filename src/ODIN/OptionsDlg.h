@@ -44,15 +44,23 @@ class COptionsDlg : public CDialogImpl<COptionsDlg>
   BEGIN_MSG_MAP(COptionsDlg)
     MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
     COMMAND_HANDLER(IDC_BT_ALL_BLOCKS, BN_CLICKED, OnBnClickedBtAllBlocks)
-    COMMAND_HANDLER(IDC_BT_COMPRESSION_BZIP2, BN_CLICKED, OnBnClickedBtCompressionBzip2)
-    COMMAND_HANDLER(IDC_BT_COMPRESSION_GZIP, BN_CLICKED, OnBnClickedBtCompressionGzip)
-    COMMAND_HANDLER(IDC_BT_NO_COMPRESSION, BN_CLICKED, OnBnClickedBtNoCompression)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_GZIP, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_LZ4, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_LZ4HC, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_ZSTD, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_NO_COMPRESSION, BN_CLICKED, OnCompressionChanged)
     COMMAND_HANDLER(IDC_BT_NO_SPLIT, BN_CLICKED, OnBnClickedBtNoSplit)
     COMMAND_HANDLER(IDC_BT_SPLIT_CHUNK, BN_CLICKED, OnBnClickedBtSplitChunk)
  		COMMAND_ID_HANDLER(IDOK, OnOK)
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
     COMMAND_HANDLER(IDC_BT_USED_BLOCKS, BN_CLICKED, OnBnClickedBtUsedBlocks)
     COMMAND_HANDLER(IDC_BT_SNAPSHOT, BN_CLICKED, OnBnClickedBtVSSSnapshot)
+    MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
+    MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_APP, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
+    MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
+    MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
   END_MSG_MAP()
 
 private:
@@ -76,13 +84,19 @@ private:
 public:
   LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtAllBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtCompressionBzip2(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtCompressionGzip(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtNoCompression(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnCompressionChanged(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtNoSplit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtSplitChunk(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnOK(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnCancel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtUsedBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtVSSSnapshot(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnSettingChange(UINT, WPARAM, LPARAM, BOOL&);
+  LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
+  LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  void    ApplyDarkMode(HWND hwnd);
+
+  HBRUSH  fDarkBgBrush   = nullptr;
+  HBRUSH  fDarkEditBrush = nullptr;
 };

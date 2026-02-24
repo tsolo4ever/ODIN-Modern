@@ -199,14 +199,6 @@ void CODINDlg::InitControls()
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetRange32(0, 100);
 
-  // set auto-flash checkbox state and size input
-  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
-  autoFlashCheck.SetCheck(fAutoFlashEnabled ? BST_CHECKED : BST_UNCHECKED);
-  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
-  wchar_t szSize[4];
-  wsprintf(szSize, L"%d", (int)fAutoFlashTargetSizeGB);
-  sizeEdit.SetWindowText(szSize);
-
   // fill volume list box
   FillDriveList();
 
@@ -424,86 +416,59 @@ void CODINDlg::UpdateStatus(bool bInit)
   static LARGE_INTEGER startTimer, performanceFrequency;
   static __int64 nnLastTotal;
   LARGE_INTEGER timer;
-  int nProgressPercent;
-  CStatic label;
   __int64 ddTimeDifference;
   unsigned __int64 nnBytesTotal = fOdinManager.GetTotalBytesToProcess();
-  unsigned __int64 nnBytesLeft = nnBytesTotal - fBytesProcessed;
 
   if (bInit) {
     QueryPerformanceFrequency(&performanceFrequency);
     QueryPerformanceCounter(&startTimer);
     nnLastTotal = 0;
-  } else if (nnBytesTotal ) {
-    nProgressPercent = (int) ((fBytesProcessed * 100 + (nnBytesTotal/2)) / nnBytesTotal);
+    SetDlgItemText(IDC_LABEL_STATUS_LINE, L"");
+  } else if (nnBytesTotal) {
+    int nProgressPercent = (int)((fBytesProcessed * 100 + (nnBytesTotal / 2)) / nnBytesTotal);
 
-    const size_t BUFSIZE=80;
-    wchar_t buffer[BUFSIZE];
-
-    swprintf(buffer, BUFSIZE, L"%d%%", nProgressPercent);
-    label = GetDlgItem(IDC_LABEL_PERCENT);
-    label.SetWindowText(buffer);
-    
     CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
     progress.SetPos(nProgressPercent);
 
-    MakeByteLabel(nnBytesTotal, buffer, BUFSIZE);
-    label = GetDlgItem(IDC_LABEL_BYTES_TOTAL);
-    label.SetWindowText(buffer);
-    MakeByteLabel(fBytesProcessed, buffer, BUFSIZE);
-    label = GetDlgItem(IDC_LABEL_BYTES_PROCESSED);
-    label.SetWindowText(buffer);
+    const size_t BUFSIZE = 80;
+    wchar_t done[BUFSIZE], total[BUFSIZE], speed[BUFSIZE];
+    MakeByteLabel(fBytesProcessed, done, BUFSIZE);
+    MakeByteLabel(nnBytesTotal, total, BUFSIZE);
 
     QueryPerformanceCounter(&timer);
-    
-    // get elapsed time
     ddTimeDifference = timer.QuadPart - startTimer.QuadPart;
-    // convert to seconds
-    ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart>>1) )/ performanceFrequency.QuadPart;
-    ATL::CString timeLabel;
-    DWORD dwTimeDifference = (DWORD) ddTimeDifference;
-    timeLabel.Format(L"%02u:%02u:%02u", dwTimeDifference/3600, dwTimeDifference % 3600 / 60, dwTimeDifference % 60);
-    label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
-    label.SetWindowText(timeLabel);
+    ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart >> 1)) / performanceFrequency.QuadPart;
+    DWORD dwElapsed = (DWORD)ddTimeDifference;
 
-    // calculate speed
-    if (ddTimeDifference>0)
-      MakeByteLabel(fBytesProcessed/ddTimeDifference, buffer, BUFSIZE);
-    ATL::CString labelSpeed (buffer);
-    labelSpeed += L"/s";
-    label = GetDlgItem(IDC_LABEL_SPEED);
-    label.SetWindowText(labelSpeed);
+    if (ddTimeDifference > 0)
+      MakeByteLabel(fBytesProcessed / ddTimeDifference, speed, BUFSIZE);
+    else
+      wcscpy_s(speed, BUFSIZE, L"--");
 
-    // calculate (estimate) time left
+    wchar_t etaBuf[32] = L"--:--:--";
     if (fBytesProcessed > 0) {
-      __int64 totalTime = (ddTimeDifference * nnBytesTotal + (fBytesProcessed>>1)) / fBytesProcessed;
+      __int64 totalTime = (ddTimeDifference * (__int64)nnBytesTotal + (fBytesProcessed >> 1)) / fBytesProcessed;
       __int64 timeLeft = totalTime - ddTimeDifference;
-      DWORD dwTimeLeft = (DWORD) timeLeft;
-      timeLabel.Format(L"%02u:%02u:%02u", dwTimeLeft/3600, dwTimeLeft % 3600 / 60, dwTimeLeft % 60);
-
-      label = GetDlgItem(IDC_LABEL_TIME_LEFT);
-      label.SetWindowText(timeLabel);
+      if (timeLeft >= 0) {
+        DWORD dwLeft = (DWORD)timeLeft;
+        swprintf_s(etaBuf, L"%02u:%02u:%02u", dwLeft / 3600, dwLeft % 3600 / 60, dwLeft % 60);
+      }
     }
+
+    wchar_t line[256];
+    swprintf_s(line, L"Processed: %s / %s   Speed: %s/s   Elapsed: %02u:%02u:%02u   ETA: %s",
+               done, total, speed,
+               dwElapsed / 3600, dwElapsed % 3600 / 60, dwElapsed % 60,
+               etaBuf);
+    SetDlgItemText(IDC_LABEL_STATUS_LINE, line);
   }
-} 
+}
 
 void CODINDlg::ResetProgressControls()
 {
-  CStatic label;
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetPos(0);
-  label = GetDlgItem(IDC_LABEL_PERCENT);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_BYTES_TOTAL);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_BYTES_PROCESSED);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_TIME_LEFT);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_SPEED);
-  label.SetWindowText(NULL);
+  SetDlgItemText(IDC_LABEL_STATUS_LINE, L"");
 }
 
 
@@ -632,8 +597,6 @@ void CODINDlg::DisableControlsWhileProcessing()
   CButton saveButton( GetDlgItem(IDC_RADIO_BACKUP) );
   CButton restoreButton( GetDlgItem(IDC_RADIO_RESTORE) );
   CButton okButton(GetDlgItem(IDOK));
-  CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
-  CButton optionsButton(GetDlgItem(ID_BT_OPTIONS));
   CButton cancelButton(GetDlgItem(IDCANCEL));
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
@@ -643,8 +606,8 @@ void CODINDlg::DisableControlsWhileProcessing()
   saveButton.EnableWindow(FALSE);
   restoreButton.EnableWindow(FALSE);
   okButton.EnableWindow(FALSE);
-  verifyButton.EnableWindow(FALSE);
-  optionsButton.EnableWindow(FALSE);
+  ::EnableMenuItem(GetMenu(), ID_BT_VERIFY,  MF_BYCOMMAND | MF_GRAYED);
+  ::EnableMenuItem(GetMenu(), ID_BT_OPTIONS, MF_BYCOMMAND | MF_GRAYED);
   comboFiles.EnableWindow(FALSE);
   listBoxVolumes.EnableWindow(FALSE);
   commentTextField.EnableWindow(FALSE);
@@ -658,8 +621,6 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   CButton saveButton( GetDlgItem(IDC_RADIO_BACKUP) );
   CButton restoreButton( GetDlgItem(IDC_RADIO_RESTORE) );
   CButton okButton(GetDlgItem(IDOK));
-  CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
-  CButton optionsButton(GetDlgItem(ID_BT_OPTIONS));
   CButton cancelButton(GetDlgItem(IDCANCEL));
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
@@ -669,8 +630,8 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   saveButton.EnableWindow(TRUE);
   restoreButton.EnableWindow(TRUE);
   okButton.EnableWindow(TRUE);
-  verifyButton.EnableWindow(TRUE);
-  optionsButton.EnableWindow(TRUE);
+  ::EnableMenuItem(GetMenu(), ID_BT_VERIFY,  MF_BYCOMMAND | MF_ENABLED);
+  ::EnableMenuItem(GetMenu(), ID_BT_OPTIONS, MF_BYCOMMAND | MF_ENABLED);
   comboFiles.EnableWindow(TRUE);
   listBoxVolumes.EnableWindow(TRUE);
   commentTextField.EnableWindow(TRUE);
@@ -785,26 +746,19 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
 
   RefreshDriveList();
 
-  // ── Snapshot radio button: greyed out until VSS is implemented in v0.5 ──
-  // Disable the button so it cannot be selected.
-  CButton snapshotBtn(GetDlgItem(IDC_BT_SNAPSHOT));
-  snapshotBtn.EnableWindow(FALSE);
-  // Attach a tooltip to the *parent* rect so it fires even on a disabled child.
-  // TTF_SUBCLASS lets the tooltip control relay WM_MOUSEMOVE from the parent
-  // automatically; no PreTranslateMessage plumbing required.
-  RECT rcBtn;
-  snapshotBtn.GetWindowRect(&rcBtn);
-  ScreenToClient(&rcBtn);
-  fSnapshotTip.Create(m_hWnd, NULL, NULL, TTS_ALWAYSTIP);
-  fSnapshotTip.Activate(TRUE);
-  CToolInfo ti(TTF_SUBCLASS, m_hWnd, IDC_BT_SNAPSHOT, &rcBtn,
-               L"VSS snapshot - coming in v0.5");
-  fSnapshotTip.AddTool(&ti);
-
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
   ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);
   volumeInfoTextField.SetWindowText(text);
+
+  // Load and attach main menu
+  HMENU hMenu = LoadMenu(_Module.GetResourceInstance(), MAKEINTRESOURCE(IDR_MAINMENU));
+  SetMenu(hMenu);
+  ::CheckMenuItem(hMenu, ID_SETTINGS_AUTOFLASH_ENABLE,
+      MF_BYCOMMAND | (fAutoFlashEnabled ? MF_CHECKED : MF_UNCHECKED));
+
+  ApplyDarkMode(m_hWnd);       // create brushes before first paint
+  PostMessage(WM_APP, 0, 0);   // deferred: repaint after window is fully visible
 
   bHandled = TRUE;
   return 0L;
@@ -985,8 +939,18 @@ LRESULT CODINDlg::OnLvnItemchangedListVolumes(int /*idCtrl*/, LPNMHDR pNMHDR, BO
       ATL::CString fsText;
       CDriveInfo* di = fOdinManager.GetDriveInfo(index);
       MakeByteLabel(di->GetUsedSize(), buffer, BUFSIZE);
-      GetPartitionFileSystemString(di->GetPartitionType(), fsText);
-      text.Format(fVolumeInfoTemplate, di->GetMountPoint().c_str(), buffer, fsText, di->GetClusterSize());
+      // GetVolumeInformationW returns the actual FS name (NTFS, exFAT, FAT32 …) for mounted
+      // drives, correctly handling GPT partitions that have no MBR type byte.
+      wchar_t fsName[32] = L"";
+      const std::wstring& mp = di->GetMountPoint();
+      if (!mp.empty() &&
+          GetVolumeInformationW(mp.c_str(), NULL, 0, NULL, NULL, NULL, fsName, 32) &&
+          fsName[0] != L'\0') {
+        fsText = fsName;
+      } else {
+        GetPartitionFileSystemString(di->GetPartitionType(), fsText);
+      }
+      text.Format(fVolumeInfoTemplate, mp.c_str(), buffer, fsText, di->GetClusterSize());
       volumeInfoTextField.SetWindowText(text);
     }
   }
@@ -1016,6 +980,9 @@ LRESULT CODINDlg::OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*
 
 LRESULT CODINDlg::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 {
+  if (fDarkBgBrush)   { ::DeleteObject(fDarkBgBrush);   fDarkBgBrush   = nullptr; }
+  if (fDarkEditBrush) { ::DeleteObject(fDarkEditBrush); fDarkEditBrush = nullptr; }
+
   // Get column widths to persits value
   fColumn0Width = fVolumeList.GetColumnWidth(0);
   fColumn1Width = fVolumeList.GetColumnWidth(1);
@@ -1095,35 +1062,33 @@ LRESULT CODINDlg::OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
   return 0;
 }
 
-LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+LRESULT CODINDlg::OnAutoFlashEnable(WORD, WORD, HWND, BOOL&)
 {
-  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
-  bool wasEnabled = fAutoFlashEnabled;
-  fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
-  
-  // Read size from input box
-  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
-  wchar_t szSize[4];
-  sizeEdit.GetWindowText(szSize, 4);
-  int size = _wtoi(szSize);
-  if (size > 0 && size < 999) {
-    fAutoFlashTargetSizeGB = size;
-  }
-  
-  // Show warning when enabling for the first time
+  fAutoFlashEnabled = !fAutoFlashEnabled;
+  ::CheckMenuItem(GetMenu(), ID_SETTINGS_AUTOFLASH_ENABLE,
+      MF_BYCOMMAND | (fAutoFlashEnabled ? MF_CHECKED : MF_UNCHECKED));
+
   if (fAutoFlashEnabled && !fAutoFlashWarningShown) {
     ATL::CString msg;
     msg.Format(IDS_ERASE_DRIVE, L"detected removable disks");
     int res = AtlMessageBox(m_hWnd, (LPCWSTR)msg, IDS_WARNING, MB_ICONEXCLAMATION | MB_OKCANCEL);
     if (res != IDOK) {
-      // User cancelled, uncheck the box
       fAutoFlashEnabled = false;
-      autoFlashCheck.SetCheck(BST_UNCHECKED);
+      ::CheckMenuItem(GetMenu(), ID_SETTINGS_AUTOFLASH_ENABLE,
+          MF_BYCOMMAND | MF_UNCHECKED);
     } else {
       fAutoFlashWarningShown = true;
     }
   }
-  
+  return 0;
+}
+
+LRESULT CODINDlg::OnAutoFlashSize(WORD, WORD, HWND, BOOL&)
+{
+  wchar_t msg[128];
+  swprintf_s(msg, L"Current target size: %d GB\n(Edit ODIN.ini to change AutoFlashTargetSizeGB)",
+             (int)fAutoFlashTargetSizeGB);
+  AtlMessageBox(m_hWnd, msg, L"Auto-Flash Size", MB_OK | MB_ICONINFORMATION);
   return 0;
 }
 
@@ -1174,5 +1139,226 @@ void CODINDlg::TriggerAutoFlash(int driveIndex)
   // Trigger the restore operation by simulating OK button click
   CWindow okButton = GetDlgItem(IDOK);
   PostMessage(WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), (LPARAM)okButton.m_hWnd);
+}
+
+// ── Dark mode ────────────────────────────────────────────────────────────────
+// Title bar:  DwmSetWindowAttribute ordinal (loaded at runtime)
+// Client area: AllowDarkModeForWindow (uxtheme ordinal 133) + WM_CTLCOLOR* +
+//              SetWindowTheme on native controls.
+// GetSysColor(COLOR_WINDOW/WINDOWTEXT/BTNFACE/BTNTEXT) returns the correct
+// dark-mode values once SetPreferredAppMode(AllowDark) is called at startup.
+
+static bool IsDarkModeEnabled() {
+  // ShouldAppsUseDarkMode (uxtheme ordinal 132): only trust a TRUE answer.
+  // When SetPreferredAppMode hasn't taken effect it can return FALSE even though
+  // the registry says dark, so always fall through to the registry on FALSE.
+  typedef BOOL (WINAPI* PFN_ShouldDark)();
+  static bool s_tried = false;
+  static PFN_ShouldDark s_pfn = nullptr;
+  if (!s_tried) {
+    s_tried = true;
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) s_pfn = (PFN_ShouldDark)::GetProcAddress(h, MAKEINTRESOURCEA(132));
+  }
+  if (s_pfn && s_pfn() != FALSE)
+    return true;
+
+  // Definitive ground truth: AppsUseLightTheme = 0 means dark.
+  DWORD value = 1, size = sizeof(value);
+  HKEY hKey = NULL;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS) {
+    RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
+                     reinterpret_cast<LPBYTE>(&value), &size);
+    RegCloseKey(hKey);
+  }
+  return value == 0;
+}
+
+// EnumChildWindows callback: allow dark mode on every child and signal WM_THEMECHANGED.
+using PFN_AllowDark = BOOL (WINAPI*)(HWND, BOOL);
+struct DarkEnumCtx { PFN_AllowDark fn; BOOL dark; };
+static BOOL CALLBACK s_AllowDarkChild(HWND child, LPARAM lp) {
+  auto& ctx = *reinterpret_cast<DarkEnumCtx*>(lp);
+  if (ctx.fn) ctx.fn(child, ctx.dark);
+  ::SendMessage(child, WM_THEMECHANGED, 0, 0);
+  return TRUE;
+}
+
+// EnumChildWindows callback: apply the correct uxtheme subapp string per control class.
+using PFN_Swt = HRESULT (WINAPI*)(HWND, LPCWSTR, LPCWSTR);
+struct ThemeEnumCtx { PFN_Swt swt; bool dark; };
+static BOOL CALLBACK s_ThemeChild(HWND child, LPARAM lp) {
+  auto& c = *reinterpret_cast<ThemeEnumCtx*>(lp);
+  wchar_t cls[64] = {};
+  ::GetClassNameW(child, cls, _countof(cls));
+  const wchar_t* theme = nullptr;
+
+  if (_wcsicmp(cls, L"Button") == 0) {
+    LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
+    BYTE type = (BYTE)(style & 0x0FL);
+    if (type == BS_GROUPBOX) {
+      // Don't theme group boxes - let WM_CTLCOLORSTATIC handle text
+      c.swt(child, nullptr, nullptr);
+      return TRUE;
+    }
+    theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+  }
+  else if (_wcsicmp(cls, L"Edit")          == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
+  else if (_wcsicmp(cls, L"ComboBox")      == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
+  else if (_wcsicmp(cls, L"SysListView32") == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+  else if (_wcsicmp(cls, L"SysHeader32")   == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+  else if (_wcsicmp(cls, L"Static")        == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+
+  c.swt(child, theme, nullptr);
+  return TRUE;
+}
+
+LRESULT CODINDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
+  ApplyDarkMode(m_hWnd);
+  return 0;
+}
+
+void CODINDlg::ApplyDarkMode(HWND hwnd) {
+  // ── title bar (DWM) ──────────────────────────────────────────────────────
+  typedef HRESULT (WINAPI *PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
+  static PFN_Dwm pfnDwm = nullptr;
+  if (!pfnDwm) {
+    HMODULE h = ::GetModuleHandleW(L"dwmapi.dll");
+    if (!h) h = ::LoadLibraryW(L"dwmapi.dll");
+    if (h) pfnDwm = (PFN_Dwm)::GetProcAddress(h, "DwmSetWindowAttribute");
+  }
+  BOOL dark = IsDarkModeEnabled() ? TRUE : FALSE;
+  if (pfnDwm) {
+    if (FAILED(pfnDwm(hwnd, 20, &dark, sizeof(dark))))
+      pfnDwm(hwnd, 19, &dark, sizeof(dark));
+  }
+
+  // ── menu bar / non-client dark (SetWindowCompositionAttribute, user32 by name) ──
+  // This is more stable than uxtheme ordinals on newer Win11 builds and
+  // covers the menu bar which DwmSetWindowAttribute alone does not darken.
+  typedef struct { DWORD Attrib; PVOID pvData; SIZE_T cbData; } SWCA_DATA;
+  typedef BOOL (WINAPI* PFN_SWCA)(HWND, SWCA_DATA*);
+  static PFN_SWCA pfnSwca = nullptr;
+  if (!pfnSwca) {
+    HMODULE h = ::GetModuleHandleW(L"user32.dll");
+    if (h) pfnSwca = (PFN_SWCA)::GetProcAddress(h, "SetWindowCompositionAttribute");
+  }
+  if (pfnSwca) {
+    SWCA_DATA data = { 26 /*WCA_USEDARKMODECOLORS*/, &dark, sizeof(dark) };
+    pfnSwca(hwnd, &data);
+  }
+
+  // ── client area (AllowDarkModeForWindow, uxtheme ordinal 133) ────────────
+static PFN_AllowDark pfnAllow = nullptr;
+if (!pfnAllow) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (!h) h = ::LoadLibraryW(L"uxtheme.dll");
+    if (h) pfnAllow = (PFN_AllowDark)::GetProcAddress(h, MAKEINTRESOURCEA(133));
+}
+if (pfnAllow) {
+    pfnAllow(hwnd, dark);
+
+    DarkEnumCtx ctx{ pfnAllow, dark };
+    ::EnumChildWindows(hwnd, s_AllowDarkChild, reinterpret_cast<LPARAM>(&ctx));
+
+    // Opt the menu bar in: pass the HMENU cast to HWND (undocumented x64 requirement).
+    HMENU hMenu = ::GetMenu(hwnd);
+    if (hMenu) {
+        // Force Windows to rebuild the menu bar
+        ::SetMenu(hwnd, NULL);
+        ::SetMenu(hwnd, hMenu);
+    
+        // Get the actual menu handle Windows is now using
+        HMENU hRealMenu = ::GetMenu(hwnd);
+    
+        // Opt the REAL menu into immersive dark mode
+        pfnAllow(reinterpret_cast<HWND>(hRealMenu), dark);
+    
+        // Redraw
+        ::DrawMenuBar(hwnd);
+    }
+}
+
+// Recreate dark brushes to match current mode
+if (fDarkBgBrush)   { ::DeleteObject(fDarkBgBrush);   fDarkBgBrush   = nullptr; }
+if (fDarkEditBrush) { ::DeleteObject(fDarkEditBrush); fDarkEditBrush = nullptr; }
+if (dark) {
+    fDarkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
+    fDarkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
+}
+
+ApplyThemeToControls();
+::RedrawWindow(hwnd, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+void CODINDlg::ApplyThemeToControls() {
+  static PFN_Swt pfnSwt = nullptr;
+  if (!pfnSwt) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) pfnSwt = (PFN_Swt)::GetProcAddress(h, "SetWindowTheme");
+  }
+  if (!pfnSwt) return;
+
+  bool dark = IsDarkModeEnabled();
+
+  // Apply the correct uxtheme subapp string to every child control based on its class.
+  // This covers buttons, radios, statics, edits, combos, listview, and its header.
+  ThemeEnumCtx ctx{ pfnSwt, dark };
+  ::EnumChildWindows(m_hWnd, s_ThemeChild, reinterpret_cast<LPARAM>(&ctx));
+
+  // ListView also needs explicit color assignments beyond the theme string.
+  HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
+  ListView_SetBkColor(hList,     dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
+  ListView_SetTextBkColor(hList, dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
+  ListView_SetTextColor(hList,   dark ? RGB(212, 212, 212) : CLR_DEFAULT);
+  ::InvalidateRect(hList, nullptr, TRUE);
+
+  // FlushMenuThemes (uxtheme ordinal 136) forces popup menus to re-evaluate the theme.
+  typedef void (WINAPI* PFN_Flush)();
+  static PFN_Flush pfnFlush = nullptr;
+  if (!pfnFlush) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) pfnFlush = (PFN_Flush)::GetProcAddress(h, MAKEINTRESOURCEA(136));
+  }
+  if (pfnFlush) pfnFlush();
+  ::DrawMenuBar(m_hWnd);
+}
+
+// WM_CTLCOLOR* — covers dialog bg (WM_CTLCOLORDLG), static labels, group boxes,
+// radio buttons, edit boxes, listbox drop-downs (range 0x0133..0x0138).
+// Brushes are created/deleted by ApplyDarkMode; WM_THEMECHANGED recreates them.
+LRESULT CODINDlg::OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+  if (!IsDarkModeEnabled() || !fDarkBgBrush) { bHandled = FALSE; return 0; }
+  HDC hdc = reinterpret_cast<HDC>(wParam);
+  if (uMsg == WM_CTLCOLOREDIT || uMsg == WM_CTLCOLORLISTBOX) {
+    ::SetTextColor(hdc, RGB(212, 212, 212));
+    ::SetBkColor(hdc,   RGB(45,  45,  48));
+    bHandled = TRUE;
+    return reinterpret_cast<LRESULT>(fDarkEditBrush);
+  }
+  // WM_CTLCOLORDLG, WM_CTLCOLORSTATIC, WM_CTLCOLORBTN, WM_CTLCOLORSCROLLBAR
+  ::SetTextColor(hdc, RGB(212, 212, 212));
+  ::SetBkMode(hdc, TRANSPARENT);  // group box labels need transparent bg mode
+  ::SetBkColor(hdc,   RGB(32,  32,  32));
+  bHandled = TRUE;
+  return reinterpret_cast<LRESULT>(fDarkBgBrush);
+}
+
+// WM_ERASEBKGND — paint dialog background dark when in dark mode.
+LRESULT CODINDlg::OnEraseBkgnd(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+  if (!IsDarkModeEnabled() || !fDarkBgBrush) { bHandled = FALSE; return 1; }
+  RECT rc;
+  GetClientRect(&rc);
+  ::FillRect(reinterpret_cast<HDC>(wParam), &rc, fDarkBgBrush);
+  return 1;
+}
+
+LRESULT CODINDlg::OnSettingChange(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam, BOOL& /*bHandled*/) {
+  if (lParam && wcscmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0)
+    ApplyDarkMode(m_hWnd);
+  return 0;
 }
 

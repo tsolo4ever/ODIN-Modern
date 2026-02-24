@@ -36,6 +36,8 @@ COptionsDlg::COptionsDlg(COdinManager& odinManager)
 
 COptionsDlg::~COptionsDlg()
 {
+  if (fDarkBgBrush)   { ::DeleteObject(fDarkBgBrush);   fDarkBgBrush   = nullptr; }
+  if (fDarkEditBrush) { ::DeleteObject(fDarkEditBrush); fDarkEditBrush = nullptr; }
 }
 
 void COptionsDlg::Init()
@@ -100,48 +102,46 @@ void COptionsDlg::UpdateSetSplitFileMode()
 
 void COptionsDlg::UpdateGetCompressionMode()
 {
-  // get compression mode
-  CButton noCompButton( GetDlgItem(IDC_BT_NO_COMPRESSION) );
-  CButton gZipCompButton( GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
-  CButton bZip2CompButton( GetDlgItem(IDC_BT_COMPRESSION_BZIP2) );
+  CButton noCompButton(    GetDlgItem(IDC_BT_NO_COMPRESSION) );
+  CButton gZipCompButton(  GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
+  CButton lz4CompButton(   GetDlgItem(IDC_BT_COMPRESSION_LZ4) );
+  CButton lz4hcCompButton( GetDlgItem(IDC_BT_COMPRESSION_LZ4HC) );
+  CButton zstdCompButton(  GetDlgItem(IDC_BT_COMPRESSION_ZSTD) );
+
+  // Clear all first
+  noCompButton.SetCheck(BST_UNCHECKED);
+  gZipCompButton.SetCheck(BST_UNCHECKED);
+  lz4CompButton.SetCheck(BST_UNCHECKED);
+  lz4hcCompButton.SetCheck(BST_UNCHECKED);
+  zstdCompButton.SetCheck(BST_UNCHECKED);
 
   fCompressionMode = fOdinManager.GetCompressionMode();
   switch (fCompressionMode) {
-    case noCompression:
-      noCompButton.SetCheck(BST_CHECKED);
-      gZipCompButton.SetCheck(BST_UNCHECKED);
-      bZip2CompButton.SetCheck(BST_UNCHECKED);
-      break;
-    case compressionGZip:
-      noCompButton.SetCheck(BST_UNCHECKED);
-      gZipCompButton.SetCheck(BST_CHECKED);
-      bZip2CompButton.SetCheck(BST_UNCHECKED);
-      break;
-    case compressionBZIP2:
-      noCompButton.SetCheck(BST_UNCHECKED);
-      gZipCompButton.SetCheck(BST_UNCHECKED);
-      bZip2CompButton.SetCheck(BST_CHECKED);
-      break;
+    case noCompression:    noCompButton.SetCheck(BST_CHECKED);    break;
+    case compressionGZip:  gZipCompButton.SetCheck(BST_CHECKED);  break;
+    case compressionLZ4:   lz4CompButton.SetCheck(BST_CHECKED);   break;
+    case compressionLZ4HC: lz4hcCompButton.SetCheck(BST_CHECKED); break;
+    case compressionZSTD:  zstdCompButton.SetCheck(BST_CHECKED);  break;
+    default:               noCompButton.SetCheck(BST_CHECKED);    break; // bzip2 legacy → no compression
   }
 }
 
 void COptionsDlg::UpdateSetCompressionMode()
 {
-  // set compression mode
-  CButton noCompButton( GetDlgItem(IDC_BT_NO_COMPRESSION) );
-  CButton gZipCompButton( GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
-  CButton bZip2CompButton( GetDlgItem(IDC_BT_COMPRESSION_BZIP2) );
+  CButton noCompButton(    GetDlgItem(IDC_BT_NO_COMPRESSION) );
+  CButton gZipCompButton(  GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
+  CButton lz4CompButton(   GetDlgItem(IDC_BT_COMPRESSION_LZ4) );
+  CButton lz4hcCompButton( GetDlgItem(IDC_BT_COMPRESSION_LZ4HC) );
+  CButton zstdCompButton(  GetDlgItem(IDC_BT_COMPRESSION_ZSTD) );
 
-  if (noCompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = noCompression;
-  else if (gZipCompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = compressionGZip;
-  else if (bZip2CompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = compressionBZIP2;
-  else
-    ATLASSERT(false);
+  if      (noCompButton.GetCheck()    == BST_CHECKED) fCompressionMode = noCompression;
+  else if (gZipCompButton.GetCheck()  == BST_CHECKED) fCompressionMode = compressionGZip;
+  else if (lz4CompButton.GetCheck()   == BST_CHECKED) fCompressionMode = compressionLZ4;
+  else if (lz4hcCompButton.GetCheck() == BST_CHECKED) fCompressionMode = compressionLZ4HC;
+  else if (zstdCompButton.GetCheck()  == BST_CHECKED) fCompressionMode = compressionZSTD;
+  else ATLASSERT(false);
 
-   fOdinManager.SetCompressionMode(fCompressionMode);
+  fOdinManager.SetCompressionMode(fCompressionMode);
 }
 
 void COptionsDlg::UpdateGetSaveMode()
@@ -213,6 +213,8 @@ unsigned __int64 COptionsDlg::GetChunkSizeNumber()
 LRESULT COptionsDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 {
   Init();
+  ApplyDarkMode(m_hWnd);      // create brushes before first paint
+  PostMessage(WM_APP, 0, 0);  // deferred: repaint after window is fully visible
   return 0;
 }
 
@@ -228,19 +230,7 @@ LRESULT COptionsDlg::OnBnClickedBtAllBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, 
   return 0;
 }
 
-LRESULT COptionsDlg::OnBnClickedBtCompressionBzip2(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-{
-  fOptionWasChanged = true;
-  return 0;
-}
-
-LRESULT COptionsDlg::OnBnClickedBtCompressionGzip(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-{
-  fOptionWasChanged = true;
-  return 0;
-}
-
-LRESULT COptionsDlg::OnBnClickedBtNoCompression(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+LRESULT COptionsDlg::OnCompressionChanged(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 {
   fOptionWasChanged = true;
   return 0;
@@ -293,4 +283,141 @@ LRESULT COptionsDlg::OnCancel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl
   return 0;
 }
 
+// ── Dark mode ────────────────────────────────────────────────────────────────
+
+static bool OptionsDlg_IsDark() {
+  // ShouldAppsUseDarkMode (uxtheme ordinal 132): only trust TRUE; always
+  // fall through to the registry on FALSE (ordinal may be wrong/inactive).
+  typedef BOOL (WINAPI* PFN_ShouldDark)();
+  static bool s_tried = false;
+  static PFN_ShouldDark s_pfn = nullptr;
+  if (!s_tried) {
+    s_tried = true;
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) s_pfn = (PFN_ShouldDark)::GetProcAddress(h, MAKEINTRESOURCEA(132));
+  }
+  if (s_pfn && s_pfn() != FALSE)
+    return true;
+
+  // Definitive ground truth: AppsUseLightTheme = 0 means dark.
+  DWORD value = 1, size = sizeof(value);
+  HKEY hKey = NULL;
+  if (RegOpenKeyExW(HKEY_CURRENT_USER,
+        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS) {
+    RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
+                     reinterpret_cast<LPBYTE>(&value), &size);
+    RegCloseKey(hKey);
+  }
+  return value == 0;
+}
+
+void COptionsDlg::ApplyDarkMode(HWND hwnd) {
+  typedef HRESULT (WINAPI* PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
+  static PFN_Dwm pfnDwm = nullptr;
+  if (!pfnDwm) {
+    HMODULE h = ::GetModuleHandleW(L"dwmapi.dll");
+    if (!h) h = ::LoadLibraryW(L"dwmapi.dll");
+    if (h) pfnDwm = (PFN_Dwm)::GetProcAddress(h, "DwmSetWindowAttribute");
+  }
+  BOOL dark = OptionsDlg_IsDark() ? TRUE : FALSE;
+  if (pfnDwm) {
+    if (FAILED(pfnDwm(hwnd, 20, &dark, sizeof(dark))))
+      pfnDwm(hwnd, 19, &dark, sizeof(dark));
+  }
+
+  typedef BOOL (WINAPI* PFN_Allow)(HWND, BOOL);
+  static PFN_Allow pfnAllow = nullptr;
+  if (!pfnAllow) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (!h) h = ::LoadLibraryW(L"uxtheme.dll");
+    if (h) pfnAllow = (PFN_Allow)::GetProcAddress(h, MAKEINTRESOURCEA(133));
+  }
+  if (pfnAllow) {
+    pfnAllow(hwnd, dark);
+    // Apply AllowDarkModeForWindow + WM_THEMECHANGED to every child.
+    struct Ctx { PFN_Allow fn; BOOL dark; };
+    Ctx ctx{ pfnAllow, dark };
+    ::EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
+      auto& c = *reinterpret_cast<Ctx*>(lp);
+      if (c.fn) c.fn(child, c.dark);
+      ::SendMessage(child, WM_THEMECHANGED, 0, 0);
+      return TRUE;
+    }, reinterpret_cast<LPARAM>(&ctx));
+  }
+
+  // Apply SetWindowTheme per control class so buttons/radios/edits paint dark.
+  typedef HRESULT (WINAPI* PFN_Swt)(HWND, LPCWSTR, LPCWSTR);
+  static PFN_Swt pfnSwt = nullptr;
+  if (!pfnSwt) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) pfnSwt = (PFN_Swt)::GetProcAddress(h, "SetWindowTheme");
+  }
+  if (pfnSwt) {
+    struct SCtx { PFN_Swt swt; bool dark; };
+    SCtx sctx{ pfnSwt, dark != FALSE };
+    ::EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
+      auto& c = *reinterpret_cast<SCtx*>(lp);
+      wchar_t cls[64] = {};
+      ::GetClassNameW(child, cls, _countof(cls));
+      const wchar_t* theme = nullptr;
+      if (_wcsicmp(cls, L"Button") == 0) {
+        LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
+        BYTE type = (BYTE)(style & 0x0FL);
+        if (type == BS_GROUPBOX) { c.swt(child, nullptr, nullptr); return TRUE; }
+        theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+      }
+      else if (_wcsicmp(cls, L"Edit")   == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
+      else if (_wcsicmp(cls, L"Static") == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+      c.swt(child, theme, nullptr);
+      return TRUE;
+    }, reinterpret_cast<LPARAM>(&sctx));
+  }
+
+  // Recreate brushes.
+  if (fDarkBgBrush)   { ::DeleteObject(fDarkBgBrush);   fDarkBgBrush   = nullptr; }
+  if (fDarkEditBrush) { ::DeleteObject(fDarkEditBrush); fDarkEditBrush = nullptr; }
+  if (dark) {
+    fDarkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
+    fDarkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
+  }
+
+  ::RedrawWindow(hwnd, nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+LRESULT COptionsDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
+  ApplyDarkMode(m_hWnd);
+  return 0;
+}
+
+LRESULT COptionsDlg::OnSettingChange(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam, BOOL& /*bHandled*/) {
+  if (lParam && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0)
+    ApplyDarkMode(m_hWnd);
+  return 0;
+}
+
+LRESULT COptionsDlg::OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+  if (!OptionsDlg_IsDark() || !fDarkBgBrush) { bHandled = FALSE; return 0; }
+  HDC hdc = reinterpret_cast<HDC>(wParam);
+  if (uMsg == WM_CTLCOLOREDIT || uMsg == WM_CTLCOLORLISTBOX) {
+    ::SetTextColor(hdc, RGB(212, 212, 212));
+    ::SetBkColor(hdc,   RGB(45,  45,  48));
+    bHandled = TRUE;
+    return reinterpret_cast<LRESULT>(fDarkEditBrush);
+  }
+  ::SetTextColor(hdc, RGB(212, 212, 212));
+  ::SetBkMode(hdc, TRANSPARENT);  // group box labels need transparent bg mode
+  ::SetBkColor(hdc,   RGB(32,  32,  32));
+  bHandled = TRUE;
+  return reinterpret_cast<LRESULT>(fDarkBgBrush);
+}
+
+LRESULT COptionsDlg::OnEraseBkgnd(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled) {
+  if (!OptionsDlg_IsDark() || !fDarkBgBrush) { bHandled = FALSE; return 1; }
+  RECT rc;
+  GetClientRect(&rc);
+  ::FillRect(reinterpret_cast<HDC>(wParam), &rc, fDarkBgBrush);
+  return 1;
+}
 

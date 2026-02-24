@@ -83,7 +83,6 @@ private:
   CListViewCtrl  fVolumeList;
   ATL::CString fVolumeInfoTemplate;
   CMultiPaneStatusBarCtrl fStatusBar;
-  CToolTipCtrl fSnapshotTip;   // tooltip for disabled snapshot radio button
 
   __int64 fSourceSize;
   __int64 fMaxTargetSize;
@@ -182,7 +181,6 @@ public:
 	COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
     COMMAND_HANDLER(IDC_RADIO_BACKUP, BN_CLICKED, OnBnClickedRadioBackup)
     COMMAND_HANDLER(IDC_RADIO_RESTORE, BN_CLICKED, OnBnClickedRadioRestore)
-    COMMAND_HANDLER(IDC_CHECK_AUTOFLASH, BN_CLICKED, OnBnClickedCheckAutoflash)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_SELCHANGE, OnCbnSelchangeComboFiles)
 	COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
     NOTIFY_HANDLER(IDC_LIST_VOLUMES, LVN_ITEMCHANGED, OnLvnItemchangedListVolumes)
@@ -192,6 +190,14 @@ public:
     COMMAND_HANDLER(ID_BT_VERIFY, BN_CLICKED, OnBnClickedBtVerify)
     COMMAND_HANDLER(ID_BT_OPTIONS, BN_CLICKED, OnBnClickedBtOptions)
     COMMAND_HANDLER(ID_BT_BROWSE, BN_CLICKED, OnBnClickedBtBrowse)
+    COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_ENABLE, OnAutoFlashEnable)
+    COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_SIZE, OnAutoFlashSize)
+    MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
+    MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_APP, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
+    MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
+    MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
   END_MSG_MAP()
   
 /* does not draw correctly 
@@ -224,5 +230,16 @@ public:
   LRESULT OnBnClickedBtVerify(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtOptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnAutoFlashEnable(WORD, WORD, HWND, BOOL&);
+  LRESULT OnAutoFlashSize(WORD, WORD, HWND, BOOL&);
+  LRESULT OnSettingChange(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
+  LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  void    ApplyDarkMode(HWND hwnd);
+  void    ApplyThemeToControls();
+
+  // Dark mode brushes — created/destroyed with the dialog
+  HBRUSH  fDarkBgBrush   = nullptr; // RGB(32,32,32)  dialog/static bg
+  HBRUSH  fDarkEditBrush = nullptr; // RGB(45,45,48)  edit/listbox bg
 };
