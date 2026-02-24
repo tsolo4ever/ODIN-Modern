@@ -714,19 +714,12 @@ void CCommandLineProcessor::ReportFeedback()
 // Code taken from: http://dslweb.nwnexus.com/~ast/dload/guicon.htm
 static const WORD MAX_CONSOLE_LINES = 500;
 bool  CCommandLineProcessor::InitConsole(bool createConsole) {
-  int hConHandle;
-  intptr_t lStdHandle;
   CONSOLE_SCREEN_BUFFER_INFO coninfo;
 
-
   // Try to attach to a parent console first (works when launched from cmd/PowerShell).
-  // Note: AttachConsole returns immediately — the parent shell does not wait for us.
-  // For synchronous console use, prefer launching ODINC.exe which is a console subsystem app.
   bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
   if (!consoleOutput) {
     // Parent has no console — allocate our own as fallback.
-    // We do this unconditionally (ignoring createConsole) so that command-line
-    // arguments are always processed even when no console is available.
     BOOL ok = AllocConsole();
     if (!ok)
       return false;   // neither attach nor alloc worked — give up
@@ -734,47 +727,29 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   }
 
   fHasConsole = true;
-  // set the screen buffer to be big enough to let us scroll text
+  // Set the screen buffer large enough to allow scrolling.
   GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &coninfo);
   coninfo.dwSize.Y = MAX_CONSOLE_LINES;
-  SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE),
-  coninfo.dwSize);
-  // redirect unbuffered STDOUT to the console
-  lStdHandle = (intptr_t)GetStdHandle(STD_OUTPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpOut = _fdopen( hConHandle, "w" );
-    *stdout = *fpOut;
-    setvbuf( stdout, NULL, _IONBF, 0 );
-  }
-  // redirect unbuffered STDIN to the console
-  lStdHandle = (intptr_t)GetStdHandle(STD_INPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpIn = _fdopen( hConHandle, "r" );
-    *stdin = *fpIn;
-    setvbuf( stdin, NULL, _IONBF, 0 );
-  }
-  // redirect unbuffered STDERR to the console
-  lStdHandle = (intptr_t)GetStdHandle(STD_ERROR_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpErr = _fdopen( hConHandle, "w" );
-    *stderr = *fpErr;
-    setvbuf( stderr, NULL, _IONBF, 0 );
-  }
-  // Switch stdout/stderr to UTF-16 mode so wcout/wcerr output wide chars
-  // correctly over inherited or attached console handles.  Without this the
-  // CRT silently drops wide-char output when the handle was passed via
-  // STARTF_USESTDHANDLES (i.e. when odinc.exe launches odin.exe).
+  SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coninfo.dwSize);
+
+  // Re-open CRT stdio streams directly onto the console by name.
+  // This is more reliable than _open_osfhandle/_fdopen/_fileno when the
+  // process is a GUI subsystem app launched with inherited handles via
+  // STARTF_USESTDHANDLES: the _open_osfhandle path silently fails because
+  // the CRT fd table already owns the inherited handle.  CONOUT$/CONIN$
+  // always resolve to the console we just attached or allocated.
+  freopen("CONOUT$", "w", stdout);
+  freopen("CONOUT$", "w", stderr);
+  freopen("CONIN$",  "r", stdin);
+  setvbuf(stdout, NULL, _IONBF, 0);
+  setvbuf(stderr, NULL, _IONBF, 0);
+
+  // Switch to UTF-16 mode so wcout/wcerr emit wide chars correctly.
   _setmode(_fileno(stdout), _O_U16TEXT);
   _setmode(_fileno(stderr), _O_U16TEXT);
-  // Re-sync the C++ wide streams (wcout, wcin, wcerr) with the new C handles.
-  // Pass true explicitly — the no-arg form is implementation-defined in older
-  // headers and may not actually enable syncing after a handle redirect.
+
+  // Re-sync C++ wide streams with the new C streams.
   ios::sync_with_stdio(true);
-  // Flush and reset any error bits on wcout so the first write succeeds
-  // against the newly redirected handle.
   wcout.flush();
   wcout.clear();
   return true;
