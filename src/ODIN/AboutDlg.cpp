@@ -101,8 +101,6 @@ void CAboutDlg::ApplyDarkMode(HWND hwnd)
   }
   
   // ── child window themes ──────────────────────────────────────────────────
-  typedef HRESULT (WINAPI* PFN_SWT)(HWND, LPCWSTR, LPCWSTR);
-  static PFN_SWT pfnSwt = nullptr;
   if (!pfnSwt) {
     HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
     if (h) pfnSwt = (PFN_SWT)::GetProcAddress(h, "SetWindowTheme");

@@ -47,6 +47,9 @@
 
 using namespace std;
 
+#pragma once
+bool IsDarkModeEnabled();
+
 class CODINSplitManagerCallback : public ISplitManagerCallback 
 {
 public:
@@ -168,6 +171,7 @@ public:
 
   LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
   LRESULT OnDeviceChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+  LRESULT OnPostInit(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnOK(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnCancel(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -199,6 +203,7 @@ public:
     MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
     MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
     MESSAGE_HANDLER(WM_APP + 100, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_APP + 100, OnPostInit)
 
     MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
     MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)

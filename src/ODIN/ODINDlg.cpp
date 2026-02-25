@@ -746,6 +746,17 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
 
   RefreshDriveList();
 
+  // Reapply ListView dark colors AFTER items are inserted
+  if (IsDarkModeEnabled()) {
+    HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
+    if (hList) {
+        ListView_SetTextColor(hList, RGB(212, 212, 212));
+        ListView_SetTextBkColor(hList, RGB(32, 32, 32));
+        ListView_SetBkColor(hList, RGB(32, 32, 32));
+    }
+  }
+
+
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
   ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);
@@ -1421,9 +1432,15 @@ void CODINDlg::ApplyThemeToControls() {
 
   // ListView also needs explicit color assignments beyond the theme string.
   HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
-  ListView_SetBkColor(hList,     dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
-  ListView_SetTextBkColor(hList, dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
-  ListView_SetTextColor(hList,   dark ? RGB(212, 212, 212) : CLR_DEFAULT);
+  if (hList) {
+      ListView_SetTextColor(hList, RGB(212, 212, 212));
+      ListView_SetTextBkColor(hList, RGB(32, 32, 32));
+      ListView_SetBkColor(hList, RGB(32, 32, 32));
+  
+      if (pfnSwt)
+          pfnSwt(hList, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+  }
+  
 
   // Explicitly theme and repaint the ListView's header — it's a grandchild of the
   // dialog so EnumChildWindows on the dialog may not reach it.
@@ -1449,6 +1466,17 @@ void CODINDlg::ApplyThemeToControls() {
   }
   if (pfnFlush) pfnFlush();
   ::DrawMenuBar(m_hWnd);
+}
+
+LRESULT CODINDlg::OnPostInit(UINT, WPARAM, LPARAM, BOOL&)
+{
+    HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
+    if (hList) {
+        ListView_SetTextColor(hList, RGB(212, 212, 212));
+        ListView_SetTextBkColor(hList, RGB(32, 32, 32));
+        ListView_SetBkColor(hList, RGB(32, 32, 32));
+    }
+    return 0;
 }
 
 // WM_CTLCOLOR* — covers dialog bg (WM_CTLCOLORDLG), static labels, group boxes,
