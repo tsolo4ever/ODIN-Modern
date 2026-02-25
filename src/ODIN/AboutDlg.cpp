@@ -67,12 +67,21 @@ static bool AboutDlg_IsDark()
 
 void CAboutDlg::ApplyDarkMode(HWND hwnd)
 {
-  const bool dark = AboutDlg_IsDark();
+    static thread_local bool s_inThemePass = false;
+    if (s_inThemePass)
+        return;
+    s_inThemePass = true;
 
   // ── title bar (DWM) ──────────────────────────────────────────────────────
-  BOOL d = dark ? TRUE : FALSE;
   typedef HRESULT (WINAPI* PFN_DWM)(HWND, DWORD, LPCVOID, DWORD);
   static PFN_DWM pfnDwm = nullptr;
+  
+  typedef HRESULT (WINAPI* PFN_SWT)(HWND, LPCWSTR, LPCWSTR);
+  static PFN_SWT pfnSwt = nullptr;
+
+  const bool dark = AboutDlg_IsDark();
+  BOOL d = dark ? TRUE : FALSE;
+
   if (!pfnDwm) {
     HMODULE h = ::GetModuleHandleW(L"dwmapi.dll");
     if (!h) h = ::LoadLibraryW(L"dwmapi.dll");
@@ -90,7 +99,7 @@ void CAboutDlg::ApplyDarkMode(HWND hwnd)
     m_darkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
     m_darkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
   }
-
+  
   // ── child window themes ──────────────────────────────────────────────────
   typedef HRESULT (WINAPI* PFN_SWT)(HWND, LPCWSTR, LPCWSTR);
   static PFN_SWT pfnSwt = nullptr;
@@ -105,22 +114,41 @@ void CAboutDlg::ApplyDarkMode(HWND hwnd)
       wchar_t cls[64] = {};
       ::GetClassNameW(child, cls, _countof(cls));
       LPCWSTR theme = nullptr;
+
       if (_wcsicmp(cls, L"Button") == 0) {
         LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
         BYTE type = (BYTE)(style & 0x0FL);
         if (type == BS_GROUPBOX) { c.swt(child, nullptr, nullptr); return TRUE; }
         theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-      } else if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, L"ComboBox") == 0) {
+      }
+      else if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, L"ComboBox") == 0) {
         theme = c.dark ? L"DarkMode_CFD" : nullptr;
-      } else if (_wcsicmp(cls, L"SysListView32") == 0) {
+      }
+      else if (_wcsicmp(cls, L"SysListView32") == 0) {
         theme = c.dark ? L"DarkMode_Explorer" : nullptr;
       }
+
       c.swt(child, theme, nullptr);
       return TRUE;
     }, reinterpret_cast<LPARAM>(&c));
   }
 
+  HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
+  
+  if (hList) {
+      // Text + background colors
+      ListView_SetTextColor(hList, RGB(212, 212, 212));
+      ListView_SetTextBkColor(hList, RGB(32, 32, 32));
+      ListView_SetBkColor(hList, RGB(32, 32, 32));
+  
+      // Apply dark theme
+      if (pfnSwt)
+          pfnSwt(hList, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+  }
+
   ::InvalidateRect(hwnd, nullptr, TRUE);
+
+  s_inThemePass = false;
 }
 
 LRESULT CAboutDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&)
@@ -136,22 +164,29 @@ LRESULT CAboutDlg::OnSettingChange(UINT, WPARAM, LPARAM lParam, BOOL&)
   return 0;
 }
 
-LRESULT CAboutDlg::OnCtlColor(UINT /*uMsg*/, WPARAM wParam, LPARAM lParam, BOOL& bHandled)
+LRESULT CAboutDlg::OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled)
 {
-  if (!m_darkBgBrush) { bHandled = FALSE; return 0; }
-  HDC hdc = reinterpret_cast<HDC>(wParam);
-  HWND hChild = reinterpret_cast<HWND>(lParam);
-  wchar_t cls[64] = {};
-  ::GetClassNameW(hChild, cls, _countof(cls));
-  bHandled = TRUE;
-  if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, L"ComboBox") == 0) {
-    ::SetBkColor(hdc, RGB(45, 45, 48));
-    ::SetTextColor(hdc, RGB(220, 220, 220));
-    return reinterpret_cast<LRESULT>(m_darkEditBrush);
-  }
-  ::SetBkMode(hdc, TRANSPARENT);
-  ::SetTextColor(hdc, RGB(220, 220, 220));
-  return reinterpret_cast<LRESULT>(m_darkBgBrush);
+    if (!m_darkBgBrush) {
+        bHandled = FALSE;
+        return 0;
+    }
+
+    HDC hdc = reinterpret_cast<HDC>(wParam);
+
+    // Edit controls + listboxes
+    if (uMsg == WM_CTLCOLOREDIT || uMsg == WM_CTLCOLORLISTBOX) {
+        ::SetTextColor(hdc, RGB(212, 212, 212));
+        ::SetBkColor(hdc,   RGB(45, 45, 48));
+        bHandled = TRUE;
+        return reinterpret_cast<LRESULT>(m_darkEditBrush);
+    }
+
+    // Everything else: static, button, group box, dialog, scrollbar
+    ::SetTextColor(hdc, RGB(212, 212, 212));
+    ::SetBkMode(hdc, TRANSPARENT);
+    ::SetBkColor(hdc, RGB(32, 32, 32));
+    bHandled = TRUE;
+    return reinterpret_cast<LRESULT>(m_darkBgBrush);
 }
 
 LRESULT CAboutDlg::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL& bHandled)
@@ -210,7 +245,7 @@ LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPara
   fHyperHomepage.SubclassWindow(homepageBox.m_hWnd);
 
   ApplyDarkMode(m_hWnd);      // create brushes before first paint
-  PostMessage(WM_APP, 0, 0);  // deferred repaint after window fully visible
+  PostMessage(WM_APP + 100, 0, 0);  // deferred repaint after window fully visible
 	return TRUE;
 }
 
@@ -218,6 +253,12 @@ LRESULT CAboutDlg::OnCloseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, 
 {
 	EndDialog(wID);
 	return 0;
+}
+
+LRESULT CAboutDlg::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&)
+{
+    PostMessage(WM_APP + 100);
+    return 0;
 }
   
 LRESULT CAboutDlg::OnLicenseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/)

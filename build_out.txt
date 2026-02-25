@@ -1,0 +1,135 @@
+Build started 2/24/2026 9:05:53 AM.
+
+     1>Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.sln" on node 1 (ODIN target(s)).
+     1>ValidateSolutionConfiguration:
+         Building solution configuration "Debug|x64".
+       ValidateProjects:
+         The project "ODINTest" is not selected for building in solution configuration "Debug|x64".
+     1>Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.sln" (1) is building "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (2) on node 1 (default targets).
+     2>Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (2) is building "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\libz2.vcxproj" (3) on node 1 (default targets).
+     3>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "Debug-x64\libz2\libz2.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "Debug-x64\libz2\libz2.tlog\unsuccessfulbuild".
+     2>Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (2) is building "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\zlib.vcxproj" (4) on node 2 (default targets).
+     4>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "Debug-x64\zlib\zlib.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "Debug-x64\zlib\zlib.tlog\unsuccessfulbuild".
+       ClCompile:
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         zlib.vcxproj -> D:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\Debug-x64\zlib.lib
+       FinalizeBuildStatus:
+         Deleting file "Debug-x64\zlib\zlib.tlog\unsuccessfulbuild".
+         Touching "Debug-x64\zlib\zlib.tlog\zlib.lastbuildstate".
+     4>Done Building Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\zlib.vcxproj" (default targets).
+     3>ClCompile:
+         All outputs are up-to-date.
+       Lib:
+         All outputs are up-to-date.
+         libz2.vcxproj -> d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\Debug-x64\libz2.lib
+       FinalizeBuildStatus:
+         Deleting file "Debug-x64\libz2\libz2.tlog\unsuccessfulbuild".
+         Touching "Debug-x64\libz2\libz2.tlog\libz2.lastbuildstate".
+     3>Done Building Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\libz2.vcxproj" (default targets).
+     2>PrepareForBuild:
+         Structured output is enabled. The formatting of compiler diagnostics will reflect the error hierarchy. See https://aka.ms/cpp/structured-output for more details.
+       InitializeBuildStatus:
+         Creating "Debug-x64\ODIN\ODIN.tlog\unsuccessfulbuild" because "AlwaysCreate" was specified.
+         Touching "Debug-x64\ODIN\ODIN.tlog\unsuccessfulbuild".
+       CustomBuild:
+         All outputs are up-to-date.
+       ClCompile:
+         All outputs are up-to-date.
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\HostX86\x64\CL.exe /c /I"d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\lib\WTL10\Include" /Zi /nologo /W3 /WX- /diagnostics:column /Od /D WIN64 /D STRICT /D DEBUG /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Yu"stdafx.h" /Fp"Debug-x64\ODIN\ODIN.pch" /Fo"Debug-x64\ODIN\\" /Fd"Debug-x64\ODIN\vc145.pdb" /external:W3 /Gd /TP /FC /errorReport:queue src\ODIN\ODINDlg.cpp
+     2>cl : command line  warning D9035: option 'Gm' has been deprecated and will be removed in a future release [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         ODINDlg.cpp
+     2>d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\Exception.h(40,16): warning C4091: 'typedef ': ignored on left of 'Exception::ExceptionCategory' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         (compiling source file '/src/ODIN/ODINDlg.cpp')
+         
+     2>d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\InternalException.h(37,16): warning C4091: 'typedef ': ignored on left of 'EInternalException::ExceptionCode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         (compiling source file '/src/ODIN/ODINDlg.cpp')
+         
+     2>d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\OSException.h(82,16): warning C4091: 'typedef ': ignored on left of 'EWinException::ExceptionCode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         (compiling source file '/src/ODIN/ODINDlg.cpp')
+         
+     2>d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\IImageStream.h(39,16): warning C4091: 'typedef ': ignored on left of 'IImageStream::TOpenMode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         (compiling source file '/src/ODIN/ODINDlg.cpp')
+         
+     2>d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\ODINDlg.cpp(513,19): warning C4858: discarding return value: This member function returns a bool indicating whether the collection is empty and has no other effects. It is not useful to call this member function and discard the return value. Use the 'clear()' member function if you want to erase all elements. [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         (compiling source file '/src/ODIN/ODINDlg.cpp')
+         
+       ResourceCompile:
+         All outputs are up-to-date.
+       ManifestResourceCompile:
+         All outputs are up-to-date.
+       Link:
+         C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\HostX86\x64\link.exe /ERRORREPORT:QUEUE /OUT:"Debug-x64\ODIN.exe" /INCREMENTAL /ILK:"Debug-x64\ODIN\ODIN.ilk" /NOLOGO /LIBPATH:"d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\lib\lz4_win64_v1_10_0" /LIBPATH:"d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\lib\zstd-v1.5.7-win64" liblz4_static.lib libzstd_static.lib "Debug-x64\zlib.lib" "Debug-x64\libz2.lib" version.lib shlwapi.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'" /manifest:embed /manifestinput:ODIN.exe.manifest /DEBUG /PDB:"Debug-x64\ODIN.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE:NO /IMPLIB:"Debug-x64\ODIN.lib" /MACHINE:X64 "Debug-x64\ODIN\ODIN.res"
+         "Debug-x64\ODIN\AboutDlg.obj"
+         "Debug-x64\ODIN\BufferQueue.obj"
+         "Debug-x64\ODIN\CmdLineException.obj"
+         "Debug-x64\ODIN\CommandLineProcessor.obj"
+         "Debug-x64\ODIN\CompressedRunLengthStream.obj"
+         "Debug-x64\ODIN\CompressionException.obj"
+         "Debug-x64\ODIN\CompressionThread.obj"
+         "Debug-x64\ODIN\Config.obj"
+         "Debug-x64\ODIN\crc32.obj"
+         "Debug-x64\ODIN\DecompressionThread.obj"
+         "Debug-x64\ODIN\DriveList.obj"
+         "Debug-x64\ODIN\DriveUtil.obj"
+         "Debug-x64\ODIN\Exception.obj"
+         "Debug-x64\ODIN\FileFormatException.obj"
+         "Debug-x64\ODIN\FileHeader.obj"
+         "Debug-x64\ODIN\FileNameUtil.obj"
+         "Debug-x64\ODIN\ImageStream.obj"
+         "Debug-x64\ODIN\IniWrapper.obj"
+         "Debug-x64\ODIN\InternalException.obj"
+         "Debug-x64\ODIN\MultiPartitionHandler.obj"
+         "Debug-x64\ODIN\ODIN.obj"
+         "Debug-x64\ODIN\ODINDlg.obj"
+         "Debug-x64\ODIN\OdinManager.obj"
+         "Debug-x64\ODIN\OptionsDlg.obj"
+         "Debug-x64\ODIN\OSException.obj"
+         "Debug-x64\ODIN\ParamChecker.obj"
+         "Debug-x64\ODIN\PartitionInfoMgr.obj"
+         "Debug-x64\ODIN\ReadThread.obj"
+         "Debug-x64\ODIN\SplitManager.obj"
+         "Debug-x64\ODIN\compressioncompat.obj"
+         "Debug-x64\ODIN\stdafx.obj"
+         "Debug-x64\ODIN\UserFeedbackConsole.obj"
+         "Debug-x64\ODIN\Util.obj"
+         "Debug-x64\ODIN\VSSException.obj"
+         "Debug-x64\ODIN\VSSWrapper.obj"
+         "Debug-x64\ODIN\WriteThread.obj"
+         "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\Debug-x64\libz2.lib"
+         "D:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\Debug-x64\zlib.lib"
+     2>LINK : fatal error LNK1168: cannot open Debug-x64\ODIN.exe for writing [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+     2>Done Building Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (default targets) -- FAILED.
+     1>Done Building Project "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.sln" (ODIN target(s)) -- FAILED.
+
+Build FAILED.
+
+       "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.sln" (ODIN target) (1) ->
+       "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (default target) (2) ->
+       (ClCompile target) -> 
+         cl : command line  warning D9035: option 'Gm' has been deprecated and will be removed in a future release [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\Exception.h(40,16): warning C4091: 'typedef ': ignored on left of 'Exception::ExceptionCategory' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\InternalException.h(37,16): warning C4091: 'typedef ': ignored on left of 'EInternalException::ExceptionCode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\OSException.h(82,16): warning C4091: 'typedef ': ignored on left of 'EWinException::ExceptionCode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\IImageStream.h(39,16): warning C4091: 'typedef ': ignored on left of 'IImageStream::TOpenMode' when no variable is declared [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+         d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\src\ODIN\ODINDlg.cpp(513,19): warning C4858: discarding return value: This member function returns a bool indicating whether the collection is empty and has no other effects. It is not useful to call this member function and discard the return value. Use the 'clear()' member function if you want to erase all elements. [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+
+
+       "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.sln" (ODIN target) (1) ->
+       "d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj" (default target) (2) ->
+       (Link target) -> 
+         LINK : fatal error LNK1168: cannot open Debug-x64\ODIN.exe for writing [d:\OneDrive\Documents\GitHub\odin-win-code-r71-trunk\ODIN.vcxproj]
+
+    6 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:02.66

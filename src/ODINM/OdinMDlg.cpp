@@ -55,7 +55,7 @@ LRESULT COdinMDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL& handled)
     CenterWindow();
     Log(L"OdinM started. Ready.");
     ApplyDarkMode(m_hWnd);       // create brushes before first paint
-    PostMessage(WM_APP, 0, 0);   // deferred: repaint after window is fully visible
+    PostMessage(WM_APP + 100, 0, 0);   // deferred: repaint after window is fully visible
     handled = TRUE;
     return TRUE;
 }
@@ -624,6 +624,12 @@ LRESULT COdinMDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 void COdinMDlg::ApplyDarkMode(HWND hwnd) {
+
+    static thread_local bool s_inThemePass = false;
+    if (s_inThemePass)
+      return;
+    s_inThemePass = true;
+  
     // ── title bar (DWM) ──────────────────────────────────────────────────
     typedef HRESULT (WINAPI *PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
     static PFN_Dwm pfnDwm = nullptr;
@@ -661,6 +667,8 @@ void COdinMDlg::ApplyDarkMode(HWND hwnd) {
     ApplyThemeToControls();
     ::RedrawWindow(hwnd, nullptr, nullptr,
                    RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+
+    s_inThemePass = false;
 }
 
 void COdinMDlg::ApplyThemeToControls() {
@@ -712,7 +720,7 @@ LRESULT COdinMDlg::OnEraseBkgnd(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/,
 
 LRESULT COdinMDlg::OnSettingChange(UINT, WPARAM, LPARAM lParam, BOOL&) {
     if (lParam && wcscmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0)
-        ApplyDarkMode(m_hWnd);
+    PostMessage(WM_APP + 100);
     return 0;
 }
 

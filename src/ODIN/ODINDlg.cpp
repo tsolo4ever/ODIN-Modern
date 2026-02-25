@@ -758,7 +758,7 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
       MF_BYCOMMAND | (fAutoFlashEnabled ? MF_CHECKED : MF_UNCHECKED));
 
   ApplyDarkMode(m_hWnd);       // create brushes before first paint
-  PostMessage(WM_APP, 0, 0);   // deferred: repaint after window is fully visible
+  PostMessage(WM_APP + 100, 0, 0);   // deferred: repaint after window is fully visible
 
   bHandled = TRUE;
   return 0L;
@@ -1189,7 +1189,9 @@ static BOOL CALLBACK s_AllowDarkChild(HWND child, LPARAM lp) {
 // EnumChildWindows callback: apply the correct uxtheme subapp string per control class.
 using PFN_Swt = HRESULT (WINAPI*)(HWND, LPCWSTR, LPCWSTR);
 struct ThemeEnumCtx { PFN_Swt swt; bool dark; };
+
 static BOOL CALLBACK s_ThemeChild(HWND child, LPARAM lp) {
+
   auto& c = *reinterpret_cast<ThemeEnumCtx*>(lp);
   wchar_t cls[64] = {};
   ::GetClassNameW(child, cls, _countof(cls));
@@ -1207,12 +1209,126 @@ static BOOL CALLBACK s_ThemeChild(HWND child, LPARAM lp) {
   }
   else if (_wcsicmp(cls, L"Edit")          == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
   else if (_wcsicmp(cls, L"ComboBox")      == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
-  else if (_wcsicmp(cls, L"SysListView32") == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-  else if (_wcsicmp(cls, L"SysHeader32")   == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+  else if (_wcsicmp(cls, L"SysListView32") == 0) {
+    theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+    // Theme the header control (child of the ListView) directly — EnumChildWindows
+    // on the dialog doesn't recurse into ListView children.
+    HWND hHeader = ListView_GetHeader(child);
+    if (hHeader) c.swt(hHeader, c.dark ? L"DarkMode_ItemsView" : nullptr, nullptr);
+  }
+  else if (_wcsicmp(cls, L"SysHeader32")   == 0) theme = c.dark ? L"DarkMode_ItemsView" : nullptr;
   else if (_wcsicmp(cls, L"Static")        == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
 
   c.swt(child, theme, nullptr);
   return TRUE;
+}
+
+// ── WM_UAHDRAWMENU / WM_UAHDRAWMENUITEM ──────────────────────────────────────
+// Undocumented messages Windows sends when it wants to draw the menu bar
+// background and each top-level item. Intercepting them lets us owner-draw the
+// menu bar in dark mode without any uxtheme theme-name tricks.
+
+struct UAHMENU       { HMENU hMenu; HDC hdc; DWORD dwFlags; };
+struct UAHDRAWMENUITEM {
+  DRAWITEMSTRUCT dis;
+  UAHMENU        um;
+  DWORD          unk;
+};
+
+LRESULT CODINDlg::OnUahDrawMenu(UINT, WPARAM, LPARAM lParam, BOOL& bHandled) {
+  if (!IsDarkModeEnabled() || !fDarkBgBrush) { bHandled = FALSE; return 0; }
+  auto* p = reinterpret_cast<UAHMENU*>(lParam);
+
+  // Fill the entire menu bar background. Convert screen coords → window DC coords.
+  MENUBARINFO mbi = { sizeof(mbi) };
+  ::GetMenuBarInfo(m_hWnd, OBJID_MENU, 0, &mbi);
+  RECT rcWindow;
+  ::GetWindowRect(m_hWnd, &rcWindow);
+  RECT rc = mbi.rcBar;
+  ::OffsetRect(&rc, -rcWindow.left, -rcWindow.top);
+  ::FillRect(p->hdc, &rc, fDarkBgBrush);
+
+  bHandled = TRUE;
+  return 1;
+}
+
+LRESULT CODINDlg::OnUahDrawMenuItem(UINT, WPARAM, LPARAM lParam, BOOL& bHandled) {
+  if (!IsDarkModeEnabled()) { bHandled = FALSE; return 0; }
+  auto* p = reinterpret_cast<UAHDRAWMENUITEM*>(lParam);
+  DRAWITEMSTRUCT& dis = p->dis;
+
+  // Use the menu bar HDC from the UAHMENU struct — dis.hDC may be null/invalid.
+  HDC hdc = p->um.hdc;
+  if (!hdc) { bHandled = FALSE; return 0; }
+
+  // Item background — highlight hovered/selected item.
+  COLORREF bg = (dis.itemState & (ODS_HOTLIGHT | ODS_SELECTED))
+                  ? RGB(62, 62, 64)
+                  : RGB(32, 32, 32);
+  HBRUSH br = ::CreateSolidBrush(bg);
+  ::FillRect(hdc, &dis.rcItem, br);
+  ::DeleteObject(br);
+
+  // Item text — find label by matching rect to position.
+  wchar_t text[256] = {};
+  HMENU hMenu = ::GetMenu(m_hWnd);
+  int count = ::GetMenuItemCount(hMenu);
+  RECT rcWindow;
+  ::GetWindowRect(m_hWnd, &rcWindow);
+  for (int i = 0; i < count; i++) {
+    RECT rc = {};
+    if (::GetMenuItemRect(m_hWnd, hMenu, i, &rc)) {
+      ::OffsetRect(&rc, -rcWindow.left, -rcWindow.top);
+      if (rc.left == dis.rcItem.left) {
+        ::GetMenuStringW(hMenu, i, text, _countof(text), MF_BYPOSITION);
+        break;
+      }
+    }
+  }
+
+  ::SetTextColor(hdc, RGB(212, 212, 212));
+  ::SetBkMode(hdc, TRANSPARENT);
+  ::DrawTextW(hdc, text, -1, &dis.rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+  bHandled = TRUE;
+  return 1;
+}
+
+// WM_INITMENUPOPUP — the popup menu window has just been created but not yet shown.
+// We can call AllowDarkModeForWindow + SetWindowTheme on its HWND at this point.
+// EnumThreadWindows finds the "#32768" popup window that just appeared on this thread.
+LRESULT CODINDlg::OnInitMenuPopup(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+  bHandled = FALSE;
+  if (!IsDarkModeEnabled()) return 0;
+
+  static PFN_AllowDark pfnAllow = nullptr;
+  if (!pfnAllow) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) pfnAllow = (PFN_AllowDark)::GetProcAddress(h, MAKEINTRESOURCEA(133));
+  }
+  static PFN_Swt pfnSwt = nullptr;
+  if (!pfnSwt) {
+    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
+    if (h) pfnSwt = (PFN_Swt)::GetProcAddress(h, "SetWindowTheme");
+  }
+
+  struct Ctx { PFN_AllowDark allow; PFN_Swt swt; };
+  Ctx ctx{ pfnAllow, pfnSwt };
+  ::EnumThreadWindows(::GetCurrentThreadId(),
+    [](HWND hwnd, LPARAM lp) -> BOOL {
+      wchar_t cls[32] = {};
+      ::GetClassNameW(hwnd, cls, _countof(cls));
+      if (::wcscmp(cls, L"#32768") == 0) {
+        auto& c = *reinterpret_cast<Ctx*>(lp);
+        if (c.allow) c.allow(hwnd, TRUE);
+        if (c.swt)   c.swt(hwnd, L"DarkMode_Explorer", nullptr);
+        return FALSE; // stop at first match
+      }
+      return TRUE;
+    },
+    reinterpret_cast<LPARAM>(&ctx));
+
+  return 0;
 }
 
 LRESULT CODINDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
@@ -1221,6 +1337,12 @@ LRESULT CODINDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 void CODINDlg::ApplyDarkMode(HWND hwnd) {
+
+  static thread_local bool s_inThemePass = false;
+  if (s_inThemePass)
+    return;
+  s_inThemePass = true;
+
   // ── title bar (DWM) ──────────────────────────────────────────────────────
   typedef HRESULT (WINAPI *PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
   static PFN_Dwm pfnDwm = nullptr;
@@ -1257,28 +1379,14 @@ if (!pfnAllow) {
     if (!h) h = ::LoadLibraryW(L"uxtheme.dll");
     if (h) pfnAllow = (PFN_AllowDark)::GetProcAddress(h, MAKEINTRESOURCEA(133));
 }
+
 if (pfnAllow) {
     pfnAllow(hwnd, dark);
 
     DarkEnumCtx ctx{ pfnAllow, dark };
     ::EnumChildWindows(hwnd, s_AllowDarkChild, reinterpret_cast<LPARAM>(&ctx));
 
-    // Opt the menu bar in: pass the HMENU cast to HWND (undocumented x64 requirement).
-    HMENU hMenu = ::GetMenu(hwnd);
-    if (hMenu) {
-        // Force Windows to rebuild the menu bar
-        ::SetMenu(hwnd, NULL);
-        ::SetMenu(hwnd, hMenu);
-    
-        // Get the actual menu handle Windows is now using
-        HMENU hRealMenu = ::GetMenu(hwnd);
-    
-        // Opt the REAL menu into immersive dark mode
-        pfnAllow(reinterpret_cast<HWND>(hRealMenu), dark);
-    
-        // Redraw
-        ::DrawMenuBar(hwnd);
-    }
+    ::DrawMenuBar(hwnd);
 }
 
 // Recreate dark brushes to match current mode
@@ -1291,7 +1399,9 @@ if (dark) {
 
 ApplyThemeToControls();
 ::RedrawWindow(hwnd, nullptr, nullptr,
-               RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+               RDW_FRAME | RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+
+  s_inThemePass = false;
 }
 
 void CODINDlg::ApplyThemeToControls() {
@@ -1314,7 +1424,21 @@ void CODINDlg::ApplyThemeToControls() {
   ListView_SetBkColor(hList,     dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
   ListView_SetTextBkColor(hList, dark ? RGB(32, 32, 32)   : CLR_DEFAULT);
   ListView_SetTextColor(hList,   dark ? RGB(212, 212, 212) : CLR_DEFAULT);
+
+  // Explicitly theme and repaint the ListView's header — it's a grandchild of the
+  // dialog so EnumChildWindows on the dialog may not reach it.
+  HWND hHeader = ListView_GetHeader(hList);
+  if (hHeader) {
+    pfnSwt(hHeader, dark ? L"DarkMode_ItemsView" : nullptr, nullptr);
+    ::InvalidateRect(hHeader, nullptr, TRUE);
+  }
+
   ::InvalidateRect(hList, nullptr, TRUE);
+
+  // Apply dark theme to the main window itself — this is what tells UxTheme to
+  // render the menu bar dark. Children get themed via EnumChildWindows above, but
+  // the dialog HWND's own non-client area (menu bar) needs its own SetWindowTheme call.
+  pfnSwt(m_hWnd, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
 
   // FlushMenuThemes (uxtheme ordinal 136) forces popup menus to re-evaluate the theme.
   typedef void (WINAPI* PFN_Flush)();
@@ -1358,7 +1482,7 @@ LRESULT CODINDlg::OnEraseBkgnd(UINT /*uMsg*/, WPARAM wParam, LPARAM /*lParam*/, 
 
 LRESULT CODINDlg::OnSettingChange(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam, BOOL& /*bHandled*/) {
   if (lParam && wcscmp((LPCWSTR)lParam, L"ImmersiveColorSet") == 0)
-    ApplyDarkMode(m_hWnd);
+    PostMessage(WM_APP + 100);
   return 0;
 }
 

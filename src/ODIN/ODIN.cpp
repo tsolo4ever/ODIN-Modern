@@ -159,7 +159,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
   // Must be called before any windows are created so GetSysColor reflects
   // the active theme when dialogs initialise.
   {
-    typedef BOOL (WINAPI* PFN_SetPreferredAppMode)(int);
+    typedef int (WINAPI* PFN_SetPreferredAppMode)(int);
     HMODULE hUx = ::LoadLibraryW(L"uxtheme.dll");
     if (hUx) {
       if (auto fn = (PFN_SetPreferredAppMode)::GetProcAddress(hUx, MAKEINTRESOURCEA(135)))

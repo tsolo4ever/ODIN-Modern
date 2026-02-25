@@ -44,9 +44,11 @@ public:
 		COMMAND_ID_HANDLER(IDOK, OnCloseCmd)
 		COMMAND_ID_HANDLER(IDCANCEL, OnCloseCmd)
     COMMAND_HANDLER(IDC_BUTTON_LICENSE, BN_CLICKED, OnLicenseCmd)
-    MESSAGE_HANDLER(WM_APP, OnDeferredDarkMode)
+
     MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
-    MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
+    MESSAGE_HANDLER(WM_THEMECHANGED, OnThemeChanged)
+    MESSAGE_HANDLER(WM_APP + 100, OnDeferredDarkMode)
+
     MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
     MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
     MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
@@ -56,6 +58,8 @@ public:
 	LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnCloseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnLicenseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+
+  LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&);
   LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
   LRESULT OnSettingChange(UINT, WPARAM, LPARAM, BOOL&);
   LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);

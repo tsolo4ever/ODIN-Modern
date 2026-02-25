@@ -214,7 +214,7 @@ LRESULT COptionsDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPa
 {
   Init();
   ApplyDarkMode(m_hWnd);      // create brushes before first paint
-  PostMessage(WM_APP, 0, 0);  // deferred: repaint after window is fully visible
+  PostMessage(WM_APP + 100, 0, 0);  // deferred: repaint after window is fully visible
   return 0;
 }
 
@@ -312,7 +312,15 @@ static bool OptionsDlg_IsDark() {
   return value == 0;
 }
 
-void COptionsDlg::ApplyDarkMode(HWND hwnd) {
+void COptionsDlg::ApplyDarkMode(HWND hwnd)
+{
+  // ── reentrancy guard ─────────────────────────────────────────────────────
+  static thread_local bool s_inThemePass = false;
+  if (s_inThemePass)
+    return;
+  s_inThemePass = true;
+
+  // ── title bar (DWM) ──────────────────────────────────────────────────────
   typedef HRESULT (WINAPI* PFN_Dwm)(HWND, DWORD, LPCVOID, DWORD);
   static PFN_Dwm pfnDwm = nullptr;
   if (!pfnDwm) {
@@ -320,12 +328,14 @@ void COptionsDlg::ApplyDarkMode(HWND hwnd) {
     if (!h) h = ::LoadLibraryW(L"dwmapi.dll");
     if (h) pfnDwm = (PFN_Dwm)::GetProcAddress(h, "DwmSetWindowAttribute");
   }
+
   BOOL dark = OptionsDlg_IsDark() ? TRUE : FALSE;
   if (pfnDwm) {
     if (FAILED(pfnDwm(hwnd, 20, &dark, sizeof(dark))))
       pfnDwm(hwnd, 19, &dark, sizeof(dark));
   }
 
+  // ── AllowDarkModeForWindow (ordinal 133) ─────────────────────────────────
   typedef BOOL (WINAPI* PFN_Allow)(HWND, BOOL);
   static PFN_Allow pfnAllow = nullptr;
   if (!pfnAllow) {
@@ -333,57 +343,81 @@ void COptionsDlg::ApplyDarkMode(HWND hwnd) {
     if (!h) h = ::LoadLibraryW(L"uxtheme.dll");
     if (h) pfnAllow = (PFN_Allow)::GetProcAddress(h, MAKEINTRESOURCEA(133));
   }
+
   if (pfnAllow) {
     pfnAllow(hwnd, dark);
-    // Apply AllowDarkModeForWindow + WM_THEMECHANGED to every child.
+
     struct Ctx { PFN_Allow fn; BOOL dark; };
     Ctx ctx{ pfnAllow, dark };
-    ::EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
-      auto& c = *reinterpret_cast<Ctx*>(lp);
-      if (c.fn) c.fn(child, c.dark);
-      ::SendMessage(child, WM_THEMECHANGED, 0, 0);
-      return TRUE;
-    }, reinterpret_cast<LPARAM>(&ctx));
+
+    ::EnumChildWindows(hwnd,
+      [](HWND child, LPARAM lp) -> BOOL {
+        auto& c = *reinterpret_cast<Ctx*>(lp);
+        if (c.fn)
+          c.fn(child, c.dark);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&ctx));
   }
 
-  // Apply SetWindowTheme per control class so buttons/radios/edits paint dark.
+  // ── SetWindowTheme per control class ─────────────────────────────────────
   typedef HRESULT (WINAPI* PFN_Swt)(HWND, LPCWSTR, LPCWSTR);
   static PFN_Swt pfnSwt = nullptr;
   if (!pfnSwt) {
     HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
     if (h) pfnSwt = (PFN_Swt)::GetProcAddress(h, "SetWindowTheme");
   }
+
   if (pfnSwt) {
+    pfnSwt(hwnd, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
+
     struct SCtx { PFN_Swt swt; bool dark; };
     SCtx sctx{ pfnSwt, dark != FALSE };
-    ::EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
-      auto& c = *reinterpret_cast<SCtx*>(lp);
-      wchar_t cls[64] = {};
-      ::GetClassNameW(child, cls, _countof(cls));
-      const wchar_t* theme = nullptr;
-      if (_wcsicmp(cls, L"Button") == 0) {
-        LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
-        BYTE type = (BYTE)(style & 0x0FL);
-        if (type == BS_GROUPBOX) { c.swt(child, nullptr, nullptr); return TRUE; }
-        theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-      }
-      else if (_wcsicmp(cls, L"Edit")   == 0) theme = c.dark ? L"DarkMode_CFD"      : nullptr;
-      else if (_wcsicmp(cls, L"Static") == 0) theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-      c.swt(child, theme, nullptr);
-      return TRUE;
-    }, reinterpret_cast<LPARAM>(&sctx));
+
+    ::EnumChildWindows(hwnd,
+      [](HWND child, LPARAM lp) -> BOOL {
+        auto& c = *reinterpret_cast<SCtx*>(lp);
+
+        wchar_t cls[64] = {};
+        ::GetClassNameW(child, cls, _countof(cls));
+
+        const wchar_t* theme = nullptr;
+
+        if (_wcsicmp(cls, L"Button") == 0) {
+          LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
+          BYTE type = (BYTE)(style & 0x0F);
+          if (type == BS_GROUPBOX) {
+            c.swt(child, nullptr, nullptr);
+            return TRUE;
+          }
+          theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+        }
+        else if (_wcsicmp(cls, L"Edit") == 0)
+          theme = c.dark ? L"DarkMode_CFD" : nullptr;
+        else if (_wcsicmp(cls, L"Static") == 0)
+          theme = c.dark ? L"DarkMode_Explorer" : nullptr;
+
+        c.swt(child, theme, nullptr);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&sctx));
   }
 
-  // Recreate brushes.
+  // ── recreate brushes ─────────────────────────────────────────────────────
   if (fDarkBgBrush)   { ::DeleteObject(fDarkBgBrush);   fDarkBgBrush   = nullptr; }
   if (fDarkEditBrush) { ::DeleteObject(fDarkEditBrush); fDarkEditBrush = nullptr; }
+
   if (dark) {
     fDarkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
     fDarkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
   }
 
   ::RedrawWindow(hwnd, nullptr, nullptr,
-                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+                 RDW_FRAME | RDW_INVALIDATE | RDW_ERASE |
+                 RDW_ALLCHILDREN | RDW_UPDATENOW);
+
+  // ── end reentrancy guard ─────────────────────────────────────────────────
+  s_inThemePass = false;
 }
 
 LRESULT COptionsDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
@@ -393,7 +427,7 @@ LRESULT COptionsDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
 
 LRESULT COptionsDlg::OnSettingChange(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM lParam, BOOL& /*bHandled*/) {
   if (lParam && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0)
-    ApplyDarkMode(m_hWnd);
+  PostMessage(WM_APP + 100);
   return 0;
 }
 
