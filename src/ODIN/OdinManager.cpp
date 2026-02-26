@@ -46,6 +46,8 @@
 
 using namespace std;
 
+static const int kDoCopyBufferCount = 8;
+
 // section name in .ini file for configuration values
 IMPL_SECTION(COdinManager, L"Options")
 
@@ -212,7 +214,7 @@ void COdinManager::GetDriveNameList(std::list<std::wstring>& driveNames)
 void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveIndex, unsigned noFiles,
                           unsigned __int64 totalSize, ISplitManagerCallback* cb,  IWaitCallback* wcb)
 {
-  int nBufferCount = 8;
+  int nBufferCount = kDoCopyBufferCount;
   TCompressionFormat decompressionFormat = noCompression;
   bool bSaveAllBlocks = fSaveAllBlocks;
   fVerifyCrc32 = 0;
