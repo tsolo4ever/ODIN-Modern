@@ -264,23 +264,6 @@ public:
 };
 
 //====================================================================================
-
-////////////////////////////////////////////////////////////////////////////////////////////
-// XP version
-///////////////////////////////////////////////////////////////////////////////////////////
-MIDL_INTERFACE("C7B98A22-222D-4e62-B875-1A44980634AF")
-IVssAsyncXP : public IUnknown
-{
-public:
-    virtual /* [helpstring] */ HRESULT STDMETHODCALLTYPE Cancel( void) = 0;    
-    virtual /* [helpstring] */ HRESULT STDMETHODCALLTYPE Wait( void) = 0;    
-    virtual /* [helpstring] */ HRESULT STDMETHODCALLTYPE QueryStatus( 
-        /* [out] */ HRESULT *pHrResult,
-        /* [unique][out][in] */ INT *pReserved) = 0;
-    
-};
-
-//====================================================================================
 // class CVssWrapper
 //====================================================================================
 
@@ -358,8 +341,7 @@ CVssWrapper::CVssWrapper() {
 }
 
 CVssWrapper::~CVssWrapper() {
-  // On WIndows XP the COM pointers must be release before the DLL is freed.
-  fBackupComponentsXP = NULL;
+  // COM pointer must be released before the DLL is freed.
   fBackupComponents = NULL;
   if (fVssDLL)
     FreeLibrary(fVssDLL);
@@ -371,12 +353,6 @@ CVssWrapper::~CVssWrapper() {
 
 void  CVssWrapper::Init()
 {
-  // determine version information
-  OSVERSIONINFOEX osInfo;
-  ZeroMemory(&osInfo, sizeof(osInfo));
-  osInfo.dwOSVersionInfoSize = sizeof(osInfo);
-  BOOL ok = GetVersionEx((LPOSVERSIONINFO)&osInfo);
-  runsOnWinXP = ok && osInfo.dwMajorVersion == 5 && osInfo.dwMinorVersion == 1; // Windows XP
   fAbortFromException = false;
 
   //load vssapi.dll
@@ -395,65 +371,42 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
 
     try
     {
-        const char CreateVssBackupComponentXP[] = "?CreateVssBackupComponents@@YGJPAPAVIVssBackupComponents@@@Z";
         const char CreateVssBackupComponentVista[] = "CreateVssBackupComponentsInternal";
         typedef HRESULT (__stdcall *CreateVssBackupComponents)(IVssBackupComponents**);
-        CComPtr<IVssAsync> pWriterMetadataStatus; 
-        CComPtr<IVssAsyncXP> pWriterMetadataStatusXP; 
-        HRESULT hrGatherStatus; 
+        CComPtr<IVssAsync> pWriterMetadataStatus;
+        HRESULT hrGatherStatus;
 //        vector<CWriter> writers;
-        UINT cWriters; 
-        GUID snapshotId; 
-        WCHAR wszVolumePathName[MAX_PATH];           
+        UINT cWriters;
+        GUID snapshotId;
+        WCHAR wszVolumePathName[MAX_PATH];
         CreateVssBackupComponents CreateVssBackupComponentsPtr = NULL;
-        HRESULT hrPrepareForBackupResults; 
+        HRESULT hrPrepareForBackupResults;
         CComPtr<IVssAsync> pDoSnapshotSetResults;
-        CComPtr<IVssAsyncXP> pDoSnapshotSetResultsXP;
-        HRESULT hrDoSnapshotSetResults; 
+        HRESULT hrDoSnapshotSetResults;
 
         CreateVssBackupComponentsPtr = (CreateVssBackupComponents)::GetProcAddress(fVssDLL, CreateVssBackupComponentVista);
         if (!CreateVssBackupComponentsPtr) {
-          // if Vista version not found try XP version
-          CreateVssBackupComponentsPtr = (CreateVssBackupComponents)::GetProcAddress(fVssDLL, CreateVssBackupComponentXP);
-          if (!CreateVssBackupComponentsPtr) {
-            THROW_VSS_ERROR("Function CreateVssBackupComponents not found in vssapi.dll");
-          }
+          THROW_VSS_ERROR("Function CreateVssBackupComponents not found in vssapi.dll");
         }
 
-        if (runsOnWinXP) {
-          CHECK_HRESULT(CreateVssBackupComponentsPtr((IVssBackupComponents**)&fBackupComponentsXP), L"CreateVssBackupComponents"); 
-          CHECK_HRESULT(fBackupComponentsXP->InitializeForBackup(), L"InitializeForBackup"); 
-          CHECK_HRESULT(fBackupComponentsXP->GatherWriterMetadata((IVssAsync**)&pWriterMetadataStatusXP), L"GatherWriterMetadata"); 
-          CHECK_HRESULT(pWriterMetadataStatusXP->Wait(), L"Wait()"); 
-          CHECK_HRESULT(pWriterMetadataStatusXP->QueryStatus(&hrGatherStatus, NULL), L"QueryStatus"); 
-          if (hrGatherStatus == VSS_S_ASYNC_CANCELLED)
-          {
-              if (SUCCEEDED(hrGatherStatus))  
-                hrGatherStatus = E_FAIL;  // throw unspecified error
-              CHECK_HRESULT(hrGatherStatus, L"GatherWriterMetadata was cancelled."); 
-          }
-          CHECK_HRESULT(fBackupComponentsXP->GetWriterMetadataCount(&cWriters), L"GetWriterMetadataCount"); 
-        } else {
-          CHECK_HRESULT(CreateVssBackupComponentsPtr(&fBackupComponents), L"CreateVssBackupComponents");         
-          CHECK_HRESULT(fBackupComponents->InitializeForBackup(), L"InitializeForBackup"); 
-          CHECK_HRESULT(fBackupComponents->GatherWriterMetadata(&pWriterMetadataStatus), L"GatherWriterMetadata"); 
-          CHECK_HRESULT(pWriterMetadataStatus->Wait(), L"Wait()"); 
-          CHECK_HRESULT(pWriterMetadataStatus->QueryStatus(&hrGatherStatus, NULL), L"QueryStatus"); 
-          if (hrGatherStatus == VSS_S_ASYNC_CANCELLED)
-          {
-              if (SUCCEEDED(hrGatherStatus))  
-                hrGatherStatus = E_FAIL;  // throw unspecified error
-              CHECK_HRESULT(hrGatherStatus, L"GatherWriterMetadata was cancelled."); 
-          }
-          CHECK_HRESULT(fBackupComponents->GetWriterMetadataCount(&cWriters), L"GetWriterMetadataCount"); 
+        CHECK_HRESULT(CreateVssBackupComponentsPtr(&fBackupComponents), L"CreateVssBackupComponents");
+        CHECK_HRESULT(fBackupComponents->InitializeForBackup(), L"InitializeForBackup");
+        CHECK_HRESULT(fBackupComponents->GatherWriterMetadata(&pWriterMetadataStatus), L"GatherWriterMetadata");
+        CHECK_HRESULT(pWriterMetadataStatus->Wait(), L"Wait()");
+        CHECK_HRESULT(pWriterMetadataStatus->QueryStatus(&hrGatherStatus, NULL), L"QueryStatus");
+        if (hrGatherStatus == VSS_S_ASYNC_CANCELLED)
+        {
+            if (SUCCEEDED(hrGatherStatus))
+              hrGatherStatus = E_FAIL;  // throw unspecified error
+            CHECK_HRESULT(hrGatherStatus, L"GatherWriterMetadata was cancelled.");
         }
+        CHECK_HRESULT(fBackupComponents->GetWriterMetadataCount(&cWriters), L"GetWriterMetadataCount");
 
         for (UINT iWriter = 0; iWriter < cWriters; ++iWriter)
         {
             CWriter writer; 
-            CComPtr<IVssExamineWriterMetadata> pExamineWriterMetadata; 
-            CComPtr<IVssExamineWriterMetadataXP> pExamineWriterMetadataXP; 
-            GUID id; 
+            CComPtr<IVssExamineWriterMetadata> pExamineWriterMetadata;
+            GUID id;
             GUID idInstance; 
             GUID idWriter; 
             BSTR bstrWriterName;
@@ -463,14 +416,8 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
             UINT cExcludeFiles; 
             UINT cComponents; 
 
-            if (runsOnWinXP) {
-              CHECK_HRESULT(fBackupComponentsXP->GetWriterMetadata(iWriter, &id, &pExamineWriterMetadataXP), L"GetWriterMetadata"); 
-              CHECK_HRESULT(pExamineWriterMetadataXP->GetIdentity(&idInstance, &idWriter, &bstrWriterName, &usage, &source), L"GetIdentity"); 
-              CHECK_HRESULT(pExamineWriterMetadataXP->GetFileCounts(&cIncludeFiles, &cExcludeFiles, &cComponents), L"GetFileCounts"); 
-            } else {
-              CHECK_HRESULT(fBackupComponents->GetWriterMetadata(iWriter, &id, &pExamineWriterMetadata), L"GetWriterMetadata"); 
-              CHECK_HRESULT(pExamineWriterMetadata->GetIdentity(&idInstance, &idWriter, &bstrWriterName, &usage, &source), L"GetIdentity"); 
-            }
+            CHECK_HRESULT(fBackupComponents->GetWriterMetadata(iWriter, &id, &pExamineWriterMetadata), L"GetWriterMetadata");
+            CHECK_HRESULT(pExamineWriterMetadata->GetIdentity(&idInstance, &idWriter, &bstrWriterName, &usage, &source), L"GetIdentity");
             writer.set_InstanceId(idInstance); 
             writer.set_Name(bstrWriterName); 
             writer.set_WriterId(idWriter); 
@@ -480,11 +427,7 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
             //message.AppendFormat(TEXT("Writer %d named %s"), iWriter, (LPCTSTR) writerName); 
             // OutputWriter::WriteLine(message); 
 
-            if (runsOnWinXP) {
-              CHECK_HRESULT(pExamineWriterMetadataXP->GetFileCounts(&cIncludeFiles, &cExcludeFiles, &cComponents), L"GetFileCounts"); 
-            } else {
-              CHECK_HRESULT(pExamineWriterMetadata->GetFileCounts(&cIncludeFiles, &cExcludeFiles, &cComponents), L"GetFileCounts"); 
-            }
+            CHECK_HRESULT(pExamineWriterMetadata->GetFileCounts(&cIncludeFiles, &cExcludeFiles, &cComponents), L"GetFileCounts");
 
             //message.Empty(); 
             //message.AppendFormat(TEXT("Writer has %d components"), cComponents); 
@@ -496,11 +439,7 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
                 CComPtr<IVssWMComponent> pComponent; 
                 PVSSCOMPONENTINFO pComponentInfo; 
 
-                if (runsOnWinXP) {
-                  CHECK_HRESULT(pExamineWriterMetadataXP->GetComponent(iComponent, &pComponent), L"GetComponent"); 
-                } else {
-                  CHECK_HRESULT(pExamineWriterMetadata->GetComponent(iComponent, &pComponent), L"GetComponent"); 
-                }
+                CHECK_HRESULT(pExamineWriterMetadata->GetComponent(iComponent, &pComponent), L"GetComponent");
 
                 CHECK_HRESULT(pComponent->GetComponentInfo(&pComponentInfo), L"GetComponentInfo"); 
 
@@ -600,11 +539,7 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
             fWriters.push_back(writer); 
         }
 
-        if (runsOnWinXP) {
-          CHECK_HRESULT(fBackupComponentsXP->StartSnapshotSet(&fSnapshotSetId), L"StartSnapshotSet");
-        } else {
-          CHECK_HRESULT(fBackupComponents->StartSnapshotSet(&fSnapshotSetId), L"StartSnapshotSet");
-        }
+        CHECK_HRESULT(fBackupComponents->StartSnapshotSet(&fSnapshotSetId), L"StartSnapshotSet");
 
         fSnapshotIds = new GUID[volumeCount];
         fSnapshotDeviceNames = new wstring[volumeCount];
@@ -614,11 +549,7 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
             // mounted volume
             BOOL bWorked = ::GetVolumePathName(volumeNames[i], wszVolumePathName, MAX_PATH); 
 
-            if (runsOnWinXP) {
-              CHECK_HRESULT(fBackupComponentsXP->AddToSnapshotSet(wszVolumePathName, GUID_NULL, &snapshotId), L"AddToSnapshotSet"); 
-            } else {
-              CHECK_HRESULT(fBackupComponents->AddToSnapshotSet(wszVolumePathName, GUID_NULL, &snapshotId), L"AddToSnapshotSet");
-            }
+            CHECK_HRESULT(fBackupComponents->AddToSnapshotSet(wszVolumePathName, GUID_NULL, &snapshotId), L"AddToSnapshotSet");
             fSnapshotIds[i] = snapshotId;  
           } else {
             // unmounted volume
@@ -649,15 +580,9 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
                         writer.get_Name()); 
                     */
                     // OutputWriter::WriteLine(message); 
-                    if (runsOnWinXP) {
-                      CHECK_HRESULT(fBackupComponentsXP->AddComponent(writer.get_InstanceId(), writer.get_WriterId(),
-                        component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str()), 
-                        L"AddComponent");
-                    } else {
-                      CHECK_HRESULT(fBackupComponents->AddComponent(writer.get_InstanceId(), writer.get_WriterId(),
-                        component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str()),
-                        L"AddComponent");
-                    }
+                    CHECK_HRESULT(fBackupComponents->AddComponent(writer.get_InstanceId(), writer.get_WriterId(),
+                      component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str()),
+                      L"AddComponent");
                 }
                 else
                 {
@@ -669,18 +594,12 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
             }
         }
 
-        if (runsOnWinXP) {
-          CComPtr<IVssAsyncXP> pPrepareForBackupResultsXP; 
-          CHECK_HRESULT(fBackupComponentsXP->SetBackupState(FALSE, TRUE, VSS_BT_COPY, FALSE), L"SetBackupState"); 
-          CHECK_HRESULT(fBackupComponentsXP->PrepareForBackup((IVssAsync**)&pPrepareForBackupResultsXP), L"PrepareForBackup"); 
-          CHECK_HRESULT(pPrepareForBackupResultsXP->Wait(), L"Wait"); 
-          CHECK_HRESULT(pPrepareForBackupResultsXP->QueryStatus(&hrPrepareForBackupResults, NULL), L"QueryStatus"); 
-        } else {
-          CComPtr<IVssAsync> pPrepareForBackupResults; 
-          CHECK_HRESULT(fBackupComponents->SetBackupState(FALSE, TRUE, VSS_BT_COPY, FALSE), L"SetBackupState"); 
-          CHECK_HRESULT(fBackupComponents->PrepareForBackup(&pPrepareForBackupResults), L"PrepareForBackup"); 
-          CHECK_HRESULT(pPrepareForBackupResults->Wait(), L"Wait"); 
-          CHECK_HRESULT(pPrepareForBackupResults->QueryStatus(&hrPrepareForBackupResults, NULL), L"QueryStatus"); 
+        {
+          CComPtr<IVssAsync> pPrepareForBackupResults;
+          CHECK_HRESULT(fBackupComponents->SetBackupState(FALSE, TRUE, VSS_BT_COPY, FALSE), L"SetBackupState");
+          CHECK_HRESULT(fBackupComponents->PrepareForBackup(&pPrepareForBackupResults), L"PrepareForBackup");
+          CHECK_HRESULT(pPrepareForBackupResults->Wait(), L"Wait");
+          CHECK_HRESULT(pPrepareForBackupResults->QueryStatus(&hrPrepareForBackupResults, NULL), L"QueryStatus");
         }
 
         if (hrPrepareForBackupResults != VSS_S_ASYNC_FINISHED)
@@ -690,21 +609,12 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
           CHECK_HRESULT(hrPrepareForBackupResults, L"Prepare for backup failed."); 
         }
 
-        if (runsOnWinXP) {
-          CHECK_HRESULT(fBackupComponentsXP->DoSnapshotSet((IVssAsync**)&pDoSnapshotSetResultsXP), L"DoSnapshotSet"); 
-          CHECK_HRESULT(pDoSnapshotSetResultsXP->Wait(), L"Wait");
-        } else {
-          CHECK_HRESULT(fBackupComponents->DoSnapshotSet(&pDoSnapshotSetResults), L"DoSnapshotSet"); 
-          CHECK_HRESULT(pDoSnapshotSetResults->Wait(), L"Wait");
-        }
+        CHECK_HRESULT(fBackupComponents->DoSnapshotSet(&pDoSnapshotSetResults), L"DoSnapshotSet");
+        CHECK_HRESULT(pDoSnapshotSetResults->Wait(), L"Wait");
 
         fSnapshotCreated = true; 
 
-        if (runsOnWinXP) {
-          CHECK_HRESULT(pDoSnapshotSetResultsXP->QueryStatus(&hrDoSnapshotSetResults, NULL), L"QueryStatus"); 
-        } else {
-          CHECK_HRESULT(pDoSnapshotSetResults->QueryStatus(&hrDoSnapshotSetResults, NULL), L"QueryStatus"); 
-        }
+        CHECK_HRESULT(pDoSnapshotSetResults->QueryStatus(&hrDoSnapshotSetResults, NULL), L"QueryStatus");
 
         if (hrDoSnapshotSetResults != VSS_S_ASYNC_FINISHED)
         {
@@ -718,11 +628,7 @@ void CVssWrapper::PrepareSnapshot(const wchar_t** volumeNames, int volumeCount)
           if (fSnapshotIds[i] == GUID_NULL) {
             fSnapshotDeviceNames[i].clear();
           } else {
-            if (runsOnWinXP) {
-              CHECK_HRESULT(fBackupComponentsXP->GetSnapshotProperties(fSnapshotIds[i], &snapshotProperties), L"GetSnapshotProperties");
-            } else {
-              CHECK_HRESULT(fBackupComponents->GetSnapshotProperties(fSnapshotIds[i], &snapshotProperties), L"GetSnapshotProperties");
-            }
+            CHECK_HRESULT(fBackupComponents->GetSnapshotProperties(fSnapshotIds[i], &snapshotProperties), L"GetSnapshotProperties");
             fSnapshotDeviceNames[i] = snapshotProperties.m_pwszSnapshotDeviceObject;
             }
         }
@@ -746,41 +652,26 @@ const wchar_t* CVssWrapper::GetSnapshotDeviceName(int driveIndex)
 void CVssWrapper::ReleaseSnapshot(bool wasAborted)
 {
   try {
-        CComPtr<IVssAsync> pBackupCompleteResults; 
-        CComPtr<IVssAsyncXP> pBackupCompleteResultsXP; 
-        HRESULT hrBackupCompleteResults = VSS_S_ASYNC_PENDING; 
-    
+        CComPtr<IVssAsync> pBackupCompleteResults;
+        HRESULT hrBackupCompleteResults = VSS_S_ASYNC_PENDING;
 
-        if (fBackupComponents == NULL && fBackupComponentsXP == NULL)
+        if (fBackupComponents == NULL)
         {
-            return; 
+            return;
         }
         ReportBackupResultsToWriters(!wasAborted);
 
         if (fSnapshotCreated)
         {
-          if (runsOnWinXP) {
-            if (fBackupComponentsXP) {
-              CHECK_HRESULT(fBackupComponentsXP->BackupComplete((IVssAsync**)&pBackupCompleteResultsXP), L"BackupComplete"); 
+          if (fBackupComponents) {
+            CHECK_HRESULT(fBackupComponents->BackupComplete(&pBackupCompleteResults), L"BackupComplete");
+          }
+          if (pBackupCompleteResults) {
+            if (wasAborted) {
+              CHECK_HRESULT(pBackupCompleteResults->Cancel(), L"Cancel");
             }
-            if (pBackupCompleteResultsXP) {
-              if (wasAborted) {
-                CHECK_HRESULT(pBackupCompleteResultsXP->Cancel(), L"Cancel"); 
-              }
-              CHECK_HRESULT(pBackupCompleteResultsXP->Wait(), L"Wait"); 
-              CHECK_HRESULT(pBackupCompleteResultsXP->QueryStatus(&hrBackupCompleteResults, NULL), L"QueryStatus"); 
-            }
-          } else {
-            if (fBackupComponents) {
-              CHECK_HRESULT(fBackupComponents->BackupComplete(&pBackupCompleteResults), L"BackupComplete"); 
-            }
-            if (pBackupCompleteResults) {
-              if (wasAborted) {
-                CHECK_HRESULT(pBackupCompleteResults->Cancel(), L"Cancel"); 
-              }
-              CHECK_HRESULT(pBackupCompleteResults->Wait(), L"Wait"); 
-              CHECK_HRESULT(pBackupCompleteResults->QueryStatus(&hrBackupCompleteResults, NULL), L"QueryStatus"); 
-            }
+            CHECK_HRESULT(pBackupCompleteResults->Wait(), L"Wait");
+            CHECK_HRESULT(pBackupCompleteResults->QueryStatus(&hrBackupCompleteResults, NULL), L"QueryStatus");
           }
         }
 
@@ -811,15 +702,9 @@ void CVssWrapper::ReportBackupResultsToWriters(bool successful)
       {
         CWriterComponent& component = writer.get_Components()[iComponent];
 
-        if (runsOnWinXP) {
-          CHECK_HRESULT(fBackupComponentsXP->SetBackupSucceeded(writer.get_InstanceId(), writer.get_WriterId(),
-            component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str(), successful), 
-            L"SetBackupSucceeded");
-        } else {
-          CHECK_HRESULT(fBackupComponents->SetBackupSucceeded(writer.get_InstanceId(), writer.get_WriterId(),
-            component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str(), successful),
-            L"SetBackupSucceeded");
-        }
+        CHECK_HRESULT(fBackupComponents->SetBackupSucceeded(writer.get_InstanceId(), writer.get_WriterId(),
+          component.get_Type(), component.get_LogicalPath().c_str(), component.get_Name().c_str(), successful),
+          L"SetBackupSucceeded");
       }
     }
   }
@@ -837,30 +722,21 @@ void CVssWrapper::CalculateSourcePath(LPCTSTR wszSnapshotDevice, LPCTSTR wszBack
 
 void CVssWrapper::Cleanup()
 {
-    if (fBackupComponents == NULL && fBackupComponentsXP == NULL)
+    if (fBackupComponents == NULL)
     {
-        return; 
+        return;
     }
 
     try {
       if (fAbnormalAbort)
       {
-          if (runsOnWinXP) {
-            fBackupComponentsXP->AbortBackup(); 
-          } else {
-            fBackupComponents->AbortBackup(); 
-          }
+          fBackupComponents->AbortBackup();
           if (fSnapshotCreated)
           {
-              LONG cDeletedSnapshots; 
-              GUID nonDeletedSnapshotId; 
-              if (runsOnWinXP) {
-                fBackupComponentsXP->DeleteSnapshots(fSnapshotSetId, VSS_OBJECT_SNAPSHOT_SET, TRUE, 
-                  &cDeletedSnapshots, &nonDeletedSnapshotId);// omit CHECK_HRESULT(, L"DeleteSnapshots"); 
-              } else {
-                fBackupComponents->DeleteSnapshots(fSnapshotSetId, VSS_OBJECT_SNAPSHOT_SET, TRUE, 
-                    &cDeletedSnapshots, &nonDeletedSnapshotId);// omit CHECK_HRESULT(, L"DeleteSnapshots"); 
-              }
+              LONG cDeletedSnapshots;
+              GUID nonDeletedSnapshotId;
+              fBackupComponents->DeleteSnapshots(fSnapshotSetId, VSS_OBJECT_SNAPSHOT_SET, TRUE,
+                  &cDeletedSnapshots, &nonDeletedSnapshotId);// omit CHECK_HRESULT(, L"DeleteSnapshots");
           }
       }
     }
@@ -868,16 +744,14 @@ void CVssWrapper::Cleanup()
       // if cleanup was called from raising an exception than it is probable that the cleanup actions
       // cause another exception that we simply ignore then
       if (!fAbortFromException) {
-        fAbnormalAbort = true; 
+        fAbnormalAbort = true;
         fSnapshotCreated = false;
-        fBackupComponentsXP = NULL;
         fBackupComponents = NULL;
         throw e;
       }
     }
-    fAbnormalAbort = true; 
+    fAbnormalAbort = true;
     fSnapshotCreated = false;
-    fBackupComponentsXP = NULL;
     fBackupComponents = NULL;
 }
 

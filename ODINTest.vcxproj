@@ -205,7 +205,6 @@
     <ClInclude Include="src\ODIN\UserFeedback.h" />
     <ClInclude Include="src\ODIN\UserFeedbackGUI.h" />
     <ClInclude Include="src\ODIN\Util.h" />
-    <ClInclude Include="src\ODIN\vsbackup_xp.h" />
     <ClInclude Include="src\ODIN\VSSException.h" />
     <ClInclude Include="src\ODIN\VSSWrapper.h" />
     <ClInclude Include="src\ODIN\WriteThread.h" />
