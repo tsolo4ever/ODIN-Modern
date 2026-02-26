@@ -82,6 +82,8 @@ private:
     bool m_autoCloneEnabled;
     int m_maxConcurrent;
     UINT_PTR m_timer;
+    bool m_pendingArrival = false;
+    ULONGLONG m_lastDeviceChange = 0;
     
     // Initialization
     LRESULT OnInitDialog(UINT msg, WPARAM wParam, LPARAM lParam, BOOL& handled);

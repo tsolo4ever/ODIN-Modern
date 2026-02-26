@@ -11,8 +11,9 @@
 
 // ListView column indices
 enum { COL_SLOT=0, COL_DRIVE, COL_NAME, COL_SIZE, COL_STATUS, COL_PROGRESS, COL_SHA1, COL_SHA256, COL_COUNT };
-static const UINT_PTR POLL_TIMER_ID = 1;
-static const UINT     POLL_INTERVAL = 2000;
+static const UINT_PTR POLL_TIMER_ID          = 1;
+static const UINT_PTR DEVICE_SETTLE_TIMER_ID = 2;
+static const UINT     POLL_INTERVAL          = 2000;
 
 // --- Constructor/Destructor ---
 COdinMDlg::COdinMDlg() : m_autoCloneEnabled(false), m_maxConcurrent(2), m_timer(0)
@@ -28,6 +29,7 @@ COdinMDlg::~COdinMDlg() { }
 LRESULT COdinMDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled)
 {
     if (m_timer) { ::KillTimer(m_hWnd, m_timer); m_timer = 0; }
+    ::KillTimer(m_hWnd, DEVICE_SETTLE_TIMER_ID); // safe no-op if not active
     if (m_darkBgBrush)   { ::DeleteObject(m_darkBgBrush);   m_darkBgBrush   = nullptr; }
     if (m_darkEditBrush) { ::DeleteObject(m_darkEditBrush); m_darkEditBrush = nullptr; }
     handled = FALSE;   // let DefWindowProc process WM_DESTROY too
@@ -137,13 +139,21 @@ void COdinMDlg::SaveSettings()
 // --- OnDeviceChange ---
 LRESULT COdinMDlg::OnDeviceChange(UINT, WPARAM wParam, LPARAM, BOOL& handled)
 {
-    if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
-        Sleep(600);
-        RefreshDrives();
-        UpdateDriveList();
-        UpdateStatus();
-        Log(L"Device change detected.");
+    if (wParam != DBT_DEVICEARRIVAL && wParam != DBT_DEVICEREMOVECOMPLETE) {
+        handled = FALSE;
+        return TRUE;
     }
+    // Debounce: ignore duplicate events within 1 second
+    ULONGLONG now = GetTickCount64();
+    if (now - m_lastDeviceChange < 1000) {
+        handled = FALSE;
+        return TRUE;
+    }
+    m_lastDeviceChange = now;
+    m_pendingArrival = (wParam == DBT_DEVICEARRIVAL);
+    // Replace Sleep(600) with a one-shot timer — UI thread stays responsive
+    KillTimer(DEVICE_SETTLE_TIMER_ID); // reset if second event fires inside 600ms
+    SetTimer(DEVICE_SETTLE_TIMER_ID, 600, NULL);
     handled = FALSE;
     return TRUE;
 }
@@ -151,12 +161,33 @@ LRESULT COdinMDlg::OnDeviceChange(UINT, WPARAM wParam, LPARAM, BOOL& handled)
 // --- OnTimer ---
 LRESULT COdinMDlg::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL& handled)
 {
+    if (wParam == DEVICE_SETTLE_TIMER_ID) {
+        KillTimer(DEVICE_SETTLE_TIMER_ID); // one-shot
+        // Snapshot current letters to detect newly added drives for auto-clone
+        std::vector<std::wstring> prevLetters(m_driveSlots.size());
+        for (int i = 0; i < (int)m_driveSlots.size(); i++)
+            prevLetters[i] = m_driveSlots[i]->GetDriveLetter();
+        RefreshDrives();
+        UpdateDriveList();
+        UpdateStatus();
+        Log(L"Device change detected.");
+        if (m_pendingArrival && m_autoCloneEnabled && IsValidImageFile(m_imagePath)) {
+            for (int i = 0; i < (int)m_driveSlots.size(); i++) {
+                const std::wstring& letter = m_driveSlots[i]->GetDriveLetter();
+                if (!letter.empty() && letter != prevLetters[i])
+                    StartClone(i);
+            }
+        }
+        handled = TRUE;
+        return 0;
+    }
+
     if (wParam == POLL_TIMER_ID) {
-        DetectNewDrives();
-        // Check if any Cloning process finished
+        bool anyActive = false;
         for (int i = 0; i < (int)m_driveSlots.size(); i++) {
             CDriveSlot* slot = m_driveSlots[i].get();
             if (slot->GetStatus() == CloneStatus::Cloning && slot->GetProcessId()) {
+                anyActive = true;
                 HANDLE hProc = OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE,
                                            FALSE, slot->GetProcessId());
                 if (hProc) {
@@ -185,8 +216,10 @@ LRESULT COdinMDlg::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL& handled)
                 }
             }
         }
-        UpdateDriveList();
-        UpdateStatus();
+        if (anyActive) {
+            UpdateDriveList();
+            UpdateStatus();
+        }
     }
     handled = TRUE;
     return 0;
