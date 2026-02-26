@@ -624,6 +624,10 @@ LRESULT COdinMDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 void COdinMDlg::ApplyDarkMode(HWND hwnd) {
+  // TODO: Dark mode disabled — same header blocker as ODINDlg.
+  // SysHeader32 text stays dark; fix requires SetWindowSubclass on the ListView.
+  // Re-enable by removing this return.
+  return;
 
     static thread_local bool s_inThemePass = false;
     if (s_inThemePass)

@@ -38,7 +38,6 @@ class COptionsDlg : public CDialogImpl<COptionsDlg>
 	enum { IDD = IDD_OPTIONS };
 
 	COptionsDlg(COdinManager& odinManager);
-	~COptionsDlg();
   void Commit();
 
   BEGIN_MSG_MAP(COptionsDlg)
@@ -55,12 +54,6 @@ class COptionsDlg : public CDialogImpl<COptionsDlg>
 		COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
     COMMAND_HANDLER(IDC_BT_USED_BLOCKS, BN_CLICKED, OnBnClickedBtUsedBlocks)
     COMMAND_HANDLER(IDC_BT_SNAPSHOT, BN_CLICKED, OnBnClickedBtVSSSnapshot)
-    MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
-    MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
-    MESSAGE_HANDLER(WM_APP + 100, OnDeferredDarkMode)
-    MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
-    MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
-    MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
   END_MSG_MAP()
 
 private:
@@ -91,12 +84,4 @@ public:
   LRESULT OnCancel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtUsedBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtVSSSnapshot(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnSettingChange(UINT, WPARAM, LPARAM, BOOL&);
-  LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
-  LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  void    ApplyDarkMode(HWND hwnd);
-
-  HBRUSH  fDarkBgBrush   = nullptr;
-  HBRUSH  fDarkEditBrush = nullptr;
 };

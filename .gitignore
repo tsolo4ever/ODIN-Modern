@@ -70,3 +70,6 @@ ehthumbs.db
 # --- OdinM settings (runtime generated) ---
 OdinM.ini
 *.hashcfg
+
+# --- env ---
+.venv/

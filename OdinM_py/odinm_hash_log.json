@@ -1,0 +1,14 @@
+{
+  "d:\\backup.img": {
+    "filename": "backup.img",
+    "sha256": "9d1fabe38584e0d85fa6a5accc605ea5eefc36b69cf2f89a981e405257ee0c45",
+    "sha1": "1e55fc432153215ea1a33151e3079f9ad516b652",
+    "timestamp": "2026-02-26T09:58:47.715897+00:00"
+  },
+  "d:\\test.img": {
+    "filename": "test.img",
+    "sha256": "46db002577b376775ea3c19d0604cc9e3fa26879633f958fdcad54e1b684f1db",
+    "sha1": "d65ea30952c886587f5cd83d1611fbe8b6004bcf",
+    "timestamp": "2026-02-26T11:58:49.924625+00:00"
+  }
+}

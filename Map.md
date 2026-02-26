@@ -125,7 +125,7 @@ All smart pointer and malloc/free work complete. Deferred by design:
 ## TODO List
 
 ### Priority 2 — Do Soon
-- [ ] **Dark mode (Win10 1809+)** — `DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE)` on WM_CREATE and theme change; add `dwmapi.lib` to ODIN.vcxproj and OdinM.vcxproj
+- [ ] **Dark mode (Win10 1809+)** — Partially implemented (title bar, menu, controls, brushes) then **disabled**. Blocker: `SysHeader32` text stays dark. Root cause: the ListView handles header `NM_CUSTOMDRAW` internally — it never reaches the dialog message map. `AllowDarkModeForWindow` + `SetWindowTheme` on the header changes background but not text color. Fix options: (a) `SetWindowSubclass` on the ListView to intercept header `WM_NOTIFY`; (b) set `HDF_OWNERDRAW` per item + handle `WM_DRAWITEM` from within a ListView subclass. All dark mode code is in `ODINDlg.cpp::ApplyDarkMode` — re-enable by removing the early `return;` at the top of that function.
 - [ ] **OdinM: Inline progress bar in grid cell** — Custom draw replacing progress text column
 - [ ] **OdinM: Status color badges** — NM_CUSTOMDRAW, alternating rows, color by status (blue=Cloning, green=Done, red=Failed)
 - [ ] **OdinM: Gray placeholder in empty cells** — Replace plain `-` with styled text

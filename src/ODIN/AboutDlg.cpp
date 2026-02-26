@@ -39,171 +39,6 @@
 
 using namespace std;
 
-// ── dark mode helpers ────────────────────────────────────────────────────────
-static bool AboutDlg_IsDark()
-{
-  typedef BOOL (WINAPI* PFN_ShouldDark)();
-  static bool s_tried = false;
-  static PFN_ShouldDark s_pfn = nullptr;
-  if (!s_tried) {
-    s_tried = true;
-    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
-    if (h) s_pfn = (PFN_ShouldDark)::GetProcAddress(h, MAKEINTRESOURCEA(132));
-  }
-  if (s_pfn && s_pfn() != FALSE)
-    return true;   // only trust TRUE from ordinal 132
-  // Always fall through to registry (reliable on all Win10/11 builds)
-  DWORD value = 1, size = sizeof(value);
-  HKEY hKey = NULL;
-  if (RegOpenKeyExW(HKEY_CURRENT_USER,
-        L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-        0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS) {
-    RegQueryValueExW(hKey, L"AppsUseLightTheme", nullptr, nullptr,
-                     reinterpret_cast<LPBYTE>(&value), &size);
-    RegCloseKey(hKey);
-  }
-  return value == 0;
-}
-
-void CAboutDlg::ApplyDarkMode(HWND hwnd)
-{
-    static thread_local bool s_inThemePass = false;
-    if (s_inThemePass)
-        return;
-    s_inThemePass = true;
-
-  // ── title bar (DWM) ──────────────────────────────────────────────────────
-  typedef HRESULT (WINAPI* PFN_DWM)(HWND, DWORD, LPCVOID, DWORD);
-  static PFN_DWM pfnDwm = nullptr;
-  
-  typedef HRESULT (WINAPI* PFN_SWT)(HWND, LPCWSTR, LPCWSTR);
-  static PFN_SWT pfnSwt = nullptr;
-
-  const bool dark = AboutDlg_IsDark();
-  BOOL d = dark ? TRUE : FALSE;
-
-  if (!pfnDwm) {
-    HMODULE h = ::GetModuleHandleW(L"dwmapi.dll");
-    if (!h) h = ::LoadLibraryW(L"dwmapi.dll");
-    if (h) pfnDwm = (PFN_DWM)::GetProcAddress(h, "DwmSetWindowAttribute");
-  }
-  if (pfnDwm) {
-    if (FAILED(pfnDwm(hwnd, 20, &d, sizeof(d))))
-      pfnDwm(hwnd, 19, &d, sizeof(d));
-  }
-
-  // ── client-area brushes ──────────────────────────────────────────────────
-  if (m_darkBgBrush)   { ::DeleteObject(m_darkBgBrush);   m_darkBgBrush   = nullptr; }
-  if (m_darkEditBrush) { ::DeleteObject(m_darkEditBrush); m_darkEditBrush = nullptr; }
-  if (dark) {
-    m_darkBgBrush   = ::CreateSolidBrush(RGB(32, 32, 32));
-    m_darkEditBrush = ::CreateSolidBrush(RGB(45, 45, 48));
-  }
-  
-  // ── child window themes ──────────────────────────────────────────────────
-  if (!pfnSwt) {
-    HMODULE h = ::GetModuleHandleW(L"uxtheme.dll");
-    if (h) pfnSwt = (PFN_SWT)::GetProcAddress(h, "SetWindowTheme");
-  }
-  if (pfnSwt) {
-    struct Ctx { PFN_SWT swt; bool dark; } c = { pfnSwt, dark };
-    ::EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
-      auto& c = *reinterpret_cast<Ctx*>(lp);
-      wchar_t cls[64] = {};
-      ::GetClassNameW(child, cls, _countof(cls));
-      LPCWSTR theme = nullptr;
-
-      if (_wcsicmp(cls, L"Button") == 0) {
-        LONG_PTR style = ::GetWindowLongPtr(child, GWL_STYLE);
-        BYTE type = (BYTE)(style & 0x0FL);
-        if (type == BS_GROUPBOX) { c.swt(child, nullptr, nullptr); return TRUE; }
-        theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-      }
-      else if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, L"ComboBox") == 0) {
-        theme = c.dark ? L"DarkMode_CFD" : nullptr;
-      }
-      else if (_wcsicmp(cls, L"SysListView32") == 0) {
-        theme = c.dark ? L"DarkMode_Explorer" : nullptr;
-      }
-
-      c.swt(child, theme, nullptr);
-      return TRUE;
-    }, reinterpret_cast<LPARAM>(&c));
-  }
-
-  HWND hList = GetDlgItem(IDC_LIST_VOLUMES);
-  
-  if (hList) {
-      // Text + background colors
-      ListView_SetTextColor(hList, RGB(212, 212, 212));
-      ListView_SetTextBkColor(hList, RGB(32, 32, 32));
-      ListView_SetBkColor(hList, RGB(32, 32, 32));
-  
-      // Apply dark theme
-      if (pfnSwt)
-          pfnSwt(hList, dark ? L"DarkMode_Explorer" : nullptr, nullptr);
-  }
-
-  ::InvalidateRect(hwnd, nullptr, TRUE);
-
-  s_inThemePass = false;
-}
-
-LRESULT CAboutDlg::OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&)
-{
-  ApplyDarkMode(m_hWnd);
-  return 0;
-}
-
-LRESULT CAboutDlg::OnSettingChange(UINT, WPARAM, LPARAM lParam, BOOL&)
-{
-  if (lParam && wcscmp(reinterpret_cast<LPCWSTR>(lParam), L"ImmersiveColorSet") == 0)
-    ApplyDarkMode(m_hWnd);
-  return 0;
-}
-
-LRESULT CAboutDlg::OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM /*lParam*/, BOOL& bHandled)
-{
-    if (!m_darkBgBrush) {
-        bHandled = FALSE;
-        return 0;
-    }
-
-    HDC hdc = reinterpret_cast<HDC>(wParam);
-
-    // Edit controls + listboxes
-    if (uMsg == WM_CTLCOLOREDIT || uMsg == WM_CTLCOLORLISTBOX) {
-        ::SetTextColor(hdc, RGB(212, 212, 212));
-        ::SetBkColor(hdc,   RGB(45, 45, 48));
-        bHandled = TRUE;
-        return reinterpret_cast<LRESULT>(m_darkEditBrush);
-    }
-
-    // Everything else: static, button, group box, dialog, scrollbar
-    ::SetTextColor(hdc, RGB(212, 212, 212));
-    ::SetBkMode(hdc, TRANSPARENT);
-    ::SetBkColor(hdc, RGB(32, 32, 32));
-    bHandled = TRUE;
-    return reinterpret_cast<LRESULT>(m_darkBgBrush);
-}
-
-LRESULT CAboutDlg::OnEraseBkgnd(UINT, WPARAM wParam, LPARAM, BOOL& bHandled)
-{
-  if (!m_darkBgBrush) { bHandled = FALSE; return 0; }
-  RECT rc; ::GetClientRect(m_hWnd, &rc);
-  ::FillRect(reinterpret_cast<HDC>(wParam), &rc, m_darkBgBrush);
-  bHandled = TRUE;
-  return 1;
-}
-
-LRESULT CAboutDlg::OnDestroy(UINT, WPARAM, LPARAM, BOOL&)
-{
-  if (m_darkBgBrush)   { ::DeleteObject(m_darkBgBrush);   m_darkBgBrush   = nullptr; }
-  if (m_darkEditBrush) { ::DeleteObject(m_darkEditBrush); m_darkEditBrush = nullptr; }
-  return 0;
-}
-// ── end dark mode helpers ────────────────────────────────────────────────────
-
 const wchar_t creditsText[] = L"The zlib data compression library written by Mark Adler and Jean-loup Gailly \
 http://www.zlib.net/.\n\
 \n\
@@ -242,8 +77,6 @@ LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPara
   CStatic homepageBox(GetDlgItem(IDC_HYPER));
   fHyperHomepage.SubclassWindow(homepageBox.m_hWnd);
 
-  ApplyDarkMode(m_hWnd);      // create brushes before first paint
-  PostMessage(WM_APP + 100, 0, 0);  // deferred repaint after window fully visible
 	return TRUE;
 }
 
@@ -253,12 +86,6 @@ LRESULT CAboutDlg::OnCloseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, 
 	return 0;
 }
 
-LRESULT CAboutDlg::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&)
-{
-    PostMessage(WM_APP + 100);
-    return 0;
-}
-  
 LRESULT CAboutDlg::OnLicenseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 {
 	wchar_t licenseFile[] = L"\\license.html";

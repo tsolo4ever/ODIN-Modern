@@ -799,17 +799,21 @@ void CDiskImageStream::CalculateFATExtraOffset()
       }
       
       // Validate BytesPerSector (must be power of 2 between 512 and 4096)
+      // Non-standard drives (e.g. raw USB media) may have unusual values — skip
+      // FAT offset calculation rather than aborting; allBlocks mode never uses it.
       if (bootSector->BytesPerSector == 0 || bootSector->BytesPerSector > 4096 ||
           (bootSector->BytesPerSector & (bootSector->BytesPerSector - 1)) != 0) {
-        ATLTRACE("Warning: Invalid BytesPerSector: %u\n", bootSector->BytesPerSector);
-        THROW_INT_EXC(EInternalException::invalidBootSector);
+        ATLTRACE("Warning: Invalid BytesPerSector: %u — skipping FAT offset calc\n", bootSector->BytesPerSector);
+        delete bootSector;
+        return;
       }
-      
+
       // Validate SectorsPerCluster (must be power of 2 and reasonable)
       if (bootSector->SectorsPerCluster == 0 || bootSector->SectorsPerCluster > 128 ||
           (bootSector->SectorsPerCluster & (bootSector->SectorsPerCluster - 1)) != 0) {
-        ATLTRACE("Warning: Invalid SectorsPerCluster: %u\n", bootSector->SectorsPerCluster);
-        THROW_INT_EXC(EInternalException::invalidBootSector);
+        ATLTRACE("Warning: Invalid SectorsPerCluster: %u — skipping FAT offset calc\n", bootSector->SectorsPerCluster);
+        delete bootSector;
+        return;
       }
       
       ATLTRACE("Bytes per cluster from boot sector is: %u\n", bootSector->SectorsPerCluster * fBytesPerSector);

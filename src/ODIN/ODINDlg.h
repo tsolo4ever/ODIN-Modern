@@ -47,9 +47,6 @@
 
 using namespace std;
 
-#pragma once
-bool IsDarkModeEnabled();
-
 class CODINSplitManagerCallback : public ISplitManagerCallback 
 {
 public:
@@ -171,7 +168,6 @@ public:
 
   LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
   LRESULT OnDeviceChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-  LRESULT OnPostInit(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnOK(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnCancel(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -186,8 +182,10 @@ public:
     COMMAND_HANDLER(IDC_RADIO_BACKUP, BN_CLICKED, OnBnClickedRadioBackup)
     COMMAND_HANDLER(IDC_RADIO_RESTORE, BN_CLICKED, OnBnClickedRadioRestore)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_SELCHANGE, OnCbnSelchangeComboFiles)
+
 	COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
     NOTIFY_HANDLER(IDC_LIST_VOLUMES, LVN_ITEMCHANGED, OnLvnItemchangedListVolumes)
+
     // CHAIN_MSG_MAP(CDialogResize<CODINDlg>)
     MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_KILLFOCUS, OnCbnKillfocusComboFiles)
@@ -197,17 +195,6 @@ public:
     COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_ENABLE, OnAutoFlashEnable)
     COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_SIZE, OnAutoFlashSize)
     MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
-    MESSAGE_HANDLER(0x0091 /*WM_UAHDRAWMENU*/,     OnUahDrawMenu)
-    MESSAGE_HANDLER(0x0092 /*WM_UAHDRAWMENUITEM*/, OnUahDrawMenuItem)
-
-    MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
-    MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
-    MESSAGE_HANDLER(WM_APP + 100, OnDeferredDarkMode)
-    MESSAGE_HANDLER(WM_APP + 100, OnPostInit)
-
-    MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
-    MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
-    MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
   END_MSG_MAP()
   
 /* does not draw correctly 
@@ -243,17 +230,4 @@ public:
   LRESULT OnAutoFlashEnable(WORD, WORD, HWND, BOOL&);
   LRESULT OnAutoFlashSize(WORD, WORD, HWND, BOOL&);
   LRESULT OnInitMenuPopup(UINT, WPARAM, LPARAM, BOOL&);
-  LRESULT OnUahDrawMenu(UINT, WPARAM, LPARAM, BOOL&);
-  LRESULT OnUahDrawMenuItem(UINT, WPARAM, LPARAM, BOOL&);
-
-  LRESULT OnSettingChange(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
-  LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
-  void    ApplyDarkMode(HWND hwnd);
-  void    ApplyThemeToControls();
-
-  // Dark mode brushes — created/destroyed with the dialog
-  HBRUSH  fDarkBgBrush   = nullptr; // RGB(32,32,32)  dialog/static bg
-  HBRUSH  fDarkEditBrush = nullptr; // RGB(45,45,48)  edit/listbox bg
 };

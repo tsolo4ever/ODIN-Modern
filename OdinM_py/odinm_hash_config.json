@@ -1,0 +1,68 @@
+{
+  "d:\\backup.img": {
+    "filename": "backup.img",
+    "partitions": {
+      "1": {
+        "sha1_value": "",
+        "sha1_enabled": true,
+        "sha1_fail": false,
+        "sha256_value": "",
+        "sha256_enabled": true,
+        "sha256_fail": false
+      },
+      "2": {
+        "sha1_value": "",
+        "sha1_enabled": true,
+        "sha1_fail": false,
+        "sha256_value": "",
+        "sha256_enabled": true,
+        "sha256_fail": false
+      },
+      "3": {
+        "sha1_value": "",
+        "sha1_enabled": true,
+        "sha1_fail": false,
+        "sha256_value": "",
+        "sha256_enabled": true,
+        "sha256_fail": false
+      },
+      "4": {
+        "sha1_value": "1e55fc432153215ea1a33151e3079f9ad516b652",
+        "sha1_enabled": true,
+        "sha1_fail": false,
+        "sha256_value": "9d1fabe38584e0d85fa6a5accc605ea5eefc36b69cf2f89a981e405257ee0c45",
+        "sha256_enabled": true,
+        "sha256_fail": false
+      },
+      "5": {
+        "sha1_value": "",
+        "sha1_enabled": false,
+        "sha1_fail": false,
+        "sha256_value": "",
+        "sha256_enabled": false,
+        "sha256_fail": false
+      }
+    }
+  },
+  "d:\\test.img": {
+    "filename": "test.img",
+    "partitions": {
+      "1": {
+        "sha1_value": "d65ea30952c886587f5cd83d1611fbe8b6004bcf",
+        "sha1_enabled": true,
+        "sha1_fail": true,
+        "sha256_value": "46db002577b376775ea3c19d0604cc9e3fa26879633f958fdcad54e1b684f1db",
+        "sha256_enabled": true,
+        "sha256_fail": true
+      },
+      "2": {
+        "sha1_value": "",
+        "sha1_enabled": false,
+        "sha1_fail": false,
+        "sha256_value": "",
+        "sha256_enabled": false,
+        "sha256_fail": false
+      }
+    }
+  }
+}
