@@ -448,19 +448,24 @@ void CDiskImageStream::Open(LPCWSTR name, TOpenMode mode)
     memset(&diskGeometry, 0, sizeof(diskGeometry));
     memset(&lengthInfo, 0, sizeof(lengthInfo));
     memset(&ntfsVolData, 0, sizeof(ntfsVolData));
-    res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfo, sizeof(partInfo), &dummy, NULL);
-    //CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX");
-    // on some disks this might fail try PARTITION_INFORMATION then
-    if (res==0) {
-      PARTITION_INFORMATION partInfo2;
-      memset(&partInfo, 0, sizeof(partInfo));
-      res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &partInfo2, sizeof(partInfo2), &dummy, NULL);
-      CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX and IOCTL_DISK_GET_PARTITION_INFO");
-      fPartitionType = partInfo2.PartitionType;
-    }
-    else {
-      CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_DRIVE_GEOMETRY");
-      fPartitionType = partInfo.Mbr.PartitionType;
+    // VSS shadow copy devices don't expose partition info — skip these IOCTLs for them.
+    // fPartitionType stays 0 (set by memset above), which is fine for a backup source.
+    bool isVSSSnapshot = fName.find(L"HarddiskVolumeShadowCopy") != std::wstring::npos;
+    if (!isVSSSnapshot) {
+      res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfo, sizeof(partInfo), &dummy, NULL);
+      //CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX");
+      // on some disks this might fail try PARTITION_INFORMATION then
+      if (res==0) {
+        PARTITION_INFORMATION partInfo2;
+        memset(&partInfo, 0, sizeof(partInfo));
+        res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &partInfo2, sizeof(partInfo2), &dummy, NULL);
+        CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX and IOCTL_DISK_GET_PARTITION_INFO");
+        fPartitionType = partInfo2.PartitionType;
+      }
+      else {
+        CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_DRIVE_GEOMETRY");
+        fPartitionType = partInfo.Mbr.PartitionType;
+      }
     }
     fIsMounted = DeviceIoControl(fHandle, FSCTL_IS_VOLUME_MOUNTED, NULL, 0, NULL, 0, &dummy, NULL) != FALSE;  
     res = DeviceIoControl(fHandle, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &lengthInfo, sizeof(lengthInfo), &dummy, NULL);
