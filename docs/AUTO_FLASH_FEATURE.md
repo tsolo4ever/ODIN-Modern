@@ -104,7 +104,7 @@ For flashing multiple cards:
 Potential improvements for future versions:
 - Configurable size detection (not just 8GB)
 - Optional confirmation dialog before auto-flash
-- Auto-eject card when complete
+- **Auto-eject card when complete** *(v0.5.0 — OdinM_py)*
 - Support for label matching
 - Settings dialog for advanced configuration
 - Progress notification sounds
