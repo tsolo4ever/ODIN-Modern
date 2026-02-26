@@ -73,3 +73,6 @@ OdinM.ini
 
 # --- env ---
 .venv/
+
+# --- vcpkg installed packages (generated, not committed) ---
+vcpkg_installed/
