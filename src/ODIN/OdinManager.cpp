@@ -167,32 +167,31 @@ void COdinManager::MakeSnapshot(int driveIndex, IWaitCallback* wcb) {
 
   if (fTakeVSSSnapshot) {
     wcb->OnPrepareSnapshotBegin();
-    CDriveInfo*	pDriveInfo = driveIndex<0 ? NULL : fDriveList->GetItem(driveIndex);
+    CDriveInfo* pDriveInfo = driveIndex < 0 ? NULL : fDriveList->GetItem(driveIndex);
     int subPartitions = pDriveInfo ? pDriveInfo->GetContainedVolumes() : 0;
     bool isHardDisk = pDriveInfo ? pDriveInfo->IsCompleteHardDisk() : false;
-    LPCWSTR *mountPoints;
+    std::vector<LPCWSTR> mountPoints;
 
     if (isHardDisk) {
-        CDriveInfo **pContainedVolumes = new CDriveInfo* [subPartitions];
-        mountPoints = new LPCWSTR [subPartitions];
-
-        int res = fDriveList->GetVolumes(pDriveInfo, pContainedVolumes, subPartitions);
-        for (int i=0, j=0; i<res; i++) {
-          ATLTRACE(L"Found sub-partition: %s\n", pContainedVolumes[i]->GetDisplayName().c_str());
-          if (pContainedVolumes[i]->GetMountPoint().length() > 0)
-            mountPoints[j++] = pContainedVolumes[i]->GetMountPoint().c_str();
-          else 
-            mountPoints[j++] = NULL; // unmounted volume
-        }
-        delete pContainedVolumes;
+      std::vector<CDriveInfo*> containedVolumes(subPartitions);
+      mountPoints.resize(subPartitions);
+      int res = fDriveList->GetVolumes(pDriveInfo, containedVolumes.data(), subPartitions);
+      for (int i = 0; i < res; i++) {
+        ATLTRACE(L"Found sub-partition: %s\n", containedVolumes[i]->GetDisplayName().c_str());
+        mountPoints[i] = containedVolumes[i]->GetMountPoint().length() > 0
+          ? containedVolumes[i]->GetMountPoint().c_str()
+          : NULL;
+      }
     } else {
-        subPartitions = 1;
-        mountPoints = new LPCWSTR [1];
+      subPartitions = 1;
+      mountPoints.resize(1);
+      mountPoints[0] = (pDriveInfo && pDriveInfo->GetMountPoint().length() > 0)
+        ? pDriveInfo->GetMountPoint().c_str()
+        : NULL;
     }
 
     fVSS = std::make_unique<CVssWrapper>();
-    fVSS->PrepareSnapshot(mountPoints, subPartitions);
-    delete mountPoints;
+    fVSS->PrepareSnapshot(mountPoints.data(), subPartitions);
     wcb->OnPrepareSnapshotReady();
   }
 }
