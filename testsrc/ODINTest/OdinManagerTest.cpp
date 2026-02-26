@@ -165,39 +165,39 @@ void ODINManagerTest::ODINManagerTest1()
   cout << "...done." << endl;
 }
 
-// Test 3: save and restore NTFS bzip2 compressed, used blocks
+// Test 3: save and restore NTFS LZ4 compressed, used blocks
 void ODINManagerTest::ODINManagerTest2()
 {
-  if (!fEnableTest) 
+  if (!fEnableTest)
     return;
 
   cout << endl << endl;
   cout << "============================================================" << endl;
-  cout << "ODINManagerTest2 NTFS used blocks bzip2..." << endl;
-  const wstring testImageFileName(L"NTFSBZip2UsedBlocks.img");
+  cout << "ODINManagerTest2 NTFS used blocks LZ4..." << endl;
+  const wstring testImageFileName(L"NTFSLz4UsedBlocks.img");
   wstring testImageFileFullPath;
   LPCWSTR volumeLabel = L"NTFSODINTEST";
   CreateFullPath(testImageFileName, testImageFileFullPath);
-  SetBackupOptions(compressionBZIP2, true, 0);
+  SetBackupOptions(compressionLZ4, true, 0);
   // run test:
   ODINManagerTestTemplatePartition(NTFS, volumeLabel, testImageFileFullPath.c_str(), false);
   cout << "...done." << endl;
 }
 
-// Test 4: save and restore FAT16 bzip2 compressed, all blocks
+// Test 4: save and restore FAT16 ZSTD compressed, all blocks
 void ODINManagerTest::ODINManagerTest3()
 {
-  if (!fEnableTest) 
+  if (!fEnableTest)
     return;
 
   cout << endl << endl;
   cout << "============================================================" << endl;
-  cout << "ODINManagerTest3 FAT16 bzip2 all blocks..." << endl;
-  const wstring testImageFileName(L"FAT16BZip2AllBlocks.img");
+  cout << "ODINManagerTest3 FAT16 ZSTD all blocks..." << endl;
+  const wstring testImageFileName(L"FAT16ZstdAllBlocks.img");
   wstring testImageFileFullPath;
   LPCWSTR volumeLabel = L"FAT16ODINTEST";
   CreateFullPath(testImageFileName, testImageFileFullPath);
-  SetBackupOptions(compressionBZIP2, false, 0);
+  SetBackupOptions(compressionZSTD, false, 0);
   // run test:
   ODINManagerTestTemplatePartition(FAT, volumeLabel, testImageFileFullPath.c_str(), false);
   cout << "...done." << endl;
