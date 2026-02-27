@@ -48,20 +48,28 @@
     "filename": "test.img",
     "partitions": {
       "1": {
-        "sha1_value": "d65ea30952c886587f5cd83d1611fbe8b6004bcf",
+        "sha1_value": "31ef2742dae0e042da7d0885e0564bd2ce67869c",
         "sha1_enabled": true,
         "sha1_fail": true,
-        "sha256_value": "46db002577b376775ea3c19d0604cc9e3fa26879633f958fdcad54e1b684f1db",
+        "sha256_value": "d53c81cd4d05b18744a13ed70d6b0ccab52f387a64e1273080944b5848d580f0",
         "sha256_enabled": true,
         "sha256_fail": true
       },
       "2": {
-        "sha1_value": "",
-        "sha1_enabled": false,
+        "sha1_value": "ade50b38c6563d81b9837b543661c757f5ed9512",
+        "sha1_enabled": true,
         "sha1_fail": false,
-        "sha256_value": "",
-        "sha256_enabled": false,
+        "sha256_value": "728f19afdba8e68a2bbf7f4ff844fa42de3ff9fad1655061183fb3acc1884e33",
+        "sha256_enabled": true,
         "sha256_fail": false
+      },
+      "0": {
+        "sha1_value": "d7886491122dce0bdb1bc19677cfabec56bba952",
+        "sha1_enabled": true,
+        "sha1_fail": true,
+        "sha256_value": "79d3606b39f2e96d33d9836e15c30ae6d7a90b7ec3843d0d2860b3451abf6c2d",
+        "sha256_enabled": true,
+        "sha256_fail": true
       }
     }
   }

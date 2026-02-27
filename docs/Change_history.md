@@ -2,6 +2,22 @@
 
 ---
 
+## Version 0.4.1 (2026-02-27)
+
+Patch release with OdinM_py improvements and minor C++ fixes.
+
+### OdinM_py
+- Rolling 6-sample speed window — transfer rate no longer diluted by slow startup ramp
+- VSS snapshot option added to Make Image backup options (`-makeSnapshot`)
+- PyInstaller spec + `build_exe.bat` for standalone `OdinM_py.exe` release build
+- OdinM.ico applied to `OdinM_py.exe`
+
+### ODIN / About Dialog
+- Copyright year updated to 2008-2026
+- Credits added for Claude (Anthropic) and Tsolo4ever
+
+---
+
 ## Version 0.4.0 (2026-02-27)
 
 First release of the modernized codebase. Migrated from VS2008/x86 to VS2026/x64,
