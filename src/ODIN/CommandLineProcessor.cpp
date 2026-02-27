@@ -709,12 +709,29 @@ void CCommandLineProcessor::ReportFeedback()
       fLastPercent = percent;
     }
   }
+  wcout.flush();
 }
 
 // Code taken from: http://dslweb.nwnexus.com/~ast/dload/guicon.htm
 static const WORD MAX_CONSOLE_LINES = 500;
 bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   CONSOLE_SCREEN_BUFFER_INFO coninfo;
+
+  // If stdout is already a pipe (launched as a subprocess), skip console
+  // allocation entirely.  freopen("CONOUT$") would redirect stdout away from
+  // the pipe to a hidden console, making all wcout output invisible to the
+  // parent process.  Just configure unbuffered UTF-8 text mode and return.
+  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (hStdOut != INVALID_HANDLE_VALUE && GetFileType(hStdOut) == FILE_TYPE_PIPE) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+    _setmode(_fileno(stdout), _O_U8TEXT);
+    _setmode(_fileno(stderr), _O_U8TEXT);
+    ios::sync_with_stdio(true);
+    wcout.flush();
+    wcout.clear();
+    return true;
+  }
 
   // Try to attach to a parent console first (works when launched from cmd/PowerShell).
   bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;

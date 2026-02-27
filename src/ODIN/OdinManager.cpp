@@ -509,16 +509,14 @@ unsigned __int64 COdinManager::GetTotalBytesToProcess()
       res = 0;
     }
   } else if (fIsRestoring) {
-    if (fTargetImage) {
-      if (fSaveAllBlocks)
-        res = fTargetImage->GetSize();
-      else {
+    if (fSourceImage) {
+      // For restore, the source image file knows the volume size from its header.
+      // fTargetImage (disk opened for writing) has fSize==0 — size is only
+      // queried by CDiskImageStream::Open when opened for reading.
+      res = fSourceImage->GetSize();
+      if (res == 0)
         res = fSourceImage->GetAllocatedBytes();
-        if (res == 0) // happens for raw disks
-          res = fSourceImage->GetSize();
-      }
     } else {
-      // we are in verify mode
       res = 0;
     }
   } else {
