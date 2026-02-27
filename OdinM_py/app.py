@@ -5,6 +5,7 @@ OdinMApp — wires config, drive monitor, clone workers, and UI together.
 
 import os
 import time
+from collections import deque
 from typing import Dict, List, Optional
 
 import ttkbootstrap as ttk
@@ -64,7 +65,8 @@ class OdinMApp:
         self._drives: List[Optional[DriveInfo]] = [None] * NUM_SLOTS
         self._workers: Dict[int, CloneWorker] = {}
         self._queue: List[int] = []          # slot indices waiting to start
-        self._start_times: Dict[int, float] = {}  # slot → clone start timestamp
+        # slot → deque of (timestamp, pct) samples for rolling speed window
+        self._speed_samples: Dict[int, deque] = {}
 
         self._monitor = DriveMonitor(self._root, self._on_drives_changed)
 
@@ -153,16 +155,23 @@ class OdinMApp:
         image = self._window.image_path
         odinc = self._config.get_odinc_path()
         size_bytes = drive.size_bytes
-        self._start_times[idx] = time.time()
+        self._speed_samples[idx] = deque(maxlen=6)  # 6 points = 5 intervals
 
         def _on_progress(pct: int, i: int = idx, sz: int = size_bytes):
             self._window.set_slot_progress(i, pct)
             if pct > 0 and sz > 0:
-                elapsed = time.time() - self._start_times.get(i, time.time())
-                if elapsed > 0:
-                    self._window.set_slot_speed(i, _fmt_speed(pct / 100.0 * sz / elapsed))
-                    remaining = elapsed * (100 - pct) / pct
-                    self._window.set_slot_eta(i, _fmt_eta(remaining))
+                samples = self._speed_samples.get(i)
+                if samples is not None:
+                    samples.append((time.time(), pct))
+                    if len(samples) >= 2:
+                        t0, p0 = samples[0]
+                        t1, p1 = samples[-1]
+                        dt = t1 - t0
+                        if dt > 0 and p1 > p0:
+                            bps = (p1 - p0) / 100.0 * sz / dt
+                            self._window.set_slot_speed(i, _fmt_speed(bps))
+                            remaining = (100 - p1) / 100.0 * sz / bps
+                            self._window.set_slot_eta(i, _fmt_eta(remaining))
 
         worker = CloneWorker(
             root=self._root,
@@ -200,6 +209,7 @@ class OdinMApp:
             return
         worker = self._workers.get(idx)
         if worker:
+            self._speed_samples.pop(idx, None)
             worker.stop()
             self._window.log(f"[Slot {idx+1}] Stop requested.")
 
@@ -262,6 +272,7 @@ class OdinMApp:
         self._window.log(f"[Slot {idx+1}] {label}")
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
+        self._speed_samples.pop(idx, None)
         self._window.set_slot_speed(idx, "")
         self._window.set_slot_eta(idx, "")
         self._drain_queue()
