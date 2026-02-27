@@ -11,6 +11,7 @@ from tkinter import filedialog
 from typing import Dict, List, Optional
 
 import ttkbootstrap as ttk
+
 from ttkbootstrap.constants import *
 
 from hash_config import HashConfig, NUM_PARTITIONS, blank_partition
@@ -66,15 +67,15 @@ class ConfigureHashDialog(ttk.Toplevel):
         ttk.Label(outer, text="Partition:", anchor=W).grid(
             row=1, column=0, sticky=W, pady=(6, 8))
         self._part_str_var = ttk.StringVar(value="Partition 0")
-        part_cb = ttk.Combobox(
+        self._part_cb = ttk.Combobox(
             outer,
             textvariable=self._part_str_var,
             state="readonly",
-            values=[f"Partition {i}" for i in range(0, NUM_PARTITIONS + 1)],
+            values=["Partition 0"],
             width=16,
         )
-        part_cb.grid(row=1, column=1, sticky=W, padx=(8, 0))
-        part_cb.bind("<<ComboboxSelected>>", self._on_partition_change)
+        self._part_cb.grid(row=1, column=1, sticky=W, padx=(8, 0))
+        self._part_cb.bind("<<ComboboxSelected>>", self._on_partition_change)
 
         # ── Expected Hash Values ──────────────────────────────────────────────
         hf = ttk.LabelFrame(outer, text="Expected Hash Values")
@@ -206,16 +207,28 @@ class ConfigureHashDialog(ttk.Toplevel):
 
     # ── partition detection ───────────────────────────────────────────────────
 
+    def _update_partition_dropdown(self):
+        """Rebuild combobox to show only Partition 0 + detected partitions."""
+        values = ["Partition 0"] + [
+            f"Partition {n}" for n in sorted(self._partitions)
+        ]
+        self._part_cb.configure(values=values)
+        if self._part_str_var.get() not in values:
+            self._part_str_var.set("Partition 0")
+            self._partition = 0
+
     def _auto_detect_partitions(self):
         """Called on open — silently attempt to read the partition table."""
         found = read_mbr_partitions(self._path)
         self._partitions = {p.number: p for p in found}
+        self._update_partition_dropdown()
         self._refresh_part_info()
 
     def _detect_partitions(self):
         """Manual button — detect and report results."""
         found = read_mbr_partitions(self._path)
         self._partitions = {p.number: p for p in found}
+        self._update_partition_dropdown()
         if found:
             self._calc_status_var.set(
                 f"Found {len(found)} partition(s): "

@@ -12,6 +12,7 @@ from clone_worker import CloneStatus
 # Status → (ttkbootstrap bootstyle, label text)
 STATUS_STYLE = {
     CloneStatus.IDLE:    ("secondary", "Empty"),
+    CloneStatus.QUEUED:  ("warning",   "Queued"),
     CloneStatus.RUNNING: ("info",      "Cloning"),
     CloneStatus.DONE:    ("success",   "Done"),
     CloneStatus.FAILED:  ("danger",    "Failed"),
@@ -65,13 +66,18 @@ class SlotWidget(ttk.Frame):
         # Percentage label
         self._pct_var = ttk.StringVar(value="")
         ttk.Label(self, textvariable=self._pct_var, width=5,
-                  anchor=E).grid(row=0, column=4, padx=(0, 8), pady=4)
+                  anchor=E).grid(row=0, column=4, padx=(0, 4), pady=4)
+
+        # Transfer speed label
+        self._speed_var = ttk.StringVar(value="")
+        ttk.Label(self, textvariable=self._speed_var, width=9,
+                  bootstyle="secondary", anchor=W).grid(row=0, column=5, padx=(0, 8), pady=4)
 
         # Start / Stop button
         self._btn = ttk.Button(self, text="Start", width=7,
                                 bootstyle="outline",
                                 command=self._on_btn_click)
-        self._btn.grid(row=0, column=5, pady=4)
+        self._btn.grid(row=0, column=6, pady=4)
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -81,6 +87,7 @@ class SlotWidget(ttk.Frame):
         self._set_status(CloneStatus.IDLE)
         self._progress_var.set(0)
         self._pct_var.set("")
+        self._speed_var.set("")
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
 
     def set_drive(self, display: str):
@@ -89,15 +96,21 @@ class SlotWidget(ttk.Frame):
         self._set_status(CloneStatus.IDLE)
         self._progress_var.set(0)
         self._pct_var.set("0%")
+        self._speed_var.set("")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
 
     def set_progress(self, pct: int):
         self._progress_var.set(pct)
         self._pct_var.set(f"{pct}%")
 
+    def set_speed(self, speed_str: str):
+        self._speed_var.set(speed_str)
+
     def set_status(self, status: CloneStatus):
         self._set_status(status)
-        if status == CloneStatus.RUNNING:
+        if status == CloneStatus.QUEUED:
+            self._btn.configure(text="Cancel", state=NORMAL, bootstyle="warning-outline")
+        elif status == CloneStatus.RUNNING:
             self._btn.configure(text="Stop", state=NORMAL, bootstyle="danger-outline")
         elif status in (CloneStatus.DONE, CloneStatus.FAILED, CloneStatus.STOPPED):
             self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")

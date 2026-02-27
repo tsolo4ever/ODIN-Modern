@@ -4,6 +4,7 @@ OdinMApp — wires config, drive monitor, clone workers, and UI together.
 """
 
 import os
+import time
 from typing import Dict, List, Optional
 
 import ttkbootstrap as ttk
@@ -15,6 +16,16 @@ from drive_manager import DriveInfo, DriveMonitor, is_removable
 from ui.main_window import MainWindow, NUM_SLOTS
 
 APP_TITLE   = "OdinM — Multi-Drive Clone Tool (Python)"
+
+
+def _fmt_speed(bps: float) -> str:
+    if bps >= 1 << 30:
+        return f"{bps / (1 << 30):.1f} GB/s"
+    if bps >= 1 << 20:
+        return f"{bps / (1 << 20):.1f} MB/s"
+    if bps >= 1 << 10:
+        return f"{bps / (1 << 10):.0f} KB/s"
+    return f"{bps:.0f} B/s"
 MIN_WIDTH   = 780
 MIN_HEIGHT  = 560
 
@@ -43,6 +54,8 @@ class OdinMApp:
         # Drive slots: letter → slot index mapping
         self._drives: List[Optional[DriveInfo]] = [None] * NUM_SLOTS
         self._workers: Dict[int, CloneWorker] = {}
+        self._queue: List[int] = []          # slot indices waiting to start
+        self._start_times: Dict[int, float] = {}  # slot → clone start timestamp
 
         self._monitor = DriveMonitor(self._root, self._on_drives_changed)
 
@@ -72,6 +85,10 @@ class OdinMApp:
         self._drives = [None] * NUM_SLOTS
         for i, d in enumerate(drives[:NUM_SLOTS]):
             self._drives[i] = d
+
+        # Drop queued slots whose drives were removed
+        self._queue = [i for i in self._queue if self._drives[i] is not None]
+
         self._window.update_drives(drives[:NUM_SLOTS])
         self._window.log(f"[Drives] {len(drives)} removable drive(s) detected")
 
@@ -110,13 +127,38 @@ class OdinMApp:
                 f"[Error] Slot {idx + 1} ({drive.first_letter}) is not a removable drive — aborted.")
             return
 
+        max_conc = self._config.get_max_concurrent()
+        if self._running_count() >= max_conc:
+            if idx not in self._queue:
+                self._queue.append(idx)
+                self._window.set_slot_status(idx, CloneStatus.QUEUED)
+                self._window.log(
+                    f"[Slot {idx+1}] Queued — waiting for a free slot "
+                    f"(max {max_conc} concurrent)")
+            return
+
+        self._launch(idx)
+
+    def _launch(self, idx: int):
+        drive = self._drives[idx]
+        image = self._window.image_path
         odinc = self._config.get_odinc_path()
+        size_bytes = drive.size_bytes
+        self._start_times[idx] = time.time()
+
+        def _on_progress(pct: int, i: int = idx, sz: int = size_bytes):
+            self._window.set_slot_progress(i, pct)
+            if pct > 0 and sz > 0:
+                elapsed = time.time() - self._start_times.get(i, time.time())
+                if elapsed > 0:
+                    self._window.set_slot_speed(i, _fmt_speed(pct / 100.0 * sz / elapsed))
+
         worker = CloneWorker(
             root=self._root,
             odinc_path=odinc,
             image_path=image,
             drive_letter=drive.target_path,   # \Device\HarddiskN\Partition0 — whole disk
-            on_progress=lambda pct, i=idx: self._window.set_slot_progress(i, pct),
+            on_progress=_on_progress,
             on_log=lambda line, i=idx: self._window.log(f"[Slot {i+1}] {line}"),
             on_done=lambda status, i=idx: self._on_worker_done(i, status),
         )
@@ -125,7 +167,26 @@ class OdinMApp:
         self._window.log(f"[Slot {idx+1}] Starting clone → {drive.target_path}  ({drive.display})")
         worker.start()
 
+    def _running_count(self) -> int:
+        return sum(1 for w in self._workers.values() if w.status == CloneStatus.RUNNING)
+
+    def _drain_queue(self):
+        max_conc = self._config.get_max_concurrent()
+        while self._queue and self._running_count() < max_conc:
+            next_idx = self._queue.pop(0)
+            if self._drives[next_idx] is None:
+                continue  # drive removed while queued
+            self._window.log(f"[Slot {next_idx+1}] Starting from queue")
+            self._launch(next_idx)
+
     def _stop_slot(self, idx: int):
+        if idx in self._queue:
+            self._queue.remove(idx)
+            self._window.log(f"[Slot {idx+1}] Removed from queue.")
+            drive = self._drives[idx]
+            if drive:
+                self._window.set_slot_ready(idx, drive.display)
+            return
         worker = self._workers.get(idx)
         if worker:
             worker.stop()
@@ -135,7 +196,11 @@ class OdinMApp:
         for i in range(NUM_SLOTS):
             if self._drives[i] is not None:
                 w = self._workers.get(i)
-                if w is None or w.status != CloneStatus.RUNNING:
+                already_active = (
+                    i in self._queue or
+                    (w is not None and w.status == CloneStatus.RUNNING)
+                )
+                if not already_active:
                     self._start_slot(i)
 
     def _stop_all(self):
@@ -186,3 +251,5 @@ class OdinMApp:
         self._window.log(f"[Slot {idx+1}] {label}")
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
+        self._window.set_slot_speed(idx, "")
+        self._drain_queue()

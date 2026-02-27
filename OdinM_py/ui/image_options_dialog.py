@@ -22,6 +22,7 @@ _COMPRESSIONS = [
     ("Zstandard (zstd)",      "zstd"),
 ]
 
+print("Using ttk from:", ttk.__file__)
 
 def _flags_to_state(flags: List[str]) -> dict:
     state = {"disk_mode": "-allBlocks", "compression": "none", "split_mb": 0}
@@ -70,8 +71,8 @@ class ImageOptionsDialog(ttk.Toplevel):
         outer.pack(fill=BOTH, expand=YES)
 
         # Disk Mode
-        dm_frame = ttk.LabelFrame(outer, text="Disk Mode", padding=(8, 4))
-        dm_frame.pack(fill=X, pady=(0, 8))
+        dm_frame = ttk.LabelFrame(outer, text="Disk Mode")
+        dm_frame.pack(fill=X, pady=(0, 8), ipadx=8, ipady=4)
         self._disk_var = ttk.StringVar(value=self._state["disk_mode"])
         for label, value in _DISK_MODES:
             ttk.Radiobutton(
@@ -80,8 +81,8 @@ class ImageOptionsDialog(ttk.Toplevel):
             ).pack(anchor=W, pady=1)
 
         # Compression
-        comp_frame = ttk.LabelFrame(outer, text="Compression", padding=(8, 4))
-        comp_frame.pack(fill=X, pady=(0, 8))
+        comp_frame = ttk.LabelFrame(outer, text="Compression")
+        comp_frame.pack(fill=X, pady=(0, 8), ipadx=8, ipady=4)
         self._comp_var = ttk.StringVar(value=self._state["compression"])
         for label, value in _COMPRESSIONS:
             ttk.Radiobutton(
@@ -90,8 +91,8 @@ class ImageOptionsDialog(ttk.Toplevel):
             ).pack(anchor=W, pady=1)
 
         # File Splitting
-        split_frame = ttk.LabelFrame(outer, text="File Splitting", padding=(8, 4))
-        split_frame.pack(fill=X, pady=(0, 12))
+        split_frame = ttk.LabelFrame(outer, text="File Splitting")
+        split_frame.pack(fill=X, pady=(0, 12), ipadx=8, ipady=4)
 
         self._split_var = ttk.IntVar(value=0 if self._state["split_mb"] == 0 else 1)
         ttk.Radiobutton(

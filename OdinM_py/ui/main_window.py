@@ -60,7 +60,16 @@ class MainWindow(ttk.Frame):
 
     def update_drives(self, drives: List[DriveInfo]):
         """Called by DriveMonitor when the drive list changes."""
-        # Map drives to slots in order
+        # Keep one empty slot visible beyond occupied slots (min 1, max NUM_SLOTS)
+        target = max(1, min(NUM_SLOTS, len(drives) + 1))
+        while len(self._slots) < target:
+            idx = len(self._slots)
+            sw = SlotWidget(self._slots_frame, slot_index=idx,
+                            on_start=lambda i: self.on_start_slot(i),
+                            on_stop=lambda i: self.on_stop_slot(i))
+            sw.grid(row=idx, column=0, sticky=EW, padx=4, pady=2)
+            self._slots.append(sw)
+
         for i, slot in enumerate(self._slots):
             if i < len(drives):
                 slot.set_drive(drives[i].display)
@@ -72,6 +81,13 @@ class MainWindow(ttk.Frame):
 
     def set_slot_status(self, idx: int, status: CloneStatus):
         self._slots[idx].set_status(status)
+
+    def set_slot_ready(self, idx: int, display: str):
+        """Reset a slot to ready state (drive present, Start enabled)."""
+        self._slots[idx].set_drive(display)
+
+    def set_slot_speed(self, idx: int, speed_str: str):
+        self._slots[idx].set_speed(speed_str)
 
     def log(self, text: str):
         self._log_box.configure(state=NORMAL)
@@ -155,13 +171,14 @@ class MainWindow(ttk.Frame):
         frame = ttk.LabelFrame(self, text="Drive Slots")
         frame.grid(row=1, column=0, sticky=EW, pady=(0, 8))
         frame.columnconfigure(0, weight=1)
+        self._slots_frame = frame
 
-        for i in range(NUM_SLOTS):
-            sw = SlotWidget(frame, slot_index=i,
-                            on_start=lambda idx: self.on_start_slot(idx),
-                            on_stop=lambda idx: self.on_stop_slot(idx))
-            sw.grid(row=i, column=0, sticky=EW, padx=4, pady=2)
-            self._slots.append(sw)
+        # Only Slot 1 (index 0) is visible at startup; more appear as drives arrive
+        sw = SlotWidget(frame, slot_index=0,
+                        on_start=lambda idx: self.on_start_slot(idx),
+                        on_stop=lambda idx: self.on_stop_slot(idx))
+        sw.grid(row=0, column=0, sticky=EW, padx=4, pady=2)
+        self._slots.append(sw)
 
     def _build_controls(self):
         frame = ttk.Frame(self)

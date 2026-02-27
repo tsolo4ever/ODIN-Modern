@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 class CloneStatus(Enum):
     IDLE      = auto()
+    QUEUED    = auto()
     RUNNING   = auto()
     DONE      = auto()
     FAILED    = auto()
