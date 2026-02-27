@@ -10,8 +10,9 @@ from ttkbootstrap.constants import *
 
 
 _DISK_MODES = [
-    ("All blocks",        "-allBlocks"),
-    ("Used blocks only",  "-usedBlocks"),
+    ("All blocks",           "-allBlocks"),
+    ("Used blocks only",     "-usedBlocks"),
+    ("VSS snapshot (used blocks via shadow copy)", "-makeSnapshot"),
 ]
 
 _COMPRESSIONS = [
@@ -22,12 +23,10 @@ _COMPRESSIONS = [
     ("Zstandard (zstd)",      "zstd"),
 ]
 
-print("Using ttk from:", ttk.__file__)
-
 def _flags_to_state(flags: List[str]) -> dict:
     state = {"disk_mode": "-allBlocks", "compression": "none", "split_mb": 0}
     for f in flags:
-        if f in ("-allBlocks", "-usedBlocks"):
+        if f in ("-allBlocks", "-usedBlocks", "-makeSnapshot"):
             state["disk_mode"] = f
         elif f.startswith("-compression="):
             state["compression"] = f.split("=", 1)[1]
