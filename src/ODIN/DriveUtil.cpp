@@ -108,7 +108,7 @@ bool GetNTLinkDestination(LPCWSTR Source, wstring& linkDest)
 {
   UNICODE_STRING usName;
   OBJECT_ATTRIBUTES oa;
-  NTSTATUS nStatus;
+  NTSTATUS nStatus = 0;
   HANDLE hLink;
   wchar_t *buffer;
   bool retval = false;
@@ -161,7 +161,7 @@ void GetNTDirectoryObjectContents(LPCWSTR Directory, vector<wstring>& entries)
   UNICODE_STRING usDir;
   OBJECT_ATTRIBUTES oa;
   HANDLE hDeviceDir;
-  NTSTATUS nStatus;
+  NTSTATUS nStatus = 0;
   OBJDIR_INFORMATION *DirInfo;
   DWORD index;
   wstring Error;
@@ -210,7 +210,7 @@ long NTOpen(HANDLE* hFile, LPCWSTR FileName, ACCESS_MASK DesiredAccess, ULONG Fi
   UNICODE_STRING usFileName;
   OBJECT_ATTRIBUTES oa;
   IO_STATUS_BLOCK ios;
-  NTSTATUS ntStatus;
+  NTSTATUS ntStatus = 0;
 
   if (!HaveNTCalls)
     return -1;

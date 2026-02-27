@@ -121,13 +121,14 @@ void CDriveInfo::Refresh(void)
   DISK_GEOMETRY geometry;
   DWORD nCount;
   BOOL bSuccess;
-  long ntStatus;
+  long ntStatus = 0;
   // CStopWatch watch;
 
   // watch.Start();
-  if (!HaveNTCalls)
+  if (!HaveNTCalls) {
     hDrive = CreateFile(fDeviceName.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_BACKUP_SEMANTICS, NULL);
-  else
+    ntStatus = (hDrive == INVALID_HANDLE_VALUE) ? -1 : 0;
+  } else
     ntStatus = NTOpen(&hDrive, fDeviceName.c_str(), GENERIC_READ, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN, FILE_SEQUENTIAL_ONLY);
   // watch.Stop();
   // watch.TraceTime(L"Open device in refresh");
