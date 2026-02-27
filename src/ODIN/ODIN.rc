@@ -152,7 +152,7 @@ CAPTION "About"
 FONT 8, "MS Sans Serif", 400, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,132,10,50,14
-    CTEXT           "ODIN-Modern\nOpen Disk Imager in a Nutshell\n\nCopyright (C) 2008\n Licensed under GNU Public License v3",IDC_STATIC,41,11,78,63
+    CTEXT           "ODIN-Modern\nOpen Disk Imager in a Nutshell\n\nCopyright (C) 2008-2026\n Licensed under GNU Public License v3",IDC_STATIC,41,11,78,63
     ICON            IDD_ODIN_MAIN,IDC_STATIC,10,8,20,20,SS_CENTERIMAGE
     LTEXT           "Version:",IDC_STATIC,37,100,26,10
     LTEXT           "",IDC_VERNO,67,100,52,10,SS_SUNKEN
@@ -308,7 +308,7 @@ BEGIN
             VALUE "FileDescription", "ODIN Executable Module"
             VALUE "FileVersion", "0.4.0"
             VALUE "InternalName", "ODIN"
-            VALUE "LegalCopyright", "Copyright 2011 Licensed under the GNU GPL License."
+            VALUE "LegalCopyright", "Copyright 2008-2026 Licensed under the GNU GPL License."
             VALUE "OriginalFilename", "ODIN.exe"
             VALUE "ProductName", "ODIN"
             VALUE "ProductVersion", "0.4.0"

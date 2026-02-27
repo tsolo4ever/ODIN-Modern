@@ -46,7 +46,11 @@ The bzip2 data compression library written by Julian Seward (Copyright � 1996-
 Julian Seward) http://www.bzip.org/.\n\
 \n\
 Some ideas, design aspects code fragments taken from Selfimage \
-http://selfimage.excelcia.org/";
+http://selfimage.excelcia.org/.\n\
+\n\
+v0.4.x modernization, OdinM_py multi-drive UI, LZ4/ZSTD compression,\n\
+and CRC32 optimization by Claude (Anthropic).\n\
+Testing and direction by Tsolo4ever.";
 
 LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/)
 {
