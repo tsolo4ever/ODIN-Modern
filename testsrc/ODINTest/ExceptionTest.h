@@ -32,6 +32,10 @@ class ExceptionTest : public CppUnit::TestFixture
   CPPUNIT_TEST( testExceptionWithErrorCode );
   CPPUNIT_TEST( testExceptionWithErrorParam );
   CPPUNIT_TEST( testCompressionException );
+  CPPUNIT_TEST( testIntegerOverflowException );
+  CPPUNIT_TEST( testBootSectorException );
+  CPPUNIT_TEST( testLZ4ExceptionCode );
+  CPPUNIT_TEST( testZSTDExceptionCode );
   CPPUNIT_TEST_SUITE_END();
 
 public:
@@ -42,6 +46,10 @@ public:
   void testExceptionWithErrorCode();
   void testExceptionWithErrorParam();
   void testCompressionException();
+  void testIntegerOverflowException();
+  void testBootSectorException();
+  void testLZ4ExceptionCode();
+  void testZSTDExceptionCode();
 private:
   void GetWindowsMessage(DWORD errorCode, std::wstring& msg);
 

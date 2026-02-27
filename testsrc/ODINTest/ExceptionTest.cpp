@@ -24,6 +24,7 @@
 #include "stdafx.h"
 #include "..\..\src\ODIN\OSException.h"
 #include "..\..\src\ODIN\CompressionException.h"
+#include "..\..\src\ODIN\InternalException.h"
 #include "ExceptionTest.h"
 using namespace std;
 
@@ -113,6 +114,58 @@ ExceptionTest::testCompressionException()
     const std::wstring ref = L"Exception of type Compression Exception thrown, cause: general compression/decompression error (-1)";
     CPPUNIT_ASSERT(res.compare(ref) == 0);
     e.LogMessage();
+  }
+}
+
+void
+ExceptionTest::testIntegerOverflowException()
+{
+  try {
+    THROW_INT_EXC(EInternalException::integerOverflow);
+    CPPUNIT_FAIL("EInternalException was expected");
+  } catch (EInternalException& e) {
+    CPPUNIT_ASSERT_EQUAL((int)EInternalException::integerOverflow, e.GetErrorCode());
+    const std::wstring ref = L"Exception of type Internal Exception thrown, cause: Integer overflow detected: value too large for target type";
+    CPPUNIT_ASSERT(std::wstring(e.GetMessage()).compare(ref) == 0);
+  }
+}
+
+void
+ExceptionTest::testBootSectorException()
+{
+  try {
+    THROW_INT_EXC(EInternalException::invalidBootSector);
+    CPPUNIT_FAIL("EInternalException was expected");
+  } catch (EInternalException& e) {
+    CPPUNIT_ASSERT_EQUAL((int)EInternalException::invalidBootSector, e.GetErrorCode());
+    const std::wstring ref = L"Exception of type Internal Exception thrown, cause: Invalid boot sector detected: corrupted or malformed data";
+    CPPUNIT_ASSERT(std::wstring(e.GetMessage()).compare(ref) == 0);
+  }
+}
+
+void
+ExceptionTest::testLZ4ExceptionCode()
+{
+  try {
+    THROW_INT_EXC(EInternalException::lz4CompressError);
+    CPPUNIT_FAIL("EInternalException was expected");
+  } catch (EInternalException& e) {
+    CPPUNIT_ASSERT_EQUAL((int)EInternalException::lz4CompressError, e.GetErrorCode());
+    const std::wstring ref = L"Exception of type Internal Exception thrown, cause: LZ4 frame compression/decompression error";
+    CPPUNIT_ASSERT(std::wstring(e.GetMessage()).compare(ref) == 0);
+  }
+}
+
+void
+ExceptionTest::testZSTDExceptionCode()
+{
+  try {
+    THROW_INT_EXC(EInternalException::zstdCompressError);
+    CPPUNIT_FAIL("EInternalException was expected");
+  } catch (EInternalException& e) {
+    CPPUNIT_ASSERT_EQUAL((int)EInternalException::zstdCompressError, e.GetErrorCode());
+    const std::wstring ref = L"Exception of type Internal Exception thrown, cause: Zstandard (ZSTD) compression/decompression error";
+    CPPUNIT_ASSERT(std::wstring(e.GetMessage()).compare(ref) == 0);
   }
 }
 
