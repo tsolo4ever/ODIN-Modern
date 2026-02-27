@@ -73,15 +73,18 @@ def _get_physical_disk_size(disk_number: int) -> int:
     )
     if h == INVALID_HANDLE_VALUE:
         return 0
-    buf      = ctypes.create_string_buffer(8)   # GET_LENGTH_INFORMATION = LARGE_INTEGER
-    returned = ctypes.c_ulong(0)
-    ok = ctypes.windll.kernel32.DeviceIoControl(
-        h, 0x7405C, None, 0, buf, 8, ctypes.byref(returned), None
-    )
-    ctypes.windll.kernel32.CloseHandle(h)
-    if not ok:
+    try:
+        buf      = ctypes.create_string_buffer(8)   # GET_LENGTH_INFORMATION = LARGE_INTEGER
+        returned = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.DeviceIoControl(
+            h, 0x7405C, None, 0, buf, 8, ctypes.byref(returned), None
+        )
+        ctypes.windll.kernel32.CloseHandle(h)
+        if not ok:
+            return 0
+        return struct.unpack_from("<Q", buf.raw)[0]
+    except OSError:
         return 0
-    return struct.unpack_from("<Q", buf.raw)[0]
 
 
 def _get_physical_disk_number(drive_letter: str) -> int:
@@ -98,13 +101,16 @@ def _get_physical_disk_number(drive_letter: str) -> int:
         return -1
 
     # STORAGE_DEVICE_NUMBER: DeviceType(DWORD), DeviceNumber(DWORD), PartitionNumber(DWORD)
-    buf = ctypes.create_string_buffer(12)
-    returned = ctypes.c_ulong(0)
-    ok = ctypes.windll.kernel32.DeviceIoControl(
-        h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0,
-        buf, 12, ctypes.byref(returned), None
-    )
-    ctypes.windll.kernel32.CloseHandle(h)
+    try:
+        buf = ctypes.create_string_buffer(12)
+        returned = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.DeviceIoControl(
+            h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0,
+            buf, 12, ctypes.byref(returned), None
+        )
+        ctypes.windll.kernel32.CloseHandle(h)
+    except OSError:
+        return -1
 
     if not ok:
         return -1
@@ -180,9 +186,12 @@ class DriveMonitor:
     def _poll(self):
         if not self._running:
             return
-        current = get_removable_drives()
-        current_nums = [d.disk_number for d in current]
-        if current_nums != self._last:
-            self._last = current_nums
-            self._on_changed(current)
+        try:
+            current = get_removable_drives()
+            current_nums = [d.disk_number for d in current]
+            if current_nums != self._last:
+                self._last = current_nums
+                self._on_changed(current)
+        except OSError:
+            pass  # transient Win32 error during active disk I/O — skip this poll
         self._root.after(POLL_INTERVAL_MS, self._poll)
