@@ -27,12 +27,13 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
 
 ### 5.1 Unit Test Expansion
 - [x] **Review existing tests** — 82 tests passing (ODINTest, cppunit via vcpkg)
-- [ ] **Add new tests**
-  - [ ] Buffer queue thread safety tests
-  - [ ] Integer overflow tests
-  - [ ] Exception handling tests
-  - [ ] Console output path tests (ODINC `-list`, `-output`)
-  - [ ] Auto-flash detection tests
+- [x] **Add new tests** (ExceptionTest.cpp)
+  - ~~Buffer queue thread safety~~ — non-deterministic; fix already in place (kBufferWaitTimeoutMs)
+  - [x] Integer overflow exception — `testIntegerOverflowException`
+  - [x] Boot sector exception — `testBootSectorException`
+  - [x] LZ4 exception code — `testLZ4ExceptionCode`
+  - [x] ZSTD exception code — `testZSTDExceptionCode`
+  - ~~Auto-flash detection~~ — requires WM_DEVICECHANGE mock; manual test only
 
 ### 5.2 Integration Testing <need to be at work for this one>
 - [ ] **Create test images**
@@ -41,6 +42,7 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
   - [ ] All compression modes (gzip, bzip2 read, lz4, lz4hc, zstd)
   - [ ] Split file handling
   - [ ] Verify operation
+  - [ ] Console output: `odinc -list` and `odinc -list -output=file.txt` (spawn process, capture stdout)
 
 ### 5.3 Stress Testing
 - [ ] Long-running operations <need to be at work for this one>
@@ -60,7 +62,7 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
 
 ### 7.2 Performance
 - [x] **CRC32 slice-by-8** — Major bottleneck resolved (Phase 4.4)
-- [ ] Profile remaining hot paths
+- ~~Profile remaining hot paths~~ — no measured bottleneck remaining; not worth speculative profiling
 
 ### 7.3 Release Preparation
 - [ ] **Update version to 0.4.0** — bump version in all strings (ODIN.rc, resource.h, PrintUsage(), any About dialog)
