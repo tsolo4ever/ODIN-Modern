@@ -46,6 +46,8 @@
 
 using namespace std;
 
+static const int kDoCopyBufferCount = 8;
+
 // section name in .ini file for configuration values
 IMPL_SECTION(COdinManager, L"Options")
 
@@ -57,34 +59,31 @@ COdinManager::COdinManager()
    fReadBlockSize(L"ReadWriteBlockSize", 1048576), // 1MB
    fTakeVSSSnapshot(L"TakeVSSSnaphot", false)
 {
-  fDriveList = NULL;
   fVerifyCrc32 = 0;
-  fVSS = NULL;
   fWasCancelled = false;
   Init();
 }
 
 COdinManager::~COdinManager()
 {
-  delete fDriveList;
   Reset();
 }
 
 void COdinManager::Init()
 {
-  fReadThread = NULL;
-  fWriteThread = NULL;
-  fCompDecompThread = NULL;
-  fSourceImage = NULL;
-  fTargetImage = NULL;
-  fEmptyReaderQueue = NULL;
-  fFilledReaderQueue = NULL;
-  fEmptyCompDecompQueue = NULL;
-  fFilledCompDecompQueue = NULL;
-  fSplitCallback = NULL;
+  fReadThread.reset();
+  fWriteThread.reset();
+  fCompDecompThread.reset();
+  fSourceImage.reset();
+  fTargetImage.reset();
+  fEmptyReaderQueue.reset();
+  fFilledReaderQueue.reset();
+  fEmptyCompDecompQueue.reset();
+  fFilledCompDecompQueue.reset();
+  fSplitCallback.reset();
   fIsSaving = false;
   fIsRestoring = false;
-  fVSS = NULL;
+  fVSS.reset();
   fMultiVolumeMode = false;
   fMultiVolumeIndex = 0;
   if (!CVssWrapper::VSSIsSupported()) {
@@ -94,63 +93,46 @@ void COdinManager::Init()
   
 void COdinManager::RefreshDriveList()
 {
-  delete fDriveList;
-  fDriveList = new CDriveList(false);
+  fDriveList = std::make_unique<CDriveList>(false);
 }
 
   // Terminates all worker threads, bCancelled indicates if this is 
   // becuse a running operation was aborted.
 void COdinManager::Terminate()
 {
-  if (NULL != fReadThread) {
+  if (fReadThread) {
     fReadThread->Terminate();
   }
-  if (NULL != fWriteThread) {
+  if (fWriteThread) {
     fWriteThread->Terminate();
   }
-  if (NULL != fCompDecompThread) {
+  if (fCompDecompThread) {
     fCompDecompThread->Terminate();
-  }
-  if (NULL != fSplitCallback) {
-    delete fSplitCallback;
-    fSplitCallback = NULL;
   }
   if (fVSS && !fMultiVolumeMode) {
     fVSS->ReleaseSnapshot(fWasCancelled);
-    delete fVSS;
-    fVSS = NULL;
+    fVSS.reset();
   }
   Reset();
 }
 
 void COdinManager::Reset()
 {
-  delete fReadThread;
-  fReadThread = NULL;
-  delete fWriteThread;
-  fWriteThread = NULL;
-  delete fCompDecompThread;
-  fCompDecompThread = NULL;
-  delete fSourceImage;
-  fSourceImage = NULL;
-  delete fTargetImage;
-  fTargetImage = NULL;
-  delete fEmptyReaderQueue;
-  fEmptyReaderQueue = NULL;
-  delete fFilledReaderQueue;
-  fFilledReaderQueue = NULL;
-  delete fEmptyCompDecompQueue;
-  fEmptyCompDecompQueue = NULL;
-  delete fFilledCompDecompQueue;
-  fFilledCompDecompQueue = NULL;
+  fReadThread.reset();
+  fWriteThread.reset();
+  fCompDecompThread.reset();
+  fSourceImage.reset();
+  fTargetImage.reset();
+  fEmptyReaderQueue.reset();
+  fFilledReaderQueue.reset();
+  fEmptyCompDecompQueue.reset();
+  fFilledCompDecompQueue.reset();
+  fSplitCallback.reset();
   if (fMultiVolumeMode) {
     fIsSaving = false;
     fIsRestoring = false;
   } else {
-    if (fVSS) {
-      delete fVSS;
-      fVSS = NULL;
-    }
+    fVSS.reset();
     Init();
   }
 }
@@ -185,32 +167,31 @@ void COdinManager::MakeSnapshot(int driveIndex, IWaitCallback* wcb) {
 
   if (fTakeVSSSnapshot) {
     wcb->OnPrepareSnapshotBegin();
-    CDriveInfo*	pDriveInfo = driveIndex<0 ? NULL : fDriveList->GetItem(driveIndex);
+    CDriveInfo* pDriveInfo = driveIndex < 0 ? NULL : fDriveList->GetItem(driveIndex);
     int subPartitions = pDriveInfo ? pDriveInfo->GetContainedVolumes() : 0;
     bool isHardDisk = pDriveInfo ? pDriveInfo->IsCompleteHardDisk() : false;
-    LPCWSTR *mountPoints;
+    std::vector<LPCWSTR> mountPoints;
 
     if (isHardDisk) {
-        CDriveInfo **pContainedVolumes = new CDriveInfo* [subPartitions];
-        mountPoints = new LPCWSTR [subPartitions];
-
-        int res = fDriveList->GetVolumes(pDriveInfo, pContainedVolumes, subPartitions);
-        for (int i=0, j=0; i<res; i++) {
-          ATLTRACE(L"Found sub-partition: %s\n", pContainedVolumes[i]->GetDisplayName().c_str());
-          if (pContainedVolumes[i]->GetMountPoint().length() > 0)
-            mountPoints[j++] = pContainedVolumes[i]->GetMountPoint().c_str();
-          else 
-            mountPoints[j++] = NULL; // unmounted volume
-        }
-        delete pContainedVolumes;
+      std::vector<CDriveInfo*> containedVolumes(subPartitions);
+      mountPoints.resize(subPartitions);
+      int res = fDriveList->GetVolumes(pDriveInfo, containedVolumes.data(), subPartitions);
+      for (int i = 0; i < res; i++) {
+        ATLTRACE(L"Found sub-partition: %s\n", containedVolumes[i]->GetDisplayName().c_str());
+        mountPoints[i] = containedVolumes[i]->GetMountPoint().length() > 0
+          ? containedVolumes[i]->GetMountPoint().c_str()
+          : NULL;
+      }
     } else {
-        subPartitions = 1;
-        mountPoints = new LPCWSTR [1];
+      subPartitions = 1;
+      mountPoints.resize(1);
+      mountPoints[0] = (pDriveInfo && pDriveInfo->GetMountPoint().length() > 0)
+        ? pDriveInfo->GetMountPoint().c_str()
+        : NULL;
     }
 
-    fVSS = new CVssWrapper();
-    fVSS->PrepareSnapshot(mountPoints, subPartitions);
-    delete mountPoints;
+    fVSS = std::make_unique<CVssWrapper>();
+    fVSS->PrepareSnapshot(mountPoints.data(), subPartitions);
     wcb->OnPrepareSnapshotReady();
   }
 }
@@ -232,7 +213,7 @@ void COdinManager::GetDriveNameList(std::list<std::wstring>& driveNames)
 void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveIndex, unsigned noFiles,
                           unsigned __int64 totalSize, ISplitManagerCallback* cb,  IWaitCallback* wcb)
 {
-  int nBufferCount = 8;
+  int nBufferCount = kDoCopyBufferCount;
   TCompressionFormat decompressionFormat = noCompression;
   bool bSaveAllBlocks = fSaveAllBlocks;
   fVerifyCrc32 = 0;
@@ -253,11 +234,11 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
   // Create the output image store
   if (operation == isBackup) {
       // setup target file
-      fTargetImage = new CFileImageStream();
+      fTargetImage = std::make_unique<CFileImageStream>();
       if (fSplitFileSize > 0) {
         fTargetImage->Open(NULL, IImageStream::forWriting);
-        fSplitCallback = new CSplitManager(fileName, fSplitFileSize, (CFileImageStream*)fTargetImage, cb);
-        ((CFileImageStream*)fTargetImage)->RegisterCallback(fSplitCallback);      
+        fSplitCallback = std::make_unique<CSplitManager>(fileName, fSplitFileSize, static_cast<CFileImageStream*>(fTargetImage.get()), cb);
+        static_cast<CFileImageStream*>(fTargetImage.get())->RegisterCallback(fSplitCallback.get());
       } else {
         fTargetImage->Open(fileName, IImageStream::forWriting);
       }
@@ -266,7 +247,7 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
       if (fTakeVSSSnapshot && !verifyOnly && !pDriveInfo->GetMountPoint().empty()) {
         if (!fMultiVolumeMode) {
           wcb->OnPrepareSnapshotBegin();
-          fVSS = new CVssWrapper();
+          fVSS = std::make_unique<CVssWrapper>();
           LPCWSTR* mountPointPtr = &mountPoint;
           fVSS->PrepareSnapshot(mountPointPtr, 1);
           wcb->OnPrepareSnapshotReady();
@@ -276,21 +257,21 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
           if (vssVolume != NULL && *vssVolume != L'\0') // can be 0 if not mounted
             deviceName  = vssVolume;
       }
-      fSourceImage = new CDiskImageStream();
+      fSourceImage = std::make_unique<CDiskImageStream>();
       fSourceImage->Open(deviceName, IImageStream::forReading);
   } else if (operation == isRestore || operation == isVerify) {
       if (operation == isRestore) {
         // setup target
-        fTargetImage = new CDiskImageStream();
+        fTargetImage = std::make_unique<CDiskImageStream>();
         int subPartitions = pDriveInfo ? pDriveInfo->GetContainedVolumes() : 0;
-        ((CDiskImageStream*)fTargetImage)->SetContainedSubPartitionsCount(subPartitions);
+        static_cast<CDiskImageStream*>(fTargetImage.get())->SetContainedSubPartitionsCount(subPartitions);
         fTargetImage->Open(deviceName, IImageStream::forWriting);
       }
-      fSourceImage = new CFileImageStream();
+      fSourceImage = std::make_unique<CFileImageStream>();
       if (noFiles > 0) {
          fSourceImage->Open(NULL, IImageStream::forReading);
-         fSplitCallback = new CSplitManager(fileName, (CFileImageStream*)fSourceImage, totalSize, cb);
-         ((CFileImageStream*)fSourceImage)->RegisterCallback(fSplitCallback);      
+         fSplitCallback = std::make_unique<CSplitManager>(fileName, static_cast<CFileImageStream*>(fSourceImage.get()), totalSize, cb);
+         static_cast<CFileImageStream*>(fSourceImage.get())->RegisterCallback(fSplitCallback.get());
       } else {
          fSourceImage->Open(fileName, IImageStream::forReading);
       }
@@ -299,98 +280,98 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
   }  
   fWasCancelled = false;
   // Determine the block sizes we'll be using
-  fEmptyReaderQueue = new CImageBuffer(fReadBlockSize, nBufferCount, L"fEmptyReaderQueue");
-  fFilledReaderQueue = new CImageBuffer(L"fFilledReaderQueue");
+  fEmptyReaderQueue = std::make_unique<CImageBuffer>(fReadBlockSize, nBufferCount, L"fEmptyReaderQueue");
+  fFilledReaderQueue = std::make_unique<CImageBuffer>(L"fFilledReaderQueue");
 
-  CImageBuffer *writerInQueue = NULL;
-  CImageBuffer *writerOutQueue = NULL;
+  CImageBuffer *writerInQueue = nullptr;
+  CImageBuffer *writerOutQueue = nullptr;
   if (operation == isRestore || operation == isVerify) {
-    CFileImageStream *fileStream = (CFileImageStream*) fSourceImage;
+    CFileImageStream *fileStream = static_cast<CFileImageStream*>(fSourceImage.get());
     fileStream->ReadImageFileHeader(true);
     decompressionFormat = fileStream->GetImageFileHeader().GetCompressionFormat();
   }
 
   if (fCompressionMode != noCompression || decompressionFormat != noCompression) {
-    fEmptyCompDecompQueue = new CImageBuffer(fReadBlockSize, nBufferCount, L"fEmptyCompDecompQueue");
-    fFilledCompDecompQueue = new CImageBuffer(L"fFilledCompDecompQueue");
-    writerInQueue = fFilledCompDecompQueue;
-    writerOutQueue = fEmptyCompDecompQueue;
+    fEmptyCompDecompQueue = std::make_unique<CImageBuffer>(fReadBlockSize, nBufferCount, L"fEmptyCompDecompQueue");
+    fFilledCompDecompQueue = std::make_unique<CImageBuffer>(L"fFilledCompDecompQueue");
+    writerInQueue = fFilledCompDecompQueue.get();
+    writerOutQueue = fEmptyCompDecompQueue.get();
   } else {
-    writerInQueue = fFilledReaderQueue;
-    writerOutQueue = fEmptyReaderQueue;
+    writerInQueue = fFilledReaderQueue.get();
+    writerOutQueue = fEmptyReaderQueue.get();
   }
 
   unsigned __int64 volumeBitmapOffset, volumeBitmapLength;
-  fReadThread = new CReadThread(fSourceImage, fEmptyReaderQueue, fFilledReaderQueue, verifyOnly);
-  fWriteThread = new CWriteThread(fTargetImage, writerInQueue, writerOutQueue, verifyOnly);
+  fReadThread = std::make_unique<CReadThread>(fSourceImage.get(), fEmptyReaderQueue.get(), fFilledReaderQueue.get(), verifyOnly);
+  fWriteThread = std::make_unique<CWriteThread>(fTargetImage.get(), writerInQueue, writerOutQueue, verifyOnly);
   if (operation == isRestore || operation == isVerify) {
-      CFileImageStream *fileStream = (CFileImageStream*) fSourceImage;
+      CFileImageStream *fileStream = static_cast<CFileImageStream*>(fSourceImage.get());
       unsigned __int64 dataOffset;
       LPCWSTR comment = fileStream->GetComment();
       ATLTRACE("Restoring disk image with comment: %S\n", comment ? comment : L"None");
       ATLTRACE("Restoring disk image with CRC32: %x\n", fileStream->GetCrc32Checksum());
 
       if (!verifyOnly) {
-        ((CDiskImageStream*)fTargetImage)->SetBytesPerCluster(bytesPerCluster);
+        static_cast<CDiskImageStream*>(fTargetImage.get())->SetBytesPerCluster(bytesPerCluster);
         fileStream->GetImageFileHeader().GetClusterBitmapOffsetAndLength(volumeBitmapOffset, volumeBitmapLength);
         fWriteThread->SetAllocationMapReaderInfo(fSourceImage->GetRunLengthStreamReader(), fileStream->GetImageFileHeader().GetClusterSize());
       }
       dataOffset = fileStream->GetImageFileHeader().GetVolumeDataOffset();
       fReadThread->SetVolumeDataOffset(dataOffset);
       if (decompressionFormat != noCompression) {
-        fCompDecompThread = new CDecompressionThread(decompressionFormat, fFilledReaderQueue, 
-                              fEmptyReaderQueue, fEmptyCompDecompQueue, writerInQueue);
+        fCompDecompThread = std::make_unique<CDecompressionThread>(decompressionFormat, fFilledReaderQueue.get(),
+                              fEmptyReaderQueue.get(), fEmptyCompDecompQueue.get(), writerInQueue);
       } 
       fIsRestoring = true;
   } else if (operation == isBackup) {
-      CFileImageStream *fileStream = (CFileImageStream*) fTargetImage;
+      CFileImageStream *fileStream = static_cast<CFileImageStream*>(fTargetImage.get());
       fileStream->SetComment(fComment.c_str());
       fileStream->SetCompressionFormat(GetCompressionMode());
       fileStream->SetVolumeFormat(isHardDisk ? CImageFileHeader::volumeHardDisk : CImageFileHeader::volumePartition);
       if (bytesPerCluster == 0) {
         // drive info could not detect cluster size so we just take the one from GetDiskFreeEx()
         // happens if we do not get a mount name like d:
-        bytesPerCluster = ((CDiskImageStream*)fSourceImage)->GetBytesPerClusterFromBootSector();
+        bytesPerCluster = static_cast<CDiskImageStream*>(fSourceImage.get())->GetBytesPerClusterFromBootSector();
       }
 
-      ((CDiskImageStream*)fSourceImage)->SetBytesPerCluster(bytesPerCluster);
+      static_cast<CDiskImageStream*>(fSourceImage.get())->SetBytesPerCluster(bytesPerCluster);
       
-      if (bSaveAllBlocks || isHardDisk || !((CDiskImageStream*)fSourceImage)->IsMounted() || bytesPerCluster == 0) 
+      if (bSaveAllBlocks || isHardDisk || !static_cast<CDiskImageStream*>(fSourceImage.get())->IsMounted() || bytesPerCluster == 0) 
         bSaveAllBlocks = true;
       if (!bSaveAllBlocks) {
-        fileStream->WriteImageFileHeaderAndAllocationMap((CDiskImageStream*)fSourceImage);
+        fileStream->WriteImageFileHeaderAndAllocationMap(static_cast<CDiskImageStream*>(fSourceImage.get()));
         fReadThread->SetAllocationMapReaderInfo(fSourceImage->GetRunLengthStreamReader(), fileStream->GetImageFileHeader().GetClusterSize());
         if ( fSplitFileSize > 0 && fileStream->GetPosition() > fSplitFileSize)
           THROW_INT_EXC(EInternalException::chunkSizeTooSmall); 
       } else {
         fileStream->WriteImageFileHeaderForSaveAllBlocks(fSourceImage->GetSize(), 
-          ((CDiskImageStream*)fSourceImage)->GetBytesPerCluster());
+          static_cast<CDiskImageStream*>(fSourceImage.get())->GetBytesPerCluster());
       }
       if (fCompressionMode != noCompression) {
-        fCompDecompThread = new CCompressionThread(GetCompressionMode(), fFilledReaderQueue, 
-                                  fEmptyReaderQueue, fEmptyCompDecompQueue, writerInQueue);
+        fCompDecompThread = std::make_unique<CCompressionThread>(GetCompressionMode(), fFilledReaderQueue.get(),
+                                  fEmptyReaderQueue.get(), fEmptyCompDecompQueue.get(), writerInQueue);
       }  
       fIsSaving = true;
   }
 
-  if (fReadThread != NULL)
+  if (fReadThread)
     fReadThread->Resume();
-  if (fWriteThread != NULL)
+  if (fWriteThread)
     fWriteThread->Resume();
-  if (fCompDecompThread != NULL)
+  if (fCompDecompThread)
     fCompDecompThread->Resume();
 }
 
 void COdinManager::CancelOperation()
 {
   fWasCancelled = true;
-  if (fReadThread != NULL) {
+  if (fReadThread) {
     fReadThread->CancelThread();
   }
-  if (fWriteThread != NULL) {
+  if (fWriteThread) {
     fWriteThread->CancelThread();
   }
-  if (fCompDecompThread != NULL) {
+  if (fCompDecompThread) {
     fCompDecompThread->CancelThread();
   }
 }
@@ -415,9 +396,7 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
       callback->OnThreadTerminated();
       if (--threadCount == 0)  {       
         ATLTRACE(" All worker threads are terminated now\n");
-        //ATLTRACE(" Total Bytes written: %lu\n", m_allThreads[1]->GetBytesWritten());
-        //ATLTRACE(" Total Bytes read: %lu\n", m_allThreads[0]->GetBytesRead());
-        if (NULL != fReadThread) 
+        if (fReadThread) 
           fVerifyCrc32 = fReadThread->GetCrc32();
         callback->OnFinished();
         Terminate(); // work is finished
@@ -429,7 +408,6 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
     }
     else if (result  == WAIT_OBJECT_0 + threadCount)
     {
-      // ATLTRACE("windows msg arrived\n");
       // process windows messages
       MSG msg ;
       while(::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
@@ -451,11 +429,11 @@ unsigned COdinManager::GetThreadCount()
 {
   int count;
 
-  if (fReadThread!=NULL && fWriteThread!=NULL)
+  if (fReadThread && fWriteThread)
     count = 2;
   else
     count = 0;
-  if (fCompDecompThread!=NULL)
+  if (fCompDecompThread)
     ++count;
   return count;
 }
@@ -468,13 +446,13 @@ bool COdinManager::GetThreadHandles(HANDLE* handles, unsigned size)
     return false;
   memset(handles, 0, size*sizeof(HANDLE));
   
-  if (fReadThread!=NULL)
+  if (fReadThread)
     handles[i++] = fReadThread->GetHandle();
 
-  if (fWriteThread!=NULL)
+  if (fWriteThread)
     handles[i++] = fWriteThread->GetHandle();
 
-  if (fCompDecompThread!=NULL)
+  if (fCompDecompThread)
     handles[i++] = fCompDecompThread->GetHandle();
   
   return true;
@@ -484,13 +462,13 @@ LPCWSTR COdinManager::GetErrorMessage()
 {
   LPCWSTR msg = NULL;
 
-  if (fReadThread!=NULL && fReadThread->GetErrorFlag())
+  if (fReadThread && fReadThread->GetErrorFlag())
     msg = fReadThread->GetErrorMessage();
 
-  if (msg==NULL && fWriteThread!=NULL && fWriteThread->GetErrorFlag())
+  if (msg==NULL && fWriteThread && fWriteThread->GetErrorFlag())
     msg = fWriteThread->GetErrorMessage();
 
-  if (msg==NULL && fCompDecompThread!=NULL && fCompDecompThread->GetErrorFlag())
+  if (msg==NULL && fCompDecompThread && fCompDecompThread->GetErrorFlag())
     msg = fCompDecompThread->GetErrorMessage();
   
   return msg;
@@ -498,9 +476,9 @@ LPCWSTR COdinManager::GetErrorMessage()
 
 bool COdinManager::WasError()
 {
-  return (fReadThread!=NULL && fReadThread->GetErrorFlag()) ||
-         (fWriteThread!=NULL && fWriteThread->GetErrorFlag()) ||
-         (fCompDecompThread!=NULL && fCompDecompThread->GetErrorFlag());
+  return (fReadThread && fReadThread->GetErrorFlag()) ||
+         (fWriteThread && fWriteThread->GetErrorFlag()) ||
+         (fCompDecompThread && fCompDecompThread->GetErrorFlag());
 }
 
 unsigned __int64 COdinManager::GetTotalBytesToProcess()
@@ -517,9 +495,9 @@ unsigned __int64 COdinManager::GetTotalBytesToProcess()
   
   unsigned __int64 res;
 
-  if (fIsSaving || (fIsRestoring && fTargetImage == NULL) ) {
+  if (fIsSaving || (fIsRestoring && !fTargetImage) ) {
   //               ^ verify mode! (rhs of or condition)                   
-    if (NULL != fSourceImage) {
+    if (fSourceImage) {
       if (fSaveAllBlocks)
         res = fSourceImage->GetSize();
       else {
@@ -531,34 +509,19 @@ unsigned __int64 COdinManager::GetTotalBytesToProcess()
       res = 0;
     }
   } else if (fIsRestoring) {
-    if (NULL != fTargetImage) {
-      if (fSaveAllBlocks)
-        res = fTargetImage->GetSize();
-      else {
+    if (fSourceImage) {
+      // For restore, the source image file knows the volume size from its header.
+      // fTargetImage (disk opened for writing) has fSize==0 — size is only
+      // queried by CDiskImageStream::Open when opened for reading.
+      res = fSourceImage->GetSize();
+      if (res == 0)
         res = fSourceImage->GetAllocatedBytes();
-        if (res == 0) // happens for raw disks
-          res = fSourceImage->GetSize();
-      }
     } else {
-      // we are in verify mode
       res = 0;
     }
   } else {
     res =0;
   }
-/*
-  if (NULL != fSourceImage) {
-    if (fSaveAllBlocks)
-      res = fSourceImage->GetSize();
-    else {
-      res = fSourceImage->GetAllocatedBytes();
-      if (res == 0) // happens for raw disks
-        res = fSourceImage->GetSize();
-    }
-  }
-  else
-    res = 0;
- */
   return res;
 }
 
@@ -568,9 +531,9 @@ unsigned __int64 COdinManager::GetBytesProcessed()
   // from the write thread, because if image is restored and compressed heavily the number of the 
   // image file may be very inaccurate.
 
-  if (fIsRestoring && NULL != fWriteThread)
+  if (fIsRestoring && fWriteThread)
     return fWriteThread->GetBytesProcessed();
-  else if (fIsSaving && NULL != fReadThread)
+  else if (fIsSaving && fReadThread)
     return fReadThread->GetBytesProcessed();
   else
     return 0;

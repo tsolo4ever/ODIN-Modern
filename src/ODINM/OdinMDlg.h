@@ -51,6 +51,16 @@ public:
         COMMAND_ID_HANDLER(IDC_BUTTON_CLEAR_LOG, OnClearLog)
         COMMAND_ID_HANDLER(IDC_BUTTON_EXPORT, OnExport)
         COMMAND_HANDLER(IDC_CHECK_AUTO_CLONE, BN_CLICKED, OnAutoCloneChanged)
+        NOTIFY_HANDLER(IDC_LIST_DRIVES, NM_CUSTOMDRAW, OnListCustomDraw)
+        
+        // ── THEME MESSAGES
+        MESSAGE_HANDLER(WM_SETTINGCHANGE, OnSettingChange)
+        MESSAGE_HANDLER(WM_THEMECHANGED, OnDeferredDarkMode)
+        MESSAGE_HANDLER(WM_APP + 100, OnDeferredDarkMode)
+
+        MESSAGE_HANDLER(WM_ERASEBKGND, OnEraseBkgnd)
+        MESSAGE_HANDLER(WM_CTLCOLORDLG, OnCtlColor)
+        MESSAGE_RANGE_HANDLER(WM_CTLCOLOREDIT, WM_CTLCOLORSTATIC, OnCtlColor)
     END_MSG_MAP()
 
 private:
@@ -72,6 +82,8 @@ private:
     bool m_autoCloneEnabled;
     int m_maxConcurrent;
     UINT_PTR m_timer;
+    bool m_pendingArrival = false;
+    ULONGLONG m_lastDeviceChange = 0;
     
     // Initialization
     LRESULT OnInitDialog(UINT msg, WPARAM wParam, LPARAM lParam, BOOL& handled);
@@ -117,4 +129,21 @@ private:
     bool IsValidImageFile(const std::wstring& path);
     ULONGLONG GetDriveSize(const std::wstring& driveLetter);
     std::wstring GetDriveName(const std::wstring& driveLetter);
+
+    // Dark mode
+    LRESULT OnSettingChange(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnDeferredDarkMode(UINT, WPARAM, LPARAM, BOOL&);
+    LRESULT OnCtlColor(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+    LRESULT OnEraseBkgnd(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+    void    ApplyDarkMode(HWND hwnd);
+    void    ApplyThemeToControls();
+
+    // Dark mode brushes — created/destroyed with the dialog
+    HBRUSH  m_darkBgBrush   = nullptr; // RGB(32,32,32) dialog/static bg
+    HBRUSH  m_darkEditBrush = nullptr; // RGB(45,45,48) edit/listbox bg
+
+    // ListView custom draw
+    LRESULT  OnListCustomDraw(int, LPNMHDR pnmh, BOOL& handled);
+    void     DrawProgressCell(HDC hdc, RECT rc, int progress);
+    static COLORREF StatusColor(CloneStatus s);
 };

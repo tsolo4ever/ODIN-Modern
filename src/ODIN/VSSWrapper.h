@@ -32,8 +32,6 @@
 #include <vsbackup.h>
 #include <string>
 #include <vector>
-#include "vsbackup_xp.h"
-
 class CWriterComponent;
 class CWriter;
 
@@ -59,12 +57,10 @@ private:
   void CombinePath(LPCTSTR wszPath1, LPCTSTR wszPath2, std::wstring& output);
   void ReportBackupResultsToWriters(bool successful);
 
-  CComPtr<IVssBackupComponentsXP> fBackupComponentsXP; 
-  CComPtr<IVssBackupComponents> fBackupComponents; 
+  CComPtr<IVssBackupComponents> fBackupComponents;
   std::vector<CWriter> fWriters;
 
   GUID fSnapshotSetId;
-  bool runsOnWinXP;
   HMODULE fVssDLL;
   bool fSnapshotCreated; 
   bool fAbnormalAbort; 

@@ -27,6 +27,7 @@
 #include "InternalException.h"
 #include "FileFormatException.h"
 #include "CompressedRunLengthStream.h"
+#include <vector>
 
 #ifdef DEBUG
   #define new DEBUG_NEW
@@ -447,19 +448,24 @@ void CDiskImageStream::Open(LPCWSTR name, TOpenMode mode)
     memset(&diskGeometry, 0, sizeof(diskGeometry));
     memset(&lengthInfo, 0, sizeof(lengthInfo));
     memset(&ntfsVolData, 0, sizeof(ntfsVolData));
-    res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfo, sizeof(partInfo), &dummy, NULL);
-    //CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX");
-    // on some disks this might fail try PARTITION_INFORMATION then
-    if (res==0) {
-      PARTITION_INFORMATION partInfo2;
-      memset(&partInfo, 0, sizeof(partInfo));
-      res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &partInfo2, sizeof(partInfo2), &dummy, NULL);
-      CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX and IOCTL_DISK_GET_PARTITION_INFO");
-      fPartitionType = partInfo2.PartitionType;
-    }
-    else {
-      CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_DRIVE_GEOMETRY");
-      fPartitionType = partInfo.Mbr.PartitionType;
+    // VSS shadow copy devices don't expose partition info — skip these IOCTLs for them.
+    // fPartitionType stays 0 (set by memset above), which is fine for a backup source.
+    bool isVSSSnapshot = fName.find(L"HarddiskVolumeShadowCopy") != std::wstring::npos;
+    if (!isVSSSnapshot) {
+      res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO_EX, NULL, 0, &partInfo, sizeof(partInfo), &dummy, NULL);
+      //CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX");
+      // on some disks this might fail try PARTITION_INFORMATION then
+      if (res==0) {
+        PARTITION_INFORMATION partInfo2;
+        memset(&partInfo, 0, sizeof(partInfo));
+        res = DeviceIoControl(fHandle, IOCTL_DISK_GET_PARTITION_INFO, NULL, 0, &partInfo2, sizeof(partInfo2), &dummy, NULL);
+        CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_PARTITION_INFO_EX and IOCTL_DISK_GET_PARTITION_INFO");
+        fPartitionType = partInfo2.PartitionType;
+      }
+      else {
+        CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"IOCTL_DISK_GET_DRIVE_GEOMETRY");
+        fPartitionType = partInfo.Mbr.PartitionType;
+      }
     }
     fIsMounted = DeviceIoControl(fHandle, FSCTL_IS_VOLUME_MOUNTED, NULL, 0, NULL, 0, &dummy, NULL) != FALSE;  
     res = DeviceIoControl(fHandle, IOCTL_DISK_GET_LENGTH_INFO, NULL, 0, &lengthInfo, sizeof(lengthInfo), &dummy, NULL);
@@ -682,7 +688,6 @@ void  CDiskImageStream::GetVolumeBitmapInfo()
 unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HANDLE hOutHandle, LPCWSTR fileName)
 {
   unsigned nBitmapBytes;
-  VOLUME_BITMAP_BUFFER *volumeBitmap;
   unsigned __int64 startCluster, stopCluster;
   unsigned noClustersPerChunk, noClusters;
   DWORD nBytesReturned;
@@ -694,7 +699,7 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
   newPos.QuadPart = 0LL;
   ok = SetFilePointerEx(hOutHandle, newPos, &curPos, FILE_END);
   startOffset = curPos.QuadPart;
-   
+
   noClustersPerChunk = chunkSize * 8;
   noClusters = (unsigned) (fSize / fBytesPerCluster);
   unsigned noIterations = (unsigned) (noClusters + noClustersPerChunk - 1)/ noClustersPerChunk;
@@ -702,15 +707,16 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
   // Determine the number of clusters in a chunk, and the number of cluster bitmap bytes that are taken by a chunk.
   // noClustersPerChunk = (chunkSize + fBytesPerCluster - 1) / fBytesPerCluster;
   nBitmapBytes = (noClustersPerChunk + 7) / 8;
-  // nBitmanBytes is actually one larger than we need because there is one bitmap byte already in the VOLUME_BITMAP_BUFFER
-  // struct. 
-  volumeBitmap = (VOLUME_BITMAP_BUFFER *)malloc(sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1);
-  memset(volumeBitmap, 0, sizeof(VOLUME_BITMAP_BUFFER));
+  // nBitmapBytes is actually one larger than we need because there is one bitmap byte already in the VOLUME_BITMAP_BUFFER
+  // struct.
+  const size_t bitmapBufSize = sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1;
+  std::vector<BYTE> bitmapStorage(bitmapBufSize, 0);
+  VOLUME_BITMAP_BUFFER* volumeBitmap = reinterpret_cast<VOLUME_BITMAP_BUFFER*>(bitmapStorage.data());
   startCluster = stopCluster = 0;
 
   for (unsigned i=0; i<noIterations; i++ ) {
       stopCluster = startCluster + noClustersPerChunk;
-      int ret = DeviceIoControl(fHandle, FSCTL_GET_VOLUME_BITMAP, &startCluster, sizeof(startCluster), volumeBitmap, sizeof(VOLUME_BITMAP_BUFFER) + nBitmapBytes - 1, &nBytesReturned, NULL);
+      int ret = DeviceIoControl(fHandle, FSCTL_GET_VOLUME_BITMAP, &startCluster, sizeof(startCluster), volumeBitmap, static_cast<DWORD>(bitmapBufSize), &nBytesReturned, NULL);
       if (ret == 0 && GetLastError() != ERROR_MORE_DATA)
         CHECK_OS_EX_PARAM1(ret, EWinException::ioControlError, L"FSCTL_GET_VOLUME_BITMAP");
 
@@ -721,7 +727,6 @@ unsigned __int64 CDiskImageStream::StoreVolumeBitmap(unsigned int chunkSize, HAN
       writer.AddBuffer(&(volumeBitmap->Buffer[0]), (nBytesReturned - sizeof(VOLUME_BITMAP_BUFFER) + 1) * 8);
    }
   writer.Flush();
-  free(volumeBitmap);
   ok = SetFilePointerEx(hOutHandle, newPos, &curPos, FILE_END);
   CHECK_OS_EX_PARAM1(ok, EWinException::seekError, L"");
 
@@ -799,17 +804,21 @@ void CDiskImageStream::CalculateFATExtraOffset()
       }
       
       // Validate BytesPerSector (must be power of 2 between 512 and 4096)
+      // Non-standard drives (e.g. raw USB media) may have unusual values — skip
+      // FAT offset calculation rather than aborting; allBlocks mode never uses it.
       if (bootSector->BytesPerSector == 0 || bootSector->BytesPerSector > 4096 ||
           (bootSector->BytesPerSector & (bootSector->BytesPerSector - 1)) != 0) {
-        ATLTRACE("Warning: Invalid BytesPerSector: %u\n", bootSector->BytesPerSector);
-        THROW_INT_EXC(EInternalException::invalidBootSector);
+        ATLTRACE("Warning: Invalid BytesPerSector: %u — skipping FAT offset calc\n", bootSector->BytesPerSector);
+        delete bootSector;
+        return;
       }
-      
+
       // Validate SectorsPerCluster (must be power of 2 and reasonable)
       if (bootSector->SectorsPerCluster == 0 || bootSector->SectorsPerCluster > 128 ||
           (bootSector->SectorsPerCluster & (bootSector->SectorsPerCluster - 1)) != 0) {
-        ATLTRACE("Warning: Invalid SectorsPerCluster: %u\n", bootSector->SectorsPerCluster);
-        THROW_INT_EXC(EInternalException::invalidBootSector);
+        ATLTRACE("Warning: Invalid SectorsPerCluster: %u — skipping FAT offset calc\n", bootSector->SectorsPerCluster);
+        delete bootSector;
+        return;
       }
       
       ATLTRACE("Bytes per cluster from boot sector is: %u\n", bootSector->SectorsPerCluster * fBytesPerSector);

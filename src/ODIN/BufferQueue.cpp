@@ -36,6 +36,8 @@
 #endif // _DEBUG
 
 using namespace std;
+
+static const DWORD kBufferWaitTimeoutMs = 300000;  // 5 minutes
 //---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
@@ -121,7 +123,7 @@ CBufferChunk *  CImageBuffer::GetChunk()
   //ATLTRACE("CImageBuffer::GetChunk() begin, thread: %d, name: %S, size is: %d\n", GetCurrentThreadId(), fName.c_str(), fChunks.size());
   
   // Wait for chunk with proper timeout (5 minutes for large operations)
-  DWORD res = WaitForSingleObject(fSemaListHasElems.m_h, 300000);
+  DWORD res = WaitForSingleObject(fSemaListHasElems.m_h, kBufferWaitTimeoutMs);
   
   // Handle all possible wait states
   switch(res) {

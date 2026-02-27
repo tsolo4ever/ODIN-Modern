@@ -38,15 +38,16 @@ class COptionsDlg : public CDialogImpl<COptionsDlg>
 	enum { IDD = IDD_OPTIONS };
 
 	COptionsDlg(COdinManager& odinManager);
-	~COptionsDlg();
   void Commit();
 
   BEGIN_MSG_MAP(COptionsDlg)
     MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
     COMMAND_HANDLER(IDC_BT_ALL_BLOCKS, BN_CLICKED, OnBnClickedBtAllBlocks)
-    COMMAND_HANDLER(IDC_BT_COMPRESSION_BZIP2, BN_CLICKED, OnBnClickedBtCompressionBzip2)
-    COMMAND_HANDLER(IDC_BT_COMPRESSION_GZIP, BN_CLICKED, OnBnClickedBtCompressionGzip)
-    COMMAND_HANDLER(IDC_BT_NO_COMPRESSION, BN_CLICKED, OnBnClickedBtNoCompression)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_GZIP, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_LZ4, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_LZ4HC, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_COMPRESSION_ZSTD, BN_CLICKED, OnCompressionChanged)
+    COMMAND_HANDLER(IDC_BT_NO_COMPRESSION, BN_CLICKED, OnCompressionChanged)
     COMMAND_HANDLER(IDC_BT_NO_SPLIT, BN_CLICKED, OnBnClickedBtNoSplit)
     COMMAND_HANDLER(IDC_BT_SPLIT_CHUNK, BN_CLICKED, OnBnClickedBtSplitChunk)
  		COMMAND_ID_HANDLER(IDOK, OnOK)
@@ -76,9 +77,7 @@ private:
 public:
   LRESULT OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtAllBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtCompressionBzip2(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtCompressionGzip(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedBtNoCompression(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnCompressionChanged(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtNoSplit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtSplitChunk(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnOK(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

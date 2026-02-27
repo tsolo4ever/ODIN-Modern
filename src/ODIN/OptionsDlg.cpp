@@ -34,10 +34,6 @@ COptionsDlg::COptionsDlg(COdinManager& odinManager)
   fOptionWasChanged = false;
 }
 
-COptionsDlg::~COptionsDlg()
-{
-}
-
 void COptionsDlg::Init()
 {
   UpdateGetSplitFileMode();
@@ -100,48 +96,46 @@ void COptionsDlg::UpdateSetSplitFileMode()
 
 void COptionsDlg::UpdateGetCompressionMode()
 {
-  // get compression mode
-  CButton noCompButton( GetDlgItem(IDC_BT_NO_COMPRESSION) );
-  CButton gZipCompButton( GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
-  CButton bZip2CompButton( GetDlgItem(IDC_BT_COMPRESSION_BZIP2) );
+  CButton noCompButton(    GetDlgItem(IDC_BT_NO_COMPRESSION) );
+  CButton gZipCompButton(  GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
+  CButton lz4CompButton(   GetDlgItem(IDC_BT_COMPRESSION_LZ4) );
+  CButton lz4hcCompButton( GetDlgItem(IDC_BT_COMPRESSION_LZ4HC) );
+  CButton zstdCompButton(  GetDlgItem(IDC_BT_COMPRESSION_ZSTD) );
+
+  // Clear all first
+  noCompButton.SetCheck(BST_UNCHECKED);
+  gZipCompButton.SetCheck(BST_UNCHECKED);
+  lz4CompButton.SetCheck(BST_UNCHECKED);
+  lz4hcCompButton.SetCheck(BST_UNCHECKED);
+  zstdCompButton.SetCheck(BST_UNCHECKED);
 
   fCompressionMode = fOdinManager.GetCompressionMode();
   switch (fCompressionMode) {
-    case noCompression:
-      noCompButton.SetCheck(BST_CHECKED);
-      gZipCompButton.SetCheck(BST_UNCHECKED);
-      bZip2CompButton.SetCheck(BST_UNCHECKED);
-      break;
-    case compressionGZip:
-      noCompButton.SetCheck(BST_UNCHECKED);
-      gZipCompButton.SetCheck(BST_CHECKED);
-      bZip2CompButton.SetCheck(BST_UNCHECKED);
-      break;
-    case compressionBZIP2:
-      noCompButton.SetCheck(BST_UNCHECKED);
-      gZipCompButton.SetCheck(BST_UNCHECKED);
-      bZip2CompButton.SetCheck(BST_CHECKED);
-      break;
+    case noCompression:    noCompButton.SetCheck(BST_CHECKED);    break;
+    case compressionGZip:  gZipCompButton.SetCheck(BST_CHECKED);  break;
+    case compressionLZ4:   lz4CompButton.SetCheck(BST_CHECKED);   break;
+    case compressionLZ4HC: lz4hcCompButton.SetCheck(BST_CHECKED); break;
+    case compressionZSTD:  zstdCompButton.SetCheck(BST_CHECKED);  break;
+    default:               noCompButton.SetCheck(BST_CHECKED);    break; // bzip2 legacy → no compression
   }
 }
 
 void COptionsDlg::UpdateSetCompressionMode()
 {
-  // set compression mode
-  CButton noCompButton( GetDlgItem(IDC_BT_NO_COMPRESSION) );
-  CButton gZipCompButton( GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
-  CButton bZip2CompButton( GetDlgItem(IDC_BT_COMPRESSION_BZIP2) );
+  CButton noCompButton(    GetDlgItem(IDC_BT_NO_COMPRESSION) );
+  CButton gZipCompButton(  GetDlgItem(IDC_BT_COMPRESSION_GZIP) );
+  CButton lz4CompButton(   GetDlgItem(IDC_BT_COMPRESSION_LZ4) );
+  CButton lz4hcCompButton( GetDlgItem(IDC_BT_COMPRESSION_LZ4HC) );
+  CButton zstdCompButton(  GetDlgItem(IDC_BT_COMPRESSION_ZSTD) );
 
-  if (noCompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = noCompression;
-  else if (gZipCompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = compressionGZip;
-  else if (bZip2CompButton.GetCheck() == BST_CHECKED)
-    fCompressionMode = compressionBZIP2;
-  else
-    ATLASSERT(false);
+  if      (noCompButton.GetCheck()    == BST_CHECKED) fCompressionMode = noCompression;
+  else if (gZipCompButton.GetCheck()  == BST_CHECKED) fCompressionMode = compressionGZip;
+  else if (lz4CompButton.GetCheck()   == BST_CHECKED) fCompressionMode = compressionLZ4;
+  else if (lz4hcCompButton.GetCheck() == BST_CHECKED) fCompressionMode = compressionLZ4HC;
+  else if (zstdCompButton.GetCheck()  == BST_CHECKED) fCompressionMode = compressionZSTD;
+  else ATLASSERT(false);
 
-   fOdinManager.SetCompressionMode(fCompressionMode);
+  fOdinManager.SetCompressionMode(fCompressionMode);
 }
 
 void COptionsDlg::UpdateGetSaveMode()
@@ -228,19 +222,7 @@ LRESULT COptionsDlg::OnBnClickedBtAllBlocks(WORD /*wNotifyCode*/, WORD /*wID*/, 
   return 0;
 }
 
-LRESULT COptionsDlg::OnBnClickedBtCompressionBzip2(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-{
-  fOptionWasChanged = true;
-  return 0;
-}
-
-LRESULT COptionsDlg::OnBnClickedBtCompressionGzip(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
-{
-  fOptionWasChanged = true;
-  return 0;
-}
-
-LRESULT COptionsDlg::OnBnClickedBtNoCompression(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+LRESULT COptionsDlg::OnCompressionChanged(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 {
   fOptionWasChanged = true;
   return 0;

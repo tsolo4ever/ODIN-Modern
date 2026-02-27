@@ -24,6 +24,7 @@
 #pragma once
 
 #include <list>
+#include <memory>
 #include "Compression.h"
 #include "Config.h"
 
@@ -73,7 +74,7 @@ public:
   CDriveInfo* GetDriveInfo(int index);
   unsigned GetDriveCount();
   const CDriveList* GetDriveList() {
-    return fDriveList;
+    return fDriveList.get();
   }
   
   unsigned __int64 GetSplitSize() const {
@@ -161,30 +162,30 @@ private:
   unsigned GetThreadCount();
   bool GetThreadHandles(HANDLE* handles, unsigned size);
 
-  CDriveList  *fDriveList;
-  CReadThread *fReadThread;
-  CWriteThread *fWriteThread;
-  COdinThread *fCompDecompThread;
-  IImageStream *fSourceImage;
-  IImageStream *fTargetImage;
-  CImageBuffer *fEmptyReaderQueue;
+  std::unique_ptr<CDriveList>   fDriveList;
+  std::unique_ptr<CReadThread>  fReadThread;
+  std::unique_ptr<CWriteThread> fWriteThread;
+  std::unique_ptr<COdinThread>  fCompDecompThread;
+  std::unique_ptr<IImageStream> fSourceImage;
+  std::unique_ptr<IImageStream> fTargetImage;
+  std::unique_ptr<CImageBuffer> fEmptyReaderQueue;
     // queue with empty blocks used by reader thread;
-  CImageBuffer *fEmptyCompDecompQueue;
+  std::unique_ptr<CImageBuffer> fEmptyCompDecompQueue;
     // queue with empty blocks used by compression or decompression thread;
-  CImageBuffer *fFilledReaderQueue;
+  std::unique_ptr<CImageBuffer> fFilledReaderQueue;
     // queue with filled blocks filled by reader thread;
-  CImageBuffer *fFilledCompDecompQueue;
+  std::unique_ptr<CImageBuffer> fFilledCompDecompQueue;
     // queue with filled blocks filled by compression or decompression thread;
   bool fIsSaving;
     // currently saving of a partition is in progress
   bool fIsRestoring;
     // currently restoring of a partition is in progress
       
-  CSplitManager* fSplitCallback;
+  std::unique_ptr<CSplitManager> fSplitCallback;
     // callback object to handle splitting files in chunks
   DWORD fVerifyCrc32; // checksum after a verify run
   std::wstring fComment; // a comment used when storing a file
-  CVssWrapper *fVSS;
+  std::unique_ptr<CVssWrapper> fVSS;
   bool fMultiVolumeMode; 
     // COdinManager can run in one of two modes. if fMultiVolumeMode is set to false it
     // will create and release a VSS snapshot on its own as part of a DoCopy() operation.

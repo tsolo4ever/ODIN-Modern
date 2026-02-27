@@ -155,6 +155,18 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	AtlInitCommonControls(ICC_BAR_CLASSES);	// add flags to support other controls
 
+  // Opt this process into Windows dark-mode awareness (uxtheme ordinal 135).
+  // Must be called before any windows are created so GetSysColor reflects
+  // the active theme when dialogs initialise.
+  {
+    typedef int (WINAPI* PFN_SetPreferredAppMode)(int);
+    HMODULE hUx = ::LoadLibraryW(L"uxtheme.dll");
+    if (hUx) {
+      if (auto fn = (PFN_SetPreferredAppMode)::GetProcAddress(hUx, MAKEINTRESOURCEA(135)))
+        fn(1); // 1 = AllowDark
+    }
+  }
+
 	hRes = _Module.Init(NULL, hInstance);
 
 	ATLASSERT(SUCCEEDED(hRes));
@@ -168,11 +180,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
     bool hasCommandLine = lpstrCmdLine != NULL && *lpstrCmdLine!=L'\0';
     if (hasCommandLine)
     {
-      bool consoleApp = cp.InitConsole(hasCommandLine);
-      if (consoleApp) {
-        // Process command line
-        nRet = cp.ParseAndProcess();
-      }
+      cp.InitConsole(hasCommandLine); // don't check return — try to get a console, but run either way
+      nRet = cp.ParseAndProcess();    // always process args if we have them
     } else {
       // Open main window
       CSplashDlg splashDlg;

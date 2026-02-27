@@ -250,9 +250,6 @@
     <ClInclude Include="src\ODIN\Util.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\ODIN\vsbackup_xp.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\ODIN\VSSException.h">
       <Filter>Header Files</Filter>
     </ClInclude>

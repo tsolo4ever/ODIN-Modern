@@ -24,6 +24,8 @@
 #include "stdafx.h"
 #include "../zlib-1.3.2/zlib.h"
 #include "../bzip2-1.0.5/bzlib.h"
+#include "lz4frame.h"
+#include "zstd.h"
 #include "Compression.h"
 #include <string>
 #include "BufferQueue.h"
@@ -69,10 +71,25 @@ DWORD CCompressionThread::Execute()
   SetName("CompressionThread");
 
   try {
-    if (fCompressionFormat == compressionGZip)
-      CompressLoopZlib();
-    else
-      CommpressLoopLibz2();
+    switch (fCompressionFormat) {
+      case compressionGZip:
+        CompressLoopZlib();
+        break;
+      case compressionBZIP2:
+        CommpressLoopLibz2();
+        break;
+      case compressionLZ4:
+        CompressLoopLZ4(false);
+        break;
+      case compressionLZ4HC:
+        CompressLoopLZ4(true);
+        break;
+      case compressionZSTD:
+        CompressLoopZSTD();
+        break;
+      default:
+        break;
+    }
 
     fFinished = true;
   } catch (Exception &e) {
@@ -239,5 +256,252 @@ void CCompressionThread::CommpressLoopLibz2()
     compressChunk->SetSize (compressChunk->GetMaxSize() - bzsStream.avail_out);
     compressChunk->SetEOF(true);
     fTargetQueueCompressed->ReleaseChunk(compressChunk); 
+  }
+}
+
+//---------------------------------------------------------------------------
+// LZ4 Frame compression loop.
+// useHC=false → fast LZ4 (level 0), useHC=true → LZ4-HC (level 9).
+// Input is consumed in 64 KB sub-blocks so that LZ4F_compressBound() is
+// always satisfied without needing to know the exact chunk size in advance.
+//
+void CCompressionThread::CompressLoopLZ4(bool useHC)
+{
+  static const size_t BLOCK_SIZE = 65536; // LZ4F_max64KB
+
+  LZ4F_cctx* ctx = NULL;
+  LZ4F_preferences_t prefs;
+  CBufferChunk *readChunk   = NULL;
+  CBufferChunk *compressChunk = NULL;
+  bool bEOF = false;
+
+  memset(&prefs, 0, sizeof(prefs));
+  prefs.frameInfo.blockSizeID        = LZ4F_max64KB;
+  prefs.frameInfo.blockMode          = LZ4F_blockIndependent;
+  prefs.frameInfo.contentChecksumFlag = LZ4F_contentChecksumEnabled;
+  prefs.autoFlush                    = 1;
+  prefs.compressionLevel             = useHC ? 9 : 0;
+
+  LZ4F_errorCode_t err = LZ4F_createCompressionContext(&ctx, LZ4F_VERSION);
+  if (LZ4F_isError(err))
+    THROW_INT_EXC(EInternalException::lz4CompressError);
+
+  // Pre-compute worst-case compressed size for one BLOCK_SIZE input block.
+  // With autoFlush=1 this is what a single compressUpdate call may produce.
+  const size_t maxCompressedBlock = LZ4F_compressBound(BLOCK_SIZE, &prefs);
+
+  // Acquire first output chunk and write the LZ4 frame header.
+  compressChunk = fSourceQueueCompressed->GetChunk();
+  if (!compressChunk) {
+    LZ4F_freeCompressionContext(ctx);
+    THROW_INT_EXC(EInternalException::getChunkError);
+  }
+  BYTE*  dst         = (BYTE*)compressChunk->GetData();
+  size_t dstCapacity = compressChunk->GetMaxSize();
+  size_t dstUsed     = 0;
+
+  size_t headerSize = LZ4F_compressBegin(ctx, dst, dstCapacity, &prefs);
+  if (LZ4F_isError(headerSize)) {
+    LZ4F_freeCompressionContext(ctx);
+    fTargetQueueCompressed->ReleaseChunk(compressChunk);
+    THROW_INT_EXC(EInternalException::lz4CompressError);
+  }
+  dstUsed += headerSize;
+
+  // Main compression loop — process each input chunk in BLOCK_SIZE pieces.
+  while (!bEOF) {
+    if (readChunk)
+      fTargetQueueDecompressed->ReleaseChunk(readChunk);
+    readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+    if (!readChunk) {
+      LZ4F_freeCompressionContext(ctx);
+      THROW_INT_EXC(EInternalException::getChunkError);
+    }
+    bEOF = readChunk->IsEOF();
+
+    const BYTE* src       = (const BYTE*)readChunk->GetData();
+    size_t      srcSize   = readChunk->GetSize();
+    size_t      srcOffset = 0;
+
+    while (srcOffset < srcSize) {
+      size_t blockSize = srcSize - srcOffset;
+      if (blockSize > BLOCK_SIZE) blockSize = BLOCK_SIZE;
+
+      // Ensure there is room for the worst-case compressed block.
+      if (dstCapacity - dstUsed < maxCompressedBlock) {
+        compressChunk->SetSize(dstUsed);
+        fTargetQueueCompressed->ReleaseChunk(compressChunk);
+        compressChunk = fSourceQueueCompressed->GetChunk();
+        if (!compressChunk) {
+          LZ4F_freeCompressionContext(ctx);
+          THROW_INT_EXC(EInternalException::getChunkError);
+        }
+        dst         = (BYTE*)compressChunk->GetData();
+        dstCapacity = compressChunk->GetMaxSize();
+        dstUsed     = 0;
+      }
+
+      size_t written = LZ4F_compressUpdate(ctx,
+                                           dst + dstUsed, dstCapacity - dstUsed,
+                                           src + srcOffset, blockSize,
+                                           NULL);
+      if (LZ4F_isError(written)) {
+        LZ4F_freeCompressionContext(ctx);
+        THROW_INT_EXC(EInternalException::lz4CompressError);
+      }
+      dstUsed   += written;
+      srcOffset += blockSize;
+
+      if (fCancel) {
+        LZ4F_freeCompressionContext(ctx);
+        if (compressChunk) fTargetQueueCompressed->ReleaseChunk(compressChunk);
+        if (readChunk)     fTargetQueueDecompressed->ReleaseChunk(readChunk);
+        Terminate(-1);
+      }
+    }
+  }
+
+  // Finalize: write the LZ4 frame end-mark + content checksum.
+  // LZ4F_compressBound(0, ...) gives the exact space needed for flush+end.
+  const size_t endBound = LZ4F_compressBound(0, &prefs);
+  if (dstCapacity - dstUsed < endBound) {
+    compressChunk->SetSize(dstUsed);
+    fTargetQueueCompressed->ReleaseChunk(compressChunk);
+    compressChunk = fSourceQueueCompressed->GetChunk();
+    if (!compressChunk) {
+      LZ4F_freeCompressionContext(ctx);
+      THROW_INT_EXC(EInternalException::getChunkError);
+    }
+    dst         = (BYTE*)compressChunk->GetData();
+    dstCapacity = compressChunk->GetMaxSize();
+    dstUsed     = 0;
+  }
+
+  size_t endSize = LZ4F_compressEnd(ctx, dst + dstUsed, dstCapacity - dstUsed, NULL);
+  if (LZ4F_isError(endSize)) {
+    LZ4F_freeCompressionContext(ctx);
+    THROW_INT_EXC(EInternalException::lz4CompressError);
+  }
+  dstUsed += endSize;
+
+  LZ4F_freeCompressionContext(ctx);
+
+  if (readChunk != NULL)
+    fTargetQueueDecompressed->ReleaseChunk(readChunk);
+  if (compressChunk != NULL) {
+    compressChunk->SetSize(dstUsed);
+    compressChunk->SetEOF(true);
+    fTargetQueueCompressed->ReleaseChunk(compressChunk);
+  }
+}
+
+//---------------------------------------------------------------------------
+// Zstandard streaming compression loop.
+// Uses fCompressionLevel (default 6); ZSTD accepts levels 1–22.
+//
+void CCompressionThread::CompressLoopZSTD()
+{
+  ZSTD_CStream* stream = ZSTD_createCStream();
+  if (!stream)
+    THROW_INT_EXC(EInternalException::zstdCompressError);
+
+  int level = (fCompressionLevel > 0) ? fCompressionLevel : ZSTD_CLEVEL_DEFAULT;
+  size_t initRet = ZSTD_initCStream(stream, level);
+  if (ZSTD_isError(initRet)) {
+    ZSTD_freeCStream(stream);
+    THROW_INT_EXC(EInternalException::zstdCompressError);
+  }
+
+  CBufferChunk *readChunk     = NULL;
+  CBufferChunk *compressChunk = NULL;
+  bool bEOF = false;
+
+  compressChunk = fSourceQueueCompressed->GetChunk();
+  if (!compressChunk) {
+    ZSTD_freeCStream(stream);
+    THROW_INT_EXC(EInternalException::getChunkError);
+  }
+  ZSTD_outBuffer outBuf;
+  outBuf.dst  = compressChunk->GetData();
+  outBuf.size = compressChunk->GetMaxSize();
+  outBuf.pos  = 0;
+
+  // Main compression loop.
+  while (!bEOF) {
+    if (readChunk)
+      fTargetQueueDecompressed->ReleaseChunk(readChunk);
+    readChunk = fSourceQueueDecompressed->GetChunk(); // may block
+    if (!readChunk) {
+      ZSTD_freeCStream(stream);
+      THROW_INT_EXC(EInternalException::getChunkError);
+    }
+    bEOF = readChunk->IsEOF();
+
+    ZSTD_inBuffer inBuf;
+    inBuf.src  = readChunk->GetData();
+    inBuf.size = readChunk->GetSize();
+    inBuf.pos  = 0;
+
+    while (inBuf.pos < inBuf.size) {
+      size_t ret = ZSTD_compressStream(stream, &outBuf, &inBuf);
+      if (ZSTD_isError(ret)) {
+        ZSTD_freeCStream(stream);
+        THROW_INT_EXC(EInternalException::zstdCompressError);
+      }
+      // If the output buffer is full, flush it and get a new chunk.
+      if (outBuf.pos == outBuf.size) {
+        compressChunk->SetSize(outBuf.pos);
+        fTargetQueueCompressed->ReleaseChunk(compressChunk);
+        compressChunk = fSourceQueueCompressed->GetChunk();
+        if (!compressChunk) {
+          ZSTD_freeCStream(stream);
+          THROW_INT_EXC(EInternalException::getChunkError);
+        }
+        outBuf.dst  = compressChunk->GetData();
+        outBuf.size = compressChunk->GetMaxSize();
+        outBuf.pos  = 0;
+      }
+
+      if (fCancel) {
+        ZSTD_freeCStream(stream);
+        if (compressChunk) fTargetQueueCompressed->ReleaseChunk(compressChunk);
+        if (readChunk)     fTargetQueueDecompressed->ReleaseChunk(readChunk);
+        Terminate(-1);
+      }
+    }
+  }
+
+  // Finalize: flush any remaining internal data and write the frame epilogue.
+  // ZSTD_endStream returns 0 when the frame is completely written.
+  size_t remaining;
+  do {
+    remaining = ZSTD_endStream(stream, &outBuf);
+    if (ZSTD_isError(remaining)) {
+      ZSTD_freeCStream(stream);
+      THROW_INT_EXC(EInternalException::zstdCompressError);
+    }
+    if (remaining > 0) {
+      // More data to flush — output buffer is full; get a new chunk.
+      compressChunk->SetSize(outBuf.pos);
+      fTargetQueueCompressed->ReleaseChunk(compressChunk);
+      compressChunk = fSourceQueueCompressed->GetChunk();
+      if (!compressChunk) {
+        ZSTD_freeCStream(stream);
+        THROW_INT_EXC(EInternalException::getChunkError);
+      }
+      outBuf.dst  = compressChunk->GetData();
+      outBuf.size = compressChunk->GetMaxSize();
+      outBuf.pos  = 0;
+    }
+  } while (remaining > 0);
+
+  ZSTD_freeCStream(stream);
+
+  if (readChunk != NULL)
+    fTargetQueueDecompressed->ReleaseChunk(readChunk);
+  if (compressChunk != NULL) {
+    compressChunk->SetSize(outBuf.pos);
+    compressChunk->SetEOF(true);
+    fTargetQueueCompressed->ReleaseChunk(compressChunk);
   }
 }

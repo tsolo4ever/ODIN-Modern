@@ -26,7 +26,7 @@ LANGUAGE LANG_GERMAN, SUBLANG_GERMAN
 // Dialog
 //
 
-IDD_ODIN_MAIN DIALOGEX 0, 0, 285, 368
+IDD_ODIN_MAIN DIALOGEX 0, 0, 285, 305
 STYLE DS_LOCALEDIT | DS_SETFONT | DS_3DLOOK | DS_FIXEDSYS | WS_SYSMENU
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
@@ -35,35 +35,18 @@ BEGIN
     CONTROL         "",IDC_LIST_VOLUMES,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,10,46,254,77
     COMBOBOX        IDC_COMBO_FILES,11,171,230,30,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_GROUP | WS_TABSTOP
     PUSHBUTTON      "...",ID_BT_BROWSE,248,171,20,14
-    EDITTEXT        IDC_EDIT_FILE,11,192,196,25,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_FILE,11,192,257,25,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY
     DEFPUSHBUTTON   "Start",IDOK,218,5,50,14
     PUSHBUTTON      "Exit",IDCANCEL,218,22,50,14
-    PUSHBUTTON      "Verify",ID_BT_VERIFY,218,192,50,14
-    PUSHBUTTON      "Options...",ID_BT_OPTIONS,211,229,57,14
-    PUSHBUTTON      "&About...",ID_APP_ABOUT,211,296,57,14
-    LTEXT           "Bytes total:",IDC_STATIC,7,233,77,8
-    LTEXT           "Bytes processed:",IDC_STATIC,7,246,75,8
-    LTEXT           "Speed:",IDC_STATIC,7,259,75,8
-    LTEXT           "Time elapsed:",IDC_STATIC,7,272,79,8
-    LTEXT           "Time left (estimated):",IDC_STATIC,7,285,79,8
-    LTEXT           "",IDC_LABEL_BYTES_TOTAL,93,230,91,11,SS_SUNKEN
-    LTEXT           "",IDC_LABEL_BYTES_PROCESSED,93,243,91,11,SS_SUNKEN
-    LTEXT           "",IDC_LABEL_SPEED,93,256,91,11,SS_SUNKEN
-    LTEXT           "",IDC_LABEL_TIME_ELAPSED,93,269,91,11,SS_SUNKEN
-    LTEXT           "",IDC_LABEL_TIME_LEFT,93,282,91,11,SS_SUNKEN
-    LTEXT           "Percent complete (estimated):",IDC_STATIC,7,299,103,8
-    LTEXT           "",IDC_LABEL_PERCENT,118,295,22,11,SS_SUNKEN
-    CONTROL         "Auto-Flash",IDC_CHECK_AUTOFLASH,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,315,48,10
-    EDITTEXT        IDC_EDIT_AUTOFLASH_SIZE,58,314,20,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "GB",IDC_STATIC_AUTOFLASH_GB,81,316,10,8
     GROUPBOX        "Operation",IDC_STATIC,7,7,202,24
     GROUPBOX        "Store/Load Image File(s) at/from:",IDC_GROUP_FILE,7,160,261,62
     GROUPBOX        "Disk-Volume",IDC_GROUP_DISKVOL,7,36,261,118
     LTEXT           "",IDC_TEXT_VOLUME,9,129,254,21,SS_SUNKEN
-    CONTROL         "",IDC_PROGRESS_PERCENT,"msctls_progress32",WS_BORDER,145,294,55,14
+    LTEXT           "",IDC_LABEL_STATUS_LINE,7,226,261,8,SS_SUNKEN
+    CONTROL         "",IDC_PROGRESS_PERCENT,"msctls_progress32",WS_BORDER,7,238,261,14
 END
 
-IDD_OPTIONS DIALOGEX 0, 0, 235, 181
+IDD_OPTIONS DIALOGEX 0, 0, 235, 207
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 EXSTYLE WS_EX_CLIENTEDGE
 CAPTION "Set Options"
@@ -74,17 +57,19 @@ BEGIN
                     "Button",BS_AUTORADIOBUTTON,15,30,150,15
     CONTROL         "Save all blocks",IDC_BT_ALL_BLOCKS,"Button",BS_AUTORADIOBUTTON,15,45,150,15
     CONTROL         "No Compression",IDC_BT_NO_COMPRESSION,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,79,113,15
-    CONTROL         "GZip Compression",IDC_BT_COMPRESSION_GZIP,"Button",BS_AUTORADIOBUTTON,15,92,113,15
-    CONTROL         "BZip2 Compression",IDC_BT_COMPRESSION_BZIP2,"Button",BS_AUTORADIOBUTTON,15,105,113,15
-    CONTROL         "Store image in one file",IDC_BT_NO_SPLIT,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,138,95,15
-    CONTROL         "Split image file in chunks",IDC_BT_SPLIT_CHUNK,"Button",BS_AUTORADIOBUTTON,15,151,96,15
-    EDITTEXT        IDC_ED_CHUNK_SIZE,114,151,29,13,ES_AUTOHSCROLL | ES_NUMBER,WS_EX_RIGHT
+    CONTROL         "GZip (zlib)",IDC_BT_COMPRESSION_GZIP,"Button",BS_AUTORADIOBUTTON,15,92,113,15
+    CONTROL         "LZ4 (fast)",IDC_BT_COMPRESSION_LZ4,"Button",BS_AUTORADIOBUTTON,15,105,113,15
+    CONTROL         "LZ4 High Compression",IDC_BT_COMPRESSION_LZ4HC,"Button",BS_AUTORADIOBUTTON,15,118,113,15
+    CONTROL         "Zstandard (zstd)",IDC_BT_COMPRESSION_ZSTD,"Button",BS_AUTORADIOBUTTON,15,131,113,15
+    CONTROL         "Store image in one file",IDC_BT_NO_SPLIT,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,15,164,95,15
+    CONTROL         "Split image file in chunks",IDC_BT_SPLIT_CHUNK,"Button",BS_AUTORADIOBUTTON,15,177,96,15
+    EDITTEXT        IDC_ED_CHUNK_SIZE,114,177,29,13,ES_AUTOHSCROLL | ES_NUMBER,WS_EX_RIGHT
     DEFPUSHBUTTON   "OK",IDOK,178,7,50,14
     PUSHBUTTON      "Cancel",IDCANCEL,178,24,50,14
     GROUPBOX        "Disk Options",IDC_STATIC,7,7,164,55
-    GROUPBOX        "Compression options",IDC_STATIC,7,71,165,51
-    GROUPBOX        "File Size",IDC_STATIC,7,130,166,41
-    LTEXT           "MB",IDC_STATIC,147,153,18,10
+    GROUPBOX        "Compression",IDC_STATIC,7,71,165,77
+    GROUPBOX        "File Size",IDC_STATIC,7,156,166,41
+    LTEXT           "MB",IDC_STATIC,147,179,18,10
 END
 
 IDD_DIALOG_SPLASH DIALOGEX 0, 0, 283, 197
@@ -110,9 +95,9 @@ BEGIN
     IDD_ODIN_MAIN, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 268
+        RIGHTMARGIN, 278
         TOPMARGIN, 7
-        BOTTOMMARGIN, 322
+        BOTTOMMARGIN, 253
     END
 
     IDD_OPTIONS, DIALOG
@@ -120,7 +105,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 228
         TOPMARGIN, 7
-        BOTTOMMARGIN, 174
+        BOTTOMMARGIN, 200
     END
 
     IDD_DIALOG_SPLASH, DIALOG
@@ -167,7 +152,7 @@ CAPTION "About"
 FONT 8, "MS Sans Serif", 400, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,132,10,50,14
-    CTEXT           "ODIN Open Disk Imager in a Nutshell\n\nCopyright (C) 2008\n This program is licensed under the GNU Public License v3",IDC_STATIC,41,11,78,63
+    CTEXT           "ODIN-Modern\nOpen Disk Imager in a Nutshell\n\nCopyright (C) 2008\n Licensed under GNU Public License v3",IDC_STATIC,41,11,78,63
     ICON            IDD_ODIN_MAIN,IDC_STATIC,10,8,20,20,SS_CENTERIMAGE
     LTEXT           "Version:",IDC_STATIC,37,100,26,10
     LTEXT           "",IDC_VERNO,67,100,52,10,SS_SUNKEN
@@ -230,6 +215,43 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// Menu
+//
+
+IDR_MAINMENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "Browse Image...",            ID_BT_BROWSE
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                      IDCANCEL
+    END
+    POPUP "&Operation"
+    BEGIN
+        MENUITEM "&Backup",                    IDC_RADIO_BACKUP
+        MENUITEM "&Restore",                   IDC_RADIO_RESTORE
+        MENUITEM SEPARATOR
+        MENUITEM "&Verify Image...",           ID_BT_VERIFY
+    END
+    POPUP "&Settings"
+    BEGIN
+        POPUP "Auto-Flash"
+        BEGIN
+            MENUITEM "Enable Auto-Flash",      ID_SETTINGS_AUTOFLASH_ENABLE
+            MENUITEM "Set Size...",            ID_SETTINGS_AUTOFLASH_SIZE
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "Options...",                 ID_BT_OPTIONS
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About...",                  ID_APP_ABOUT
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // Icon
 //
 
@@ -267,8 +289,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,3,4,BUILDNUMBER
- PRODUCTVERSION 0,3,4,BUILDNUMBER
+ FILEVERSION 0,4,0,0
+ PRODUCTVERSION 0,4,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -284,12 +306,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "ODIN Executable Module"
-            VALUE "FileVersion", "0, 3, 4, " BUILDNUMBERSTR
+            VALUE "FileVersion", "0.4.0"
             VALUE "InternalName", "ODIN"
             VALUE "LegalCopyright", "Copyright 2011 Licensed under the GNU GPL License."
             VALUE "OriginalFilename", "ODIN.exe"
             VALUE "ProductName", "ODIN"
-            VALUE "ProductVersion", "0, 3, 4, " BUILDNUMBERSTR
+            VALUE "ProductVersion", "0.4.0"
         END
     END
     BLOCK "VarFileInfo"
@@ -433,7 +455,7 @@ BEGIN
     IDS_DRIVE_TYPE_FLOPPY   "Floppy"
     IDS_DRIVE_TYPE_UNKNOWN  "Unknown"
     IDS_WAITUPDATEDRIVES    "Please wait while drive list is being updated."
-    IDS_DIALOGTITLE         "ODIN - Open Disk Imager in a Nutshell"
+    IDS_DIALOGTITLE         "ODIN-Modern - Open Disk Imager in a Nutshell"
     IDS_STATUS_OPERATION_COMPLETED "Operation completed successfully."
     IDS_STATUS_OPERATION_CANCELLED "Operation was cancelled."
     IDS_STATUS_BACKUP_PARTITION_PROGRESS "Backup partition in progress..."

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 30,
+  "env": {
+    "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-4-5-20251001"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git checkout*)",
+      "Bash(msbuild*)",
+      "Bash(cmake*)",
+      "Bash(nmake*)",
+      "Bash(cl*)",
+      "Bash(ls*)",
+      "Bash(dir*)",
+      "Bash(type*)",
+      "Bash(find*)",
+      "Bash(grep*)",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "Glob",
+      "Bash(cmd.exe /c '\"\"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\"\" \"\"d:\\\\OneDrive\\\\Documents\\\\GitHub\\\\odin-win-code-r71-trunk\\\\ODIN.sln\"\" /p:Configuration=Debug /p:Platform=x64 /t:Build /m /nologo /v:minimal 2>&1')",
+      "Bash(uvx:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(del /f*)",
+      "Bash(format*)",
+      "Bash(rd /s*)"
+    ],
+    "ask": [
+      "Bash(git reset*)",
+      "Bash(git rebase*)",
+      "Bash(git merge*)"
+    ],
+    "defaultMode": "acceptEdits"
+  },
+  "model": "claude-sonnet-4-6",
+  "autoUpdatesChannel": "stable",
+  "outputStyle": "default"
+}

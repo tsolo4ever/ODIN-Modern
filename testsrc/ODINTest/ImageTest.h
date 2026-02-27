@@ -44,7 +44,8 @@ class ImageTest : public CppUnit::TestFixture
   CPPUNIT_TEST( restoreImageTestRunLengthSpecial );
   /**/
   CPPUNIT_TEST( saveCompressedImageGzipTest );
-  CPPUNIT_TEST( saveCompressedImageBzip2Test );
+  CPPUNIT_TEST( saveCompressedImageLz4Test );
+  CPPUNIT_TEST( saveCompressedImageZstdTest );
   /**/
   CPPUNIT_TEST_SUITE_END();
 
@@ -66,7 +67,8 @@ public:
   void restoreImageTestRunLengthSpecial();
 
   void saveCompressedImageGzipTest();
-  void saveCompressedImageBzip2Test();
+  void saveCompressedImageLz4Test();
+  void saveCompressedImageZstdTest();
 
 
 private:

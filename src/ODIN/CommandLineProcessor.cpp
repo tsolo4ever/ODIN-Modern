@@ -36,6 +36,8 @@
 #include <fcntl.h>
 #include <iostream>
 #include <fstream>
+#include <locale>
+#include <codecvt>
 #include <crtdbg.h>
 #include "CmdLineException.h"
 #include "DriveList.h"
@@ -265,10 +267,8 @@ CCommandLineProcessor::CCommandLineProcessor() {
   // _CrtSetBreakAlloc(186);
   fHasConsole = false;
   fConsoleCreated = false;
-  fFeedback = NULL;
   Reset();
-  fOdinManager = NULL;
-  fSplitCB = new CConsoleSplitManagerCallback();
+  fSplitCB = std::make_unique<CConsoleSplitManagerCallback>();
   fVerifyRun = false;
   fCrc32 = 0;
   fExitCode = 0;
@@ -276,9 +276,6 @@ CCommandLineProcessor::CCommandLineProcessor() {
 }
 
 CCommandLineProcessor::~CCommandLineProcessor() {
-  delete fOdinManager;
-  delete fSplitCB;
-  delete fFeedback;
   TerminateConsole();
 }
 
@@ -299,8 +296,8 @@ int CCommandLineProcessor::ParseAndProcess() {
 }
 
 void CCommandLineProcessor::Init() {
-  if (fOdinManager == NULL) {
-    fOdinManager = new COdinManager();
+  if (!fOdinManager) {
+    fOdinManager = std::make_unique<COdinManager>();
     fOdinManager->RefreshDriveList();
   }
 }
@@ -358,6 +355,12 @@ void CCommandLineProcessor::Parse(CStlCmdLineArgsWin<wchar_t>& cmdLineParser) {
     fOperation.compression = compressionGZip;
   else if (comp.compare(L"bzip") == 0)
     fOperation.compression = compressionBZIP2;
+  else if (comp.compare(L"lz4") == 0)
+    fOperation.compression = compressionLZ4;
+  else if (comp.compare(L"lz4hc") == 0)
+    fOperation.compression = compressionLZ4HC;
+  else if (comp.compare(L"zstd") == 0)
+    fOperation.compression = compressionZSTD;
   else if (comp.compare(L"none") == 0)
     fOperation.compression = noCompression;
   else if (!comp.empty())
@@ -416,7 +419,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
   
   fLastPercent = 0;
   fCrc32 = 0;
-  fFeedback = new CUserFeedbackConsole(fOperation.force);
+  fFeedback = std::make_unique<CUserFeedbackConsole>(fOperation.force);
   CParamChecker checker(*fFeedback, *fOdinManager);
 
   // perform operation
@@ -428,7 +431,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
         fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
         if (fOperation.comment.length() > 0)
            fOdinManager->SetComment(fOperation.comment.c_str());
-        CMultiPartitionHandler::BackupPartitionOrDisk(fOperation.sourceIndex, fOperation.target.c_str(), *fOdinManager, fSplitCB, this, *fFeedback);
+        CMultiPartitionHandler::BackupPartitionOrDisk(fOperation.sourceIndex, fOperation.target.c_str(), *fOdinManager, fSplitCB.get(), this, *fFeedback);
       } 
   }
   else if (fOperation.cmd == CmdRestore) {
@@ -439,7 +442,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
     if (res == IUserFeedback::TOk || res == IUserFeedback::TYes) {
       // do restore
       fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
-      CMultiPartitionHandler::RestorePartitionOrDisk(fOperation.targetIndex, fOperation.source.c_str(), *fOdinManager, fSplitCB, this);
+      CMultiPartitionHandler::RestorePartitionOrDisk(fOperation.targetIndex, fOperation.source.c_str(), *fOdinManager, fSplitCB.get(), this);
     }
   }
   else if (fOperation.cmd == CmdVerify) {
@@ -448,7 +451,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
     fVerifyRun = true;
     fCrc32 = 0; //TODO: get from header
     fTimer = CreateThread(NULL, 0, ODINTimerThread, this, 0, NULL);
-    CMultiPartitionHandler::VerifyPartitionOrDisk(fOperation.source.c_str(), *fOdinManager, fCrc32, fSplitCB, this, *fFeedback);
+    CMultiPartitionHandler::VerifyPartitionOrDisk(fOperation.source.c_str(), *fOdinManager, fCrc32, fSplitCB.get(), this, *fFeedback);
   }
   else
     wcerr << L"Internal error illegal program state:  " << __WFILE__ << L" " << __LINE__; // should not happen
@@ -467,8 +470,18 @@ void CCommandLineProcessor::ListDrives() {
   wostream* pOut = &wcout;
   
   if (!fOperation.outputFile.empty()) {
-    outFile.open(fOperation.outputFile.c_str(), ios::out);
+    outFile.open(fOperation.outputFile.c_str(), ios::out | ios::trunc);
     if (outFile.is_open()) {
+      // Apply UTF-8 encoding so the file is readable by standard text tools.
+      // codecvt_utf8 is deprecated in C++17 but still available in MSVC.
+      // Temporarily disable DEBUG_NEW so the placement-new from the macro
+      // doesn't conflict with codecvt_utf8's constructor signature.
+#pragma push_macro("new")
+#undef new
+#pragma warning(suppress: 4996)
+      outFile.imbue(std::locale(outFile.getloc(),
+                                new std::codecvt_utf8<wchar_t>));
+#pragma pop_macro("new")
       pOut = &outFile;
     } else {
       wcerr << L"Error: Could not open output file: " << fOperation.outputFile << endl;
@@ -560,7 +573,9 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << L"ODIN [operation] [options] -source=[name] -target=[name]" << endl;
   wcout << L"  [operation] is one of -backup, -restore, -verify or -list" << endl;
   wcout << L"  [options] are:" << endl;
-  wcout << L"  -compression=[bzip|gzip|none]   use bzip, gzip or no compression" << endl;
+  wcout << L"  -compression=[gzip|lz4|lz4hc|zstd|bzip|none]  use specified compression" << endl;
+  wcout << L"                gzip=deflate, lz4=fast LZ4, lz4hc=high-compression LZ4," << endl;
+  wcout << L"                zstd=Zstandard, bzip=bzip2 (read-only legacy), none=no compression" << endl;
   wcout << L"  -makeSnapshot    make snapshot (VSS) before backup (implies -usedBlocks)" << endl;
   wcout << L"  -usedBlocks      copy only used blocks of volume" << endl;
   wcout << L"  -allBlocks       copy all blocks of volume" << endl;
@@ -579,7 +594,11 @@ void CCommandLineProcessor::PrintUsage() {
   wcout << endl;
   wcout << L"Examples:" << endl;
   wcout << L"ODIN -backup -usedBlocks -compression=gzip -source=1 -target=myimage.dat" << endl;
-  wcout << L"  backups volume number 1 to image file myimage.dat with gzip compression " << endl;
+  wcout << L"  backups volume number 1 to image file myimage.dat with gzip compression" << endl;
+  wcout << L"ODIN -backup -usedBlocks -compression=zstd -source=1 -target=myimage.dat" << endl;
+  wcout << L"  backups volume number 1 with Zstandard compression (fast + good ratio)" << endl;
+  wcout << L"ODIN -backup -usedBlocks -compression=lz4 -source=1 -target=myimage.dat" << endl;
+  wcout << L"  backups volume number 1 with LZ4 compression (fastest option)" << endl;
   wcout << L"  and only used blocks (1 refers to index 1 of devices from output of -list) " << endl;
   wcout << L"ODIN -restore -source=myimage.dat -target=\\Device\\Harddisk0\\Partition0" << endl;
   wcout << L"  restores image from file myimage.dat to first partition of first disk " << endl;
@@ -595,12 +614,22 @@ void CCommandLineProcessor::PrintUsage() {
 }
 
 void CCommandLineProcessor::Reset() {
-  memset(&fOperation, 0, sizeof(fOperation));
-  fOperation.sourceIndex = fOperation.targetIndex = -1;
-  fTimer = NULL;
+  // Do NOT use memset — TOdinOperation contains std::wstring members.
+  // Zeroing their internal pointers causes heap corruption on next use/dtor.
+  fOperation.cmd          = CmdBackup;          // overwritten before first use
+  fOperation.source.clear();
+  fOperation.target.clear();
+  fOperation.comment.clear();
+  fOperation.outputFile.clear();
+  fOperation.sourceIndex  = -1;
+  fOperation.targetIndex  = -1;
+  fOperation.splitSizeMB  = 0;
+  fOperation.mode         = modeOnlyUsedBlocks;
+  fOperation.compression  = compressionGZip;
+  fOperation.force        = false;
+  fTimer      = NULL;
   fLastPercent = 0;
-  delete fFeedback;
-  fFeedback = NULL;
+  fFeedback.reset();
 }
 
 void CCommandLineProcessor::OnThreadTerminated()
@@ -615,8 +644,7 @@ void CCommandLineProcessor::OnFinished()
     CloseHandle(fTimer);
     fTimer = NULL;
     wcout << endl;
-    delete fFeedback;
-    fFeedback = NULL;
+    fFeedback.reset();
     if (fVerifyRun) {
       crc32 = fOdinManager->GetVerifiedChecksum();
       if (crc32 == fCrc32)
@@ -639,8 +667,7 @@ void CCommandLineProcessor::OnAbort()
     TerminateThread(fTimer, 0);
     CloseHandle(fTimer);
     fTimer = NULL;
-    delete fFeedback;
-    fFeedback = NULL;
+    fFeedback.reset();
     wcout << endl;
     fLastPercent = 0;
     fCrc32 = 0;
@@ -677,71 +704,75 @@ void CCommandLineProcessor::ReportFeedback()
   unsigned __int64 bytesProcessed = fOdinManager->GetBytesProcessed();
   if (bytesTotal) {
     int percent = (int) ((bytesProcessed * 100 + (bytesTotal/2)) / bytesTotal);
-    if (percent > fLastPercent+10) {
-      wcout << percent/10*10 << L'%';
+    if (percent > fLastPercent+5) {
+      wcout << percent/5*5 << L'%';
       fLastPercent = percent;
     }
   }
+  wcout.flush();
 }
 
 // Code taken from: http://dslweb.nwnexus.com/~ast/dload/guicon.htm
 static const WORD MAX_CONSOLE_LINES = 500;
 bool  CCommandLineProcessor::InitConsole(bool createConsole) {
-  int hConHandle;
-  long lStdHandle;
   CONSOLE_SCREEN_BUFFER_INFO coninfo;
 
+  // If stdout is already a pipe (launched as a subprocess), skip console
+  // allocation entirely.  freopen("CONOUT$") would redirect stdout away from
+  // the pipe to a hidden console, making all wcout output invisible to the
+  // parent process.  Just configure unbuffered UTF-8 text mode and return.
+  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (hStdOut != INVALID_HANDLE_VALUE && GetFileType(hStdOut) == FILE_TYPE_PIPE) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+    _setmode(_fileno(stdout), _O_U8TEXT);
+    _setmode(_fileno(stderr), _O_U8TEXT);
+    ios::sync_with_stdio(true);
+    wcout.flush();
+    wcout.clear();
+    return true;
+  }
 
-  // Attach a console if one exists from the parent (i.e. started from a shell)
-  // This works but does not works synchronously: The parent console returns 
-  // immediately and there is no way to get controlled input. Therefore use
-  // ODINC.exe for this purpose which just waits and starts ODIN.exe
-    bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
-    if (!consoleOutput) {
-    if (createConsole) {
-      // allocate a console for this app
-      BOOL ok = AllocConsole();
-      if (ok)
-        fConsoleCreated = true;
-      else
-        return false;
-    } else 
-      return false;
-    }
+  // Try to attach to a parent console first (works when launched from cmd/PowerShell).
+  bool consoleOutput = AttachConsole(ATTACH_PARENT_PROCESS) != 0;
+  if (!consoleOutput) {
+    // Parent has no console — allocate our own as fallback.
+    BOOL ok = AllocConsole();
+    if (!ok)
+      return false;   // neither attach nor alloc worked — give up
+    fConsoleCreated = true;
+  }
 
   fHasConsole = true;
-  // set the screen buffer to be big enough to let us scroll text
+  // Set the screen buffer large enough to allow scrolling.
   GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &coninfo);
   coninfo.dwSize.Y = MAX_CONSOLE_LINES;
-  SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE),
-  coninfo.dwSize);
-  // redirect unbuffered STDOUT to the console
-  lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpOut = _fdopen( hConHandle, "w" );
-    *stdout = *fpOut;
-    setvbuf( stdout, NULL, _IONBF, 0 );
-  }
-  // redirect unbuffered STDIN to the console
-  lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpIn = _fdopen( hConHandle, "r" );
-    *stdin = *fpIn;
-    setvbuf( stdin, NULL, _IONBF, 0 );
-  }
-  // redirect unbuffered STDERR to the console
-  lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
-  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
-  if (hConHandle > 0) {
-    fpErr = _fdopen( hConHandle, "w" );
-    *stderr = *fpErr;
-    setvbuf( stderr, NULL, _IONBF, 0 );
-  }
-  // make cout, wcout, cin, wcin, wcerr, cerr, wclog and clog
-  // point to console as well
-  ios::sync_with_stdio();
+  SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coninfo.dwSize);
+
+  // Re-open CRT stdio streams directly onto the console by name.
+  // This is more reliable than _open_osfhandle/_fdopen/_fileno when the
+  // process is a GUI subsystem app launched with inherited handles via
+  // STARTF_USESTDHANDLES: the _open_osfhandle path silently fails because
+  // the CRT fd table already owns the inherited handle.  CONOUT$/CONIN$
+  // always resolve to the console we just attached or allocated.
+  freopen("CONOUT$", "w", stdout);
+  freopen("CONOUT$", "w", stderr);
+  freopen("CONIN$",  "r", stdin);
+  setvbuf(stdout, NULL, _IONBF, 0);
+  setvbuf(stderr, NULL, _IONBF, 0);
+
+  // Switch to UTF-8 mode so wcout/wcerr emit wide chars correctly.
+  // _O_U8TEXT converts wchar_t to UTF-8 bytes before writing, which works
+  // regardless of whether the CRT recognises the handle as a true console.
+  // _O_U16TEXT would write raw UTF-16LE bytes when WriteConsoleW detection
+  // fails (freopen("CONOUT$") handle), causing space-between-every-char output.
+  _setmode(_fileno(stdout), _O_U8TEXT);
+  _setmode(_fileno(stderr), _O_U8TEXT);
+
+  // Re-sync C++ wide streams with the new C streams.
+  ios::sync_with_stdio(true);
+  wcout.flush();
+  wcout.clear();
   return true;
 }
 

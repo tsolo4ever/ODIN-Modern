@@ -29,6 +29,7 @@
 
 #pragma once
 #include "compression.h"
+#include <memory>
 #include <string>
 
 class COdinManager;
@@ -91,12 +92,12 @@ private:
   bool fConsoleCreated;
   bool fVerifyRun;
   TOdinOperation fOperation; // structure that contains the command and parameters
-  COdinManager* fOdinManager;
+  std::unique_ptr<COdinManager> fOdinManager;
   HANDLE fTimer;
   int fLastPercent;
   DWORD fCrc32;
   int fExitCode;
-  CConsoleSplitManagerCallback* fSplitCB;
-  CUserFeedbackConsole* fFeedback;
+  std::unique_ptr<CConsoleSplitManagerCallback> fSplitCB;
+  std::unique_ptr<CUserFeedbackConsole> fFeedback;
   friend class CCmdLineTest;
 };

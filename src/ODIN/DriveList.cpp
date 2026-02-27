@@ -121,13 +121,14 @@ void CDriveInfo::Refresh(void)
   DISK_GEOMETRY geometry;
   DWORD nCount;
   BOOL bSuccess;
-  long ntStatus;
+  long ntStatus = 0;
   // CStopWatch watch;
 
   // watch.Start();
-  if (!HaveNTCalls)
+  if (!HaveNTCalls) {
     hDrive = CreateFile(fDeviceName.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_BACKUP_SEMANTICS, NULL);
-  else
+    ntStatus = (hDrive == INVALID_HANDLE_VALUE) ? -1 : 0;
+  } else
     ntStatus = NTOpen(&hDrive, fDeviceName.c_str(), GENERIC_READ, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_OPEN, FILE_SEQUENTIAL_ONLY);
   // watch.Stop();
   // watch.TraceTime(L"Open device in refresh");
@@ -159,9 +160,15 @@ void CDriveInfo::Refresh(void)
       if (partition.PartitionStyle == PARTITION_STYLE_MBR) {
           fPartitionType = (int) partition.Mbr.PartitionType;
           fKnownType = partition.Mbr.RecognizedPartition != 0;
-      } else {// partition.PartitionStyle == PARTITION_STYLE_GPT or PARTITION_STYLE_RAW
-        fBytes = 0; fSectors = 0; fBytesPerSector = 0; fSectorsPerTrack = 0; fDriveType = driveUnknown;
-        fKnownType = fReadable = false;
+      } else if (partition.PartitionStyle == PARTITION_STYLE_GPT) {
+          // GPT: fBytes, fDriveType, fBytesPerSector, fSectors etc. are already
+          // set from geometry + partition.PartitionLength above — keep them.
+          // GPT has no legacy partition-type byte; all GPT data partitions are known.
+          fKnownType = true;
+      } else {
+          // PARTITION_STYLE_RAW or unrecognised — genuinely unreadable, reset.
+          fBytes = 0; fSectors = 0; fBytesPerSector = 0; fSectorsPerTrack = 0; fDriveType = driveUnknown;
+          fKnownType = fReadable = false;
       }
       fIsMounted = DeviceIoControl(hDrive, FSCTL_IS_VOLUME_MOUNTED, NULL, 0, NULL, 0, &nCount, NULL) != FALSE;
       // This seems to be a reliable indicator whether you are able to get the list of used blocks later

@@ -38,10 +38,11 @@
 #include "resource.h"
 
 using namespace std;
+
 const wchar_t creditsText[] = L"The zlib data compression library written by Mark Adler and Jean-loup Gailly \
 http://www.zlib.net/.\n\
 \n\
-The bzip2 data compression library written by Julian Seward (Copyright © 1996-2007\
+The bzip2 data compression library written by Julian Seward (Copyright ï¿½ 1996-2007\
 Julian Seward) http://www.bzip.org/.\n\
 \n\
 Some ideas, design aspects code fragments taken from Selfimage \
@@ -75,6 +76,7 @@ LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPara
 
   CStatic homepageBox(GetDlgItem(IDC_HYPER));
   fHyperHomepage.SubclassWindow(homepageBox.m_hWnd);
+
 	return TRUE;
 }
 
@@ -83,7 +85,7 @@ LRESULT CAboutDlg::OnCloseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, 
 	EndDialog(wID);
 	return 0;
 }
-  
+
 LRESULT CAboutDlg::OnLicenseCmd(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
 {
 	wchar_t licenseFile[] = L"\\license.html";

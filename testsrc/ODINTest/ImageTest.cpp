@@ -43,11 +43,13 @@ unsigned ImageTest::sSavedCrc32;
 void ImageTest::setUp()
 {
   int cReadChunkSize = 64 * 1024;
+  // LZ4F_compressBound(64KB) ≈ 65820 — must exceed this to avoid infinite-loop in CompressLoopLZ4
+  int cCompChunkSize = 128 * 1024;
   int nBufferCount = 8;
   fClusterSize = 4096;
   fEmptyReaderQueue = new CImageBuffer(cReadChunkSize, nBufferCount, L"fEmptyReaderQueue");
   fFilledReaderQueue = new CImageBuffer(L"fFilledReaderQueue");
-  fEmptyCompDecompQueue = new CImageBuffer(cReadChunkSize, nBufferCount, L"fEmptyCompDecompQueue");
+  fEmptyCompDecompQueue = new CImageBuffer(cCompChunkSize, nBufferCount, L"fEmptyCompDecompQueue");
   fFilledCompDecompQueue = new CImageBuffer(L"fFilledCompDecompQueue");
 }
 
@@ -272,10 +274,17 @@ void ImageTest::saveCompressedImageGzipTest()
   cout << "  ... done" << endl;
 }
 
-void ImageTest::saveCompressedImageBzip2Test()
+void ImageTest::saveCompressedImageLz4Test()
 {
-  cout << "saveCompressedImageBzip2Test()..." << endl;
-  saveCompressed(compressionBZIP2);
+  cout << "saveCompressedImageLz4Test()..." << endl;
+  saveCompressed(compressionLZ4);
+  cout << "  ... done" << endl;
+}
+
+void ImageTest::saveCompressedImageZstdTest()
+{
+  cout << "saveCompressedImageZstdTest()..." << endl;
+  saveCompressed(compressionZSTD);
   cout << "  ... done" << endl;
 }
 

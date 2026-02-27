@@ -35,6 +35,7 @@
 #include <atlctrlx.h>
 #include <sstream>
 #include <algorithm>
+#include <vector>
 //#include <atlmisc.h>
 
 #include "UserFeedback.h"
@@ -90,24 +91,22 @@ size_t CODINSplitManagerCallback::AskUserForMissingFile(LPCWSTR missingFileName,
   ATL::CString msg;
   ATL::CString filter;
   size_t res;
-  wchar_t* buffer;
   msg.FormatMessage(IDS_PROVIDE_FILENAME, fileNo);
   filter.LoadString(IDS_FILTERSTRING);
 
   const int bufsize = filter.GetLength()+7;
-  buffer = new wchar_t[bufsize];
-  wcsncpy_s(buffer, bufsize, filter, filter.GetLength()+1);
-  memcpy(buffer+filter.GetLength()+1, L"\0*.*\0\0", 12);
+  std::vector<wchar_t> buffer(bufsize);
+  wcsncpy_s(buffer.data(), bufsize, filter, filter.GetLength()+1);
+  memcpy(buffer.data()+filter.GetLength()+1, L"\0*.*\0\0", 12);
 
   CFileDialog fileDlg ( true, NULL, missingFileName, OFN_FILEMUSTEXIST,
-            buffer, fhWnd );
- 
+            buffer.data(), fhWnd );
+
   if ( res = fileDlg.DoModal() ) {
     if (res == IDOK) {
       newName = fileDlg.m_szFileName;
     }
   }
-  delete buffer;
   return res;
 }
 
@@ -174,7 +173,7 @@ void CODINDlg::InitControls()
 
   // set list view style to enable row selection
   // DWORD exStyle = fVolumeList.GetExtendedListViewStyle();
-  fVolumeList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
+  fVolumeList.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
 
   // Fill controls with data
   // fill file list box
@@ -199,14 +198,6 @@ void CODINDlg::InitControls()
   // init progress bar to percent range
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetRange32(0, 100);
-
-  // set auto-flash checkbox state and size input
-  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
-  autoFlashCheck.SetCheck(fAutoFlashEnabled ? BST_CHECKED : BST_UNCHECKED);
-  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
-  wchar_t szSize[4];
-  wsprintf(szSize, L"%d", (int)fAutoFlashTargetSizeGB);
-  sizeEdit.SetWindowText(szSize);
 
   // fill volume list box
   FillDriveList();
@@ -425,86 +416,59 @@ void CODINDlg::UpdateStatus(bool bInit)
   static LARGE_INTEGER startTimer, performanceFrequency;
   static __int64 nnLastTotal;
   LARGE_INTEGER timer;
-  int nProgressPercent;
-  CStatic label;
   __int64 ddTimeDifference;
   unsigned __int64 nnBytesTotal = fOdinManager.GetTotalBytesToProcess();
-  unsigned __int64 nnBytesLeft = nnBytesTotal - fBytesProcessed;
 
   if (bInit) {
     QueryPerformanceFrequency(&performanceFrequency);
     QueryPerformanceCounter(&startTimer);
     nnLastTotal = 0;
-  } else if (nnBytesTotal ) {
-    nProgressPercent = (int) ((fBytesProcessed * 100 + (nnBytesTotal/2)) / nnBytesTotal);
+    SetDlgItemText(IDC_LABEL_STATUS_LINE, L"");
+  } else if (nnBytesTotal) {
+    int nProgressPercent = (int)((fBytesProcessed * 100 + (nnBytesTotal / 2)) / nnBytesTotal);
 
-    const size_t BUFSIZE=80;
-    wchar_t buffer[BUFSIZE];
-
-    swprintf(buffer, BUFSIZE, L"%d%%", nProgressPercent);
-    label = GetDlgItem(IDC_LABEL_PERCENT);
-    label.SetWindowText(buffer);
-    
     CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
     progress.SetPos(nProgressPercent);
 
-    MakeByteLabel(nnBytesTotal, buffer, BUFSIZE);
-    label = GetDlgItem(IDC_LABEL_BYTES_TOTAL);
-    label.SetWindowText(buffer);
-    MakeByteLabel(fBytesProcessed, buffer, BUFSIZE);
-    label = GetDlgItem(IDC_LABEL_BYTES_PROCESSED);
-    label.SetWindowText(buffer);
+    const size_t BUFSIZE = 80;
+    wchar_t done[BUFSIZE], total[BUFSIZE], speed[BUFSIZE];
+    MakeByteLabel(fBytesProcessed, done, BUFSIZE);
+    MakeByteLabel(nnBytesTotal, total, BUFSIZE);
 
     QueryPerformanceCounter(&timer);
-    
-    // get elapsed time
     ddTimeDifference = timer.QuadPart - startTimer.QuadPart;
-    // convert to seconds
-    ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart>>1) )/ performanceFrequency.QuadPart;
-    ATL::CString timeLabel;
-    DWORD dwTimeDifference = (DWORD) ddTimeDifference;
-    timeLabel.Format(L"%02u:%02u:%02u", dwTimeDifference/3600, dwTimeDifference % 3600 / 60, dwTimeDifference % 60);
-    label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
-    label.SetWindowText(timeLabel);
+    ddTimeDifference = (ddTimeDifference + (performanceFrequency.QuadPart >> 1)) / performanceFrequency.QuadPart;
+    DWORD dwElapsed = (DWORD)ddTimeDifference;
 
-    // calculate speed
-    if (ddTimeDifference>0)
-      MakeByteLabel(fBytesProcessed/ddTimeDifference, buffer, BUFSIZE);
-    ATL::CString labelSpeed (buffer);
-    labelSpeed += L"/s";
-    label = GetDlgItem(IDC_LABEL_SPEED);
-    label.SetWindowText(labelSpeed);
+    if (ddTimeDifference > 0)
+      MakeByteLabel(fBytesProcessed / ddTimeDifference, speed, BUFSIZE);
+    else
+      wcscpy_s(speed, BUFSIZE, L"--");
 
-    // calculate (estimate) time left
+    wchar_t etaBuf[32] = L"--:--:--";
     if (fBytesProcessed > 0) {
-      __int64 totalTime = (ddTimeDifference * nnBytesTotal + (fBytesProcessed>>1)) / fBytesProcessed;
+      __int64 totalTime = (ddTimeDifference * (__int64)nnBytesTotal + (fBytesProcessed >> 1)) / fBytesProcessed;
       __int64 timeLeft = totalTime - ddTimeDifference;
-      DWORD dwTimeLeft = (DWORD) timeLeft;
-      timeLabel.Format(L"%02u:%02u:%02u", dwTimeLeft/3600, dwTimeLeft % 3600 / 60, dwTimeLeft % 60);
-
-      label = GetDlgItem(IDC_LABEL_TIME_LEFT);
-      label.SetWindowText(timeLabel);
+      if (timeLeft >= 0) {
+        DWORD dwLeft = (DWORD)timeLeft;
+        swprintf_s(etaBuf, L"%02u:%02u:%02u", dwLeft / 3600, dwLeft % 3600 / 60, dwLeft % 60);
+      }
     }
+
+    wchar_t line[256];
+    swprintf_s(line, L"Processed: %s / %s   Speed: %s/s   Elapsed: %02u:%02u:%02u   ETA: %s",
+               done, total, speed,
+               dwElapsed / 3600, dwElapsed % 3600 / 60, dwElapsed % 60,
+               etaBuf);
+    SetDlgItemText(IDC_LABEL_STATUS_LINE, line);
   }
-} 
+}
 
 void CODINDlg::ResetProgressControls()
 {
-  CStatic label;
   CProgressBarCtrl progress = GetDlgItem(IDC_PROGRESS_PERCENT);
   progress.SetPos(0);
-  label = GetDlgItem(IDC_LABEL_PERCENT);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_BYTES_TOTAL);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_BYTES_PROCESSED);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_TIME_ELAPSED);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_TIME_LEFT);
-  label.SetWindowText(NULL);
-  label = GetDlgItem(IDC_LABEL_SPEED);
-  label.SetWindowText(NULL);
+  SetDlgItemText(IDC_LABEL_STATUS_LINE, L"");
 }
 
 
@@ -633,8 +597,6 @@ void CODINDlg::DisableControlsWhileProcessing()
   CButton saveButton( GetDlgItem(IDC_RADIO_BACKUP) );
   CButton restoreButton( GetDlgItem(IDC_RADIO_RESTORE) );
   CButton okButton(GetDlgItem(IDOK));
-  CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
-  CButton optionsButton(GetDlgItem(ID_BT_OPTIONS));
   CButton cancelButton(GetDlgItem(IDCANCEL));
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
@@ -644,8 +606,8 @@ void CODINDlg::DisableControlsWhileProcessing()
   saveButton.EnableWindow(FALSE);
   restoreButton.EnableWindow(FALSE);
   okButton.EnableWindow(FALSE);
-  verifyButton.EnableWindow(FALSE);
-  optionsButton.EnableWindow(FALSE);
+  ::EnableMenuItem(GetMenu(), ID_BT_VERIFY,  MF_BYCOMMAND | MF_GRAYED);
+  ::EnableMenuItem(GetMenu(), ID_BT_OPTIONS, MF_BYCOMMAND | MF_GRAYED);
   comboFiles.EnableWindow(FALSE);
   listBoxVolumes.EnableWindow(FALSE);
   commentTextField.EnableWindow(FALSE);
@@ -659,8 +621,6 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   CButton saveButton( GetDlgItem(IDC_RADIO_BACKUP) );
   CButton restoreButton( GetDlgItem(IDC_RADIO_RESTORE) );
   CButton okButton(GetDlgItem(IDOK));
-  CButton verifyButton(GetDlgItem(ID_BT_VERIFY));
-  CButton optionsButton(GetDlgItem(ID_BT_OPTIONS));
   CButton cancelButton(GetDlgItem(IDCANCEL));
   CComboBox comboFiles(GetDlgItem(IDC_COMBO_FILES));
   CListViewCtrl listBoxVolumes(GetDlgItem(IDC_LIST_VOLUMES));
@@ -670,8 +630,8 @@ void CODINDlg::EnableControlsAfterProcessingComplete()
   saveButton.EnableWindow(TRUE);
   restoreButton.EnableWindow(TRUE);
   okButton.EnableWindow(TRUE);
-  verifyButton.EnableWindow(TRUE);
-  optionsButton.EnableWindow(TRUE);
+  ::EnableMenuItem(GetMenu(), ID_BT_VERIFY,  MF_BYCOMMAND | MF_ENABLED);
+  ::EnableMenuItem(GetMenu(), ID_BT_OPTIONS, MF_BYCOMMAND | MF_ENABLED);
   comboFiles.EnableWindow(TRUE);
   listBoxVolumes.EnableWindow(TRUE);
   commentTextField.EnableWindow(TRUE);
@@ -692,14 +652,13 @@ void CODINDlg::CleanupPartiallyWrittenFiles()
 
   if (isHardDisk && fOdinManager.GetSaveOnlyUsedBlocksOption()) {
     wstring mbrFileName, volumeFileName, filePattern;
-    CDriveInfo **pContainedVolumes = NULL;
     mbrFileName = fileName;
     CFileNameUtil::GenerateFileNameForMBRBackupFile(mbrFileName);
     DeleteFile(mbrFileName.c_str());
 
     int subPartitions = pDriveInfo->GetContainedVolumes();
-    pContainedVolumes = new CDriveInfo* [subPartitions];
-    int res = fOdinManager.GetDriveList()->GetVolumes(pDriveInfo, pContainedVolumes, subPartitions);
+    std::vector<CDriveInfo*> pContainedVolumes(subPartitions);
+    int res = fOdinManager.GetDriveList()->GetVolumes(pDriveInfo, pContainedVolumes.data(), subPartitions);
 
     // check  if there are file names in conflict with files created during backup
     for (int i=0; i<subPartitions; i++) {
@@ -707,7 +666,6 @@ void CODINDlg::CleanupPartiallyWrittenFiles()
       CFileNameUtil::GetEntireDiskFilePattern(volumeFileName.c_str(), filePattern);
       fChecker.CheckUniqueFileName(volumeFileName.c_str(), filePattern.c_str(), false);
     }
-    delete [] pContainedVolumes;
   } else {
     if (fOdinManager.GetSplitSize() > 0) {
       wstring filePattern;
@@ -787,11 +745,17 @@ LRESULT CODINDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam
   fVolumeList.SetColumnWidth(4, fColumn4Width);
 
   RefreshDriveList();
-  
+
   CStatic volumeInfoTextField(GetDlgItem(IDC_TEXT_VOLUME));
   ATL::CString text;
   text.LoadString(IDS_VOLUME_NOSEL);
   volumeInfoTextField.SetWindowText(text);
+
+  // Load and attach main menu
+  HMENU hMenu = LoadMenu(_Module.GetResourceInstance(), MAKEINTRESOURCE(IDR_MAINMENU));
+  SetMenu(hMenu);
+  ::CheckMenuItem(hMenu, ID_SETTINGS_AUTOFLASH_ENABLE,
+      MF_BYCOMMAND | (fAutoFlashEnabled ? MF_CHECKED : MF_UNCHECKED));
 
   bHandled = TRUE;
   return 0L;
@@ -972,8 +936,18 @@ LRESULT CODINDlg::OnLvnItemchangedListVolumes(int /*idCtrl*/, LPNMHDR pNMHDR, BO
       ATL::CString fsText;
       CDriveInfo* di = fOdinManager.GetDriveInfo(index);
       MakeByteLabel(di->GetUsedSize(), buffer, BUFSIZE);
-      GetPartitionFileSystemString(di->GetPartitionType(), fsText);
-      text.Format(fVolumeInfoTemplate, di->GetMountPoint().c_str(), buffer, fsText, di->GetClusterSize());
+      // GetVolumeInformationW returns the actual FS name (NTFS, exFAT, FAT32 …) for mounted
+      // drives, correctly handling GPT partitions that have no MBR type byte.
+      wchar_t fsName[32] = L"";
+      const std::wstring& mp = di->GetMountPoint();
+      if (!mp.empty() &&
+          GetVolumeInformationW(mp.c_str(), NULL, 0, NULL, NULL, NULL, fsName, 32) &&
+          fsName[0] != L'\0') {
+        fsText = fsName;
+      } else {
+        GetPartitionFileSystemString(di->GetPartitionType(), fsText);
+      }
+      text.Format(fVolumeInfoTemplate, mp.c_str(), buffer, fsText, di->GetClusterSize());
       volumeInfoTextField.SetWindowText(text);
     }
   }
@@ -1082,35 +1056,33 @@ LRESULT CODINDlg::OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /
   return 0;
 }
 
-LRESULT CODINDlg::OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/)
+LRESULT CODINDlg::OnAutoFlashEnable(WORD, WORD, HWND, BOOL&)
 {
-  CButton autoFlashCheck(GetDlgItem(IDC_CHECK_AUTOFLASH));
-  bool wasEnabled = fAutoFlashEnabled;
-  fAutoFlashEnabled = (autoFlashCheck.GetCheck() == BST_CHECKED);
-  
-  // Read size from input box
-  CEdit sizeEdit(GetDlgItem(IDC_EDIT_AUTOFLASH_SIZE));
-  wchar_t szSize[4];
-  sizeEdit.GetWindowText(szSize, 4);
-  int size = _wtoi(szSize);
-  if (size > 0 && size < 999) {
-    fAutoFlashTargetSizeGB = size;
-  }
-  
-  // Show warning when enabling for the first time
+  fAutoFlashEnabled = !fAutoFlashEnabled;
+  ::CheckMenuItem(GetMenu(), ID_SETTINGS_AUTOFLASH_ENABLE,
+      MF_BYCOMMAND | (fAutoFlashEnabled ? MF_CHECKED : MF_UNCHECKED));
+
   if (fAutoFlashEnabled && !fAutoFlashWarningShown) {
     ATL::CString msg;
     msg.Format(IDS_ERASE_DRIVE, L"detected removable disks");
     int res = AtlMessageBox(m_hWnd, (LPCWSTR)msg, IDS_WARNING, MB_ICONEXCLAMATION | MB_OKCANCEL);
     if (res != IDOK) {
-      // User cancelled, uncheck the box
       fAutoFlashEnabled = false;
-      autoFlashCheck.SetCheck(BST_UNCHECKED);
+      ::CheckMenuItem(GetMenu(), ID_SETTINGS_AUTOFLASH_ENABLE,
+          MF_BYCOMMAND | MF_UNCHECKED);
     } else {
       fAutoFlashWarningShown = true;
     }
   }
-  
+  return 0;
+}
+
+LRESULT CODINDlg::OnAutoFlashSize(WORD, WORD, HWND, BOOL&)
+{
+  wchar_t msg[128];
+  swprintf_s(msg, L"Current target size: %d GB\n(Edit ODIN.ini to change AutoFlashTargetSizeGB)",
+             (int)fAutoFlashTargetSizeGB);
+  AtlMessageBox(m_hWnd, msg, L"Auto-Flash Size", MB_OK | MB_ICONINFORMATION);
   return 0;
 }
 
@@ -1161,5 +1133,14 @@ void CODINDlg::TriggerAutoFlash(int driveIndex)
   // Trigger the restore operation by simulating OK button click
   CWindow okButton = GetDlgItem(IDOK);
   PostMessage(WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), (LPARAM)okButton.m_hWnd);
+}
+
+// ── Dark mode ────────────────────────────────────────────────────────────────
+// Title bar:  DwmSetWindowAttribute ordinal (loaded at runtime)
+// Client area: AllowDarkModeForWindow (uxtheme ordinal 133) + WM_CTLCOLOR* +
+//              SetWindowTheme on native controls.
+LRESULT CODINDlg::OnInitMenuPopup(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+  bHandled = FALSE;
+  return 0;
 }
 

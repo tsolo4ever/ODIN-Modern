@@ -181,16 +181,20 @@ public:
 	COMMAND_ID_HANDLER(IDCANCEL, OnCancel)
     COMMAND_HANDLER(IDC_RADIO_BACKUP, BN_CLICKED, OnBnClickedRadioBackup)
     COMMAND_HANDLER(IDC_RADIO_RESTORE, BN_CLICKED, OnBnClickedRadioRestore)
-    COMMAND_HANDLER(IDC_CHECK_AUTOFLASH, BN_CLICKED, OnBnClickedCheckAutoflash)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_SELCHANGE, OnCbnSelchangeComboFiles)
+
 	COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
     NOTIFY_HANDLER(IDC_LIST_VOLUMES, LVN_ITEMCHANGED, OnLvnItemchangedListVolumes)
+
     // CHAIN_MSG_MAP(CDialogResize<CODINDlg>)
     MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
     COMMAND_HANDLER(IDC_COMBO_FILES, CBN_KILLFOCUS, OnCbnKillfocusComboFiles)
     COMMAND_HANDLER(ID_BT_VERIFY, BN_CLICKED, OnBnClickedBtVerify)
     COMMAND_HANDLER(ID_BT_OPTIONS, BN_CLICKED, OnBnClickedBtOptions)
     COMMAND_HANDLER(ID_BT_BROWSE, BN_CLICKED, OnBnClickedBtBrowse)
+    COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_ENABLE, OnAutoFlashEnable)
+    COMMAND_ID_HANDLER(ID_SETTINGS_AUTOFLASH_SIZE, OnAutoFlashSize)
+    MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
   END_MSG_MAP()
   
 /* does not draw correctly 
@@ -223,5 +227,7 @@ public:
   LRESULT OnBnClickedBtVerify(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtOptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
   LRESULT OnBnClickedBtBrowse(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
-  LRESULT OnBnClickedCheckAutoflash(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+  LRESULT OnAutoFlashEnable(WORD, WORD, HWND, BOOL&);
+  LRESULT OnAutoFlashSize(WORD, WORD, HWND, BOOL&);
+  LRESULT OnInitMenuPopup(UINT, WPARAM, LPARAM, BOOL&);
 };

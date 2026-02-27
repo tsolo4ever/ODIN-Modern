@@ -283,9 +283,11 @@ void CCmdLineTest::TestSourceTargetValidation()
     CPPUNIT_ASSERT(e.GetErrorCode() == ECmdLineException::noSource);
   }
 
-  // test non allowed target for verify
+  // test non allowed target for verify (use a filename as target, not a drive index,
+  // so the test works regardless of how many drives are enumerated on this machine;
+  // CheckValidParameters throws verifyParamError when target.length() > 0)
   cp.Reset();
-  fCommandLine = L"ODIN.exe -verify -source=myfile.img -target=1";
+  fCommandLine = L"ODIN.exe -verify -source=myfile.img -target=notallowed.img";
   try {
     cp.Parse(fCommandLine.c_str());
     cp.PreprocessSourceAndTarget(cp.fOperation.source, true);
@@ -296,9 +298,10 @@ void CCmdLineTest::TestSourceTargetValidation()
     CPPUNIT_ASSERT(e.GetErrorCode() == ECmdLineException::verifyParamError);
   }
 
-  // test not allowed target type for backup
+  // test not allowed target type for backup (file source, file target — sourceIndex < 0
+  // fires backupParamError without depending on a valid drive index being present)
   cp.Reset();
-  fCommandLine = L"ODIN.exe -backup -source=myfile.img -target=1";
+  fCommandLine = L"ODIN.exe -backup -source=myfile.img -target=notallowed.img";
   try {
     cp.Parse(fCommandLine.c_str());
     cp.PreprocessSourceAndTarget(cp.fOperation.source, true);
@@ -322,13 +325,14 @@ void CCmdLineTest::TestSourceTargetValidation()
     CPPUNIT_ASSERT(e.GetErrorCode() == ECmdLineException::backupParamError);
   }
 
-  // test not allowed source type for restore
+  // test backup where both source and target are devices (device target is invalid):
+  // set indices directly so the test is independent of GetDriveCount()
   cp.Reset();
-  fCommandLine = L"ODIN.exe -backup -source=2 -target=1";
+  fCommandLine = L"ODIN.exe -backup -source=ignored -target=ignored";
   try {
     cp.Parse(fCommandLine.c_str());
-    cp.PreprocessSourceAndTarget(cp.fOperation.source, true);
-    cp.PreprocessSourceAndTarget(cp.fOperation.target, false);
+    cp.fOperation.sourceIndex = 0;  // simulate: source is a device
+    cp.fOperation.targetIndex = 0;  // simulate: target is also a device (invalid for backup)
     cp.CheckValidParameters();
     CPPUNIT_FAIL("illegal target device name should raise a CmdLineException");
   } catch (ECmdLineException &e) {
@@ -348,12 +352,13 @@ void CCmdLineTest::TestSourceTargetValidation()
     CPPUNIT_ASSERT(e.GetErrorCode() == ECmdLineException::restoreParamError);
   }
 
-  // test not allowed source type for verify
+  // test verify where source is a device (device source is invalid for verify):
+  // set sourceIndex directly so the test is independent of GetDriveCount()
   cp.Reset();
-  fCommandLine = L"ODIN.exe -verify -source=1";
+  fCommandLine = L"ODIN.exe -verify -source=ignored";
   try {
     cp.Parse(fCommandLine.c_str());
-    cp.PreprocessSourceAndTarget(cp.fOperation.source, true);
+    cp.fOperation.sourceIndex = 0;  // simulate: source is a device (invalid for verify)
     cp.CheckValidParameters();
     CPPUNIT_FAIL("illegal target device name should raise a CmdLineException");
   } catch (ECmdLineException &e) {
