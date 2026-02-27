@@ -155,24 +155,27 @@ class CloneWorker:
         assert self._proc is not None
         assert self._proc.stdout is not None
 
-        for raw in iter(lambda: self._proc.stdout.read(1), b""):
-            if self.status == CloneStatus.STOPPED:
-                break
-            ch = raw.decode("utf-8", errors="replace")
-            buf += ch
-            line_buf += ch
+        try:
+            for raw in iter(lambda: self._proc.stdout.read(1), b""):
+                if self.status == CloneStatus.STOPPED:
+                    break
+                ch = raw.decode("utf-8", errors="replace")
+                buf += ch
+                line_buf += ch
 
-            # Flush log line on newline
-            if ch == "\n":
-                self._fire_log(line_buf.rstrip())
-                line_buf = ""
+                # Flush log line on newline
+                if ch == "\n":
+                    self._fire_log(line_buf.rstrip())
+                    line_buf = ""
 
-            # Parse progress percentage
-            m = re.search(r"(\d{1,3})%", buf)
-            if m:
-                pct = min(int(m.group(1)), 100)
-                self._fire_progress(pct)
-                buf = buf[m.end():]  # consume up to and including the match
+                # Parse progress percentage
+                m = re.search(r"(\d{1,3})%", buf)
+                if m:
+                    pct = min(int(m.group(1)), 100)
+                    self._fire_progress(pct)
+                    buf = buf[m.end():]  # consume up to and including the match
+        except OSError:
+            pass  # pipe closed when process exits — normal on Windows
 
     # ── thread-safe callbacks via root.after ─────────────────────────────────
 
