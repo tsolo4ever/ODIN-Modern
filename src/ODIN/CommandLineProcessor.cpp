@@ -704,8 +704,8 @@ void CCommandLineProcessor::ReportFeedback()
   unsigned __int64 bytesProcessed = fOdinManager->GetBytesProcessed();
   if (bytesTotal) {
     int percent = (int) ((bytesProcessed * 100 + (bytesTotal/2)) / bytesTotal);
-    if (percent > fLastPercent+10) {
-      wcout << percent/10*10 << L'%';
+    if (percent > fLastPercent+5) {
+      wcout << percent/5*5 << L'%';
       fLastPercent = percent;
     }
   }

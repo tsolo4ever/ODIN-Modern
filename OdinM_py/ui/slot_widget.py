@@ -73,11 +73,16 @@ class SlotWidget(ttk.Frame):
         ttk.Label(self, textvariable=self._speed_var, width=9,
                   bootstyle="secondary", anchor=W).grid(row=0, column=5, padx=(0, 8), pady=4)
 
+        # ETA label
+        self._eta_var = ttk.StringVar(value="")
+        ttk.Label(self, textvariable=self._eta_var, width=8,
+                  bootstyle="secondary", anchor=W).grid(row=0, column=6, padx=(0, 8), pady=4)
+
         # Start / Stop button
         self._btn = ttk.Button(self, text="Start", width=7,
                                 bootstyle="outline",
                                 command=self._on_btn_click)
-        self._btn.grid(row=0, column=6, pady=4)
+        self._btn.grid(row=0, column=7, pady=4)
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -88,6 +93,7 @@ class SlotWidget(ttk.Frame):
         self._progress_var.set(0)
         self._pct_var.set("")
         self._speed_var.set("")
+        self._eta_var.set("")
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
 
     def set_drive(self, display: str):
@@ -97,6 +103,7 @@ class SlotWidget(ttk.Frame):
         self._progress_var.set(0)
         self._pct_var.set("0%")
         self._speed_var.set("")
+        self._eta_var.set("")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
 
     def set_progress(self, pct: int):
@@ -105,6 +112,9 @@ class SlotWidget(ttk.Frame):
 
     def set_speed(self, speed_str: str):
         self._speed_var.set(speed_str)
+
+    def set_eta(self, eta_str: str):
+        self._eta_var.set(eta_str)
 
     def set_status(self, status: CloneStatus):
         self._set_status(status)

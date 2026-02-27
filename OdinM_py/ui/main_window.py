@@ -89,6 +89,9 @@ class MainWindow(ttk.Frame):
     def set_slot_speed(self, idx: int, speed_str: str):
         self._slots[idx].set_speed(speed_str)
 
+    def set_slot_eta(self, idx: int, eta_str: str):
+        self._slots[idx].set_eta(eta_str)
+
     def log(self, text: str):
         self._log_box.configure(state=NORMAL)
         self._log_box.insert(END, text + "\n")
@@ -166,6 +169,11 @@ class MainWindow(ttk.Frame):
                    command=self._browse_image).grid(row=0, column=1, padx=(0, 6), pady=4)
         ttk.Button(frame, text="Hash…", width=8,
                    command=lambda: self.on_verify_image()).grid(row=0, column=2, padx=(0, 6), pady=4)
+
+        self._img_size_var = ttk.StringVar(value="")
+        ttk.Label(frame, textvariable=self._img_size_var, width=10,
+                  bootstyle="secondary", anchor=W).grid(row=0, column=3, padx=(0, 6), pady=4)
+        self._refresh_image_size()
 
     def _build_slots(self):
         frame = ttk.LabelFrame(self, text="Drive Slots")
@@ -288,3 +296,16 @@ class MainWindow(ttk.Frame):
         if path:
             self._image_var.set(path)
             self._config.set_last_image(path)
+            self._refresh_image_size()
+
+    def _refresh_image_size(self):
+        path = self._image_var.get().strip()
+        if path and os.path.isfile(path):
+            n = os.path.getsize(path)
+            for unit, thresh in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):
+                if n >= thresh:
+                    self._img_size_var.set(f"{n / thresh:.1f} {unit}")
+                    return
+            self._img_size_var.set(f"{n} B")
+        else:
+            self._img_size_var.set("")

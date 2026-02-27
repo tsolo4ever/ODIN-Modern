@@ -18,6 +18,15 @@ from ui.main_window import MainWindow, NUM_SLOTS
 APP_TITLE   = "OdinM — Multi-Drive Clone Tool (Python)"
 
 
+def _fmt_eta(seconds: float) -> str:
+    s = int(seconds)
+    if s >= 3600:
+        return f"~{s // 3600}h {(s % 3600) // 60}m"
+    if s >= 60:
+        return f"~{s // 60}m {s % 60:02d}s"
+    return f"~{s}s"
+
+
 def _fmt_speed(bps: float) -> str:
     if bps >= 1 << 30:
         return f"{bps / (1 << 30):.1f} GB/s"
@@ -152,6 +161,8 @@ class OdinMApp:
                 elapsed = time.time() - self._start_times.get(i, time.time())
                 if elapsed > 0:
                     self._window.set_slot_speed(i, _fmt_speed(pct / 100.0 * sz / elapsed))
+                    remaining = elapsed * (100 - pct) / pct
+                    self._window.set_slot_eta(i, _fmt_eta(remaining))
 
         worker = CloneWorker(
             root=self._root,
@@ -252,4 +263,5 @@ class OdinMApp:
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
         self._window.set_slot_speed(idx, "")
+        self._window.set_slot_eta(idx, "")
         self._drain_queue()
