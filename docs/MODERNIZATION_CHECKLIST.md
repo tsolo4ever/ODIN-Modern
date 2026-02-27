@@ -1,9 +1,8 @@
 # ODIN Modernization Checklist
 
 **Created:** 2026-02-21
-**Updated:** 2026-02-23
-**Updated:** 2026-02-26
-**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | ✅ Phase 3 Complete (3.3/3.4 deferred by design) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added | ✅ `-list` confirmed working | ✅ XP dead code removed | ✅ VSS IOCTL fixed
+**Updated:** 2026-02-27
+**Status:** ✅ Phase 1 Complete | ✅ Phase 2 Complete | ✅ Phase 3 Complete (3.3/3.4 deferred by design) | ✅ Phase 4 Complete | ✅ LZ4/ZSTD Compression Added | ✅ `-list` confirmed working | ✅ XP dead code removed | ✅ VSS IOCTL fixed | ✅ **v0.4.0 Released**
 **See also:** Map.md, First_CODE_REVIEW.md
 
 ---
@@ -22,18 +21,6 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
 - `std::filesystem::path` — apply incrementally as path-manipulation files are touched (FileNameUtil, etc.)
 
 ---
-
-## 🧪 Phase 5: Testing (Ongoing)
-
-### 5.1 Unit Test Expansion
-- [x] **Review existing tests** — 82 tests passing (ODINTest, cppunit via vcpkg)
-- [x] **Add new tests** (ExceptionTest.cpp)
-  - ~~Buffer queue thread safety~~ — non-deterministic; fix already in place (kBufferWaitTimeoutMs)
-  - [x] Integer overflow exception — `testIntegerOverflowException`
-  - [x] Boot sector exception — `testBootSectorException`
-  - [x] LZ4 exception code — `testLZ4ExceptionCode`
-  - [x] ZSTD exception code — `testZSTDExceptionCode`
-  - ~~Auto-flash detection~~ — requires WM_DEVICECHANGE mock; manual test only
 
 ### 5.2 Integration Testing <need to be at work for this one>
 - [ ] **Create test images**
@@ -65,8 +52,8 @@ Reason: Windows threading model is too tightly coupled to migrate safely.
 - ~~Profile remaining hot paths~~ — no measured bottleneck remaining; not worth speculative profiling
 
 ### 7.3 Release Preparation
-- [ ] **Update version to 0.4.0** — bump version in all strings (ODIN.rc, resource.h, PrintUsage(), any About dialog)
-- [ ] **Create release notes**
+- [x] **Update version to 0.4.0** — ODIN.rc FILEVERSION/PRODUCTVERSION/FileVersion/ProductVersion updated
+- [x] **Create release notes** — docs/Change_history.md rewritten with full v0.4.0 changelog
 - [ ] **Clean Release x64 build** — `msbuild ODIN.sln /p:Configuration=Release /p:Platform=x64`
 - [ ] **Test release binaries**
 - [ ] **Git tag:** `git tag v0.4.0 && git push origin v0.4.0`
@@ -146,4 +133,10 @@ git checkout 72aa6f8  # Initial commit
 
 ---
 
-*Last updated: 2026-02-26. XP dead code removed, magic numbers → constants, MakeSnapshot vectors, VSS IOCTL fixed. Next: Phase 6 docs (PrintUsage + README), Phase 7 release prep (v0.4.0).*
+| 6610681 | fix | drive_manager: handle OSError during active disk I/O |
+| 97e65e7 | feat | ETA, image size display, 5% progress intervals |
+| 6d678f2 | fix | OdinM_py: catch OSError in pipe read loop on process exit |
+| 8b5442c | fix | restore progress bar — pipe detection and correct byte total |
+| e9ecf5f | feat | OdinM_py: queue system, dynamic slots, transfer speed, UI fixes |
+
+*Last updated: 2026-02-27. v0.4.0 released. Version bumped in ODIN.rc, Change_history.md rewritten.*

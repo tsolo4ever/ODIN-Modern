@@ -289,8 +289,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,3,4,BUILDNUMBER
- PRODUCTVERSION 0,3,4,BUILDNUMBER
+ FILEVERSION 0,4,0,0
+ PRODUCTVERSION 0,4,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -306,12 +306,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "ODIN Executable Module"
-            VALUE "FileVersion", "0, 3, 4, " BUILDNUMBERSTR
+            VALUE "FileVersion", "0.4.0"
             VALUE "InternalName", "ODIN"
             VALUE "LegalCopyright", "Copyright 2011 Licensed under the GNU GPL License."
             VALUE "OriginalFilename", "ODIN.exe"
             VALUE "ProductName", "ODIN"
-            VALUE "ProductVersion", "0, 3, 4, " BUILDNUMBERSTR
+            VALUE "ProductVersion", "0.4.0"
         END
     END
     BLOCK "VarFileInfo"
