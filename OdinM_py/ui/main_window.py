@@ -58,10 +58,12 @@ class MainWindow(ttk.Frame):
     def image_path(self) -> str:
         return self._image_var.get().strip()
 
-    def update_drives(self, drives: List[DriveInfo]):
-        """Called by DriveMonitor when the drive list changes."""
-        # Keep one empty slot visible beyond occupied slots (min 1, max NUM_SLOTS)
-        target = max(1, min(NUM_SLOTS, len(drives) + 1))
+    def update_drives(self, drives: List[Optional[DriveInfo]]):
+        """Called by app when the drive list changes.
+        drives has exactly NUM_SLOTS entries; None means the slot is empty."""
+        # Show slots up to (highest occupied index + 1), min 1, max NUM_SLOTS
+        max_occ = max((i for i, d in enumerate(drives) if d is not None), default=-1)
+        target = max(1, min(NUM_SLOTS, max_occ + 2))
         while len(self._slots) < target:
             idx = len(self._slots)
             sw = SlotWidget(self._slots_frame, slot_index=idx,
@@ -71,8 +73,9 @@ class MainWindow(ttk.Frame):
             self._slots.append(sw)
 
         for i, slot in enumerate(self._slots):
-            if i < len(drives):
-                slot.set_drive(drives[i].display)
+            d = drives[i] if i < len(drives) else None
+            if d is not None:
+                slot.set_drive(d.display)
             else:
                 slot.reset()
 
@@ -146,6 +149,18 @@ class MainWindow(ttk.Frame):
                 command=lambda v=n: self._config.set_max_concurrent(v),
             )
         options_menu.add_cascade(label="Max Concurrent", menu=conc_menu)
+
+        # Max drive size submenu (GB) — drives larger than this are ignored
+        self._max_drive_gb_var = tk.IntVar(value=self._config.get_max_drive_gb())
+        size_menu = tk.Menu(options_menu, tearoff=0)
+        for gb in (4, 8, 16, 32, 64):
+            size_menu.add_radiobutton(
+                label=f"{gb} GB",
+                variable=self._max_drive_gb_var,
+                value=gb,
+                command=lambda v=gb: self._config.set_max_drive_gb(v),
+            )
+        options_menu.add_cascade(label="Max drive size", menu=size_menu)
         options_menu.add_separator()
 
         options_menu.add_command(label="Theme: Dark",  command=lambda: self._set_theme("darkly"))

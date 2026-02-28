@@ -831,7 +831,12 @@ LRESULT CODINDlg::OnOK(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& b
 	  } else if (fMode == modeRestore) {
       unsigned noFiles = 0;
       unsigned __int64 totalSize = 0;
-      IUserFeedback::TFeedbackResult res = fChecker.CheckConditionsForRestorePartition(fileName, fSplitCB, index, noFiles, totalSize);
+      // Auto-flash accepted a one-time warning when enabled; skip the per-operation
+      // erase dialog so it doesn't block automation.
+      IUserFeedback::TFeedbackResult res = fIsAutoFlashOperation
+          ? IUserFeedback::TOk
+          : fChecker.CheckConditionsForRestorePartition(fileName, fSplitCB, index, noFiles, totalSize);
+      fIsAutoFlashOperation = false;
       if (res == IUserFeedback::TOk || res == IUserFeedback::TYes) {
         DisableControlsWhileProcessing();
         fRestoreRun=true;
@@ -1130,7 +1135,10 @@ void CODINDlg::TriggerAutoFlash(int driveIndex)
   // Select the CF card in the drive list
   fVolumeList.SelectItem(driveIndex);
   
-  // Trigger the restore operation by simulating OK button click
+  // Trigger the restore operation by simulating OK button click.
+  // Set the flag so OnOK skips the per-operation erase warning — the user
+  // already accepted the one-time auto-flash warning when enabling the feature.
+  fIsAutoFlashOperation = true;
   CWindow okButton = GetDlgItem(IDOK);
   PostMessage(WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED), (LPARAM)okButton.m_hWnd);
 }

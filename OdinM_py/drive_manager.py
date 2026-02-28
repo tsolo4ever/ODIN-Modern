@@ -163,6 +163,12 @@ def get_removable_drives() -> List[DriveInfo]:
 
 # ── Monitor ────────────────────────────────────────────────────────────────────
 
+# TODO(v0.5): Replace DriveMonitor polling with WM_DEVICECHANGE via
+# RegisterDeviceNotification + ctypes WNDPROC binding on the tkinter HWND.
+# This gives instant OS-level notification instead of a 2-second poll lag,
+# and eliminates transient misses caused by IOCTL failures during active I/O.
+# Reference: DBT_DEVICEARRIVAL / DBT_DEVICEREMOVECOMPLETE messages.
+
 class DriveMonitor:
     """
     Polls for removable drive changes and fires on_drives_changed

@@ -8,6 +8,7 @@ DEFAULTS = {
     "odinc_path": "",   # resolved at runtime if blank
     "theme": "darkly",
     "max_concurrent": "3",
+    "max_drive_gb": "8",
     "auto_clone": "false",
     "last_image": "",
     "verify_after_clone": "false",
@@ -56,6 +57,16 @@ class ConfigManager:
             return int(self._cfg["settings"].get("max_concurrent", "3"))
         except ValueError:
             return 3
+
+    def get_max_drive_gb(self) -> int:
+        try:
+            return int(self._cfg["settings"].get("max_drive_gb", "8"))
+        except ValueError:
+            return 8
+
+    def set_max_drive_gb(self, n: int):
+        self._cfg["settings"]["max_drive_gb"] = str(n)
+        self._save()
 
     def get_auto_clone(self) -> bool:
         return self._cfg["settings"].get("auto_clone", "false").lower() == "true"

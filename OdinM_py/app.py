@@ -89,18 +89,45 @@ class OdinMApp:
     # ── drive monitor callback ────────────────────────────────────────────────
 
     def _on_drives_changed(self, drives: List[DriveInfo]):
-        # Snapshot previous disk numbers so we can detect newly inserted drives
         prev_disk_nums = {d.disk_number for d in self._drives if d is not None}
 
-        # Rebuild slot→drive mapping
-        self._drives = [None] * NUM_SLOTS
-        for i, d in enumerate(drives[:NUM_SLOTS]):
-            self._drives[i] = d
+        # Apply max drive size filter (0 = no limit)
+        max_gb = self._config.get_max_drive_gb()
+        max_bytes = max_gb * (1 << 30) if max_gb > 0 else 0
+        drives = [d for d in drives
+                  if max_bytes == 0 or d.size_bytes == 0 or d.size_bytes <= max_bytes]
 
-        # Drop queued slots whose drives were removed
+        # Build lookup: disk_number → latest DriveInfo from this poll
+        new_by_num = {d.disk_number: d for d in drives}
+
+        # Pass 1: update existing slot assignments in-place (stable — no re-indexing)
+        for i in range(NUM_SLOTS):
+            existing = self._drives[i]
+            if existing is None:
+                continue
+            if existing.disk_number in new_by_num:
+                self._drives[i] = new_by_num[existing.disk_number]  # refresh DriveInfo
+            else:
+                # Drive not in current poll — only evict if no active worker
+                w = self._workers.get(i)
+                if w is None or w.status not in (CloneStatus.RUNNING, CloneStatus.QUEUED):
+                    self._drives[i] = None
+
+        # Pass 2: assign newly arrived drives to the first available empty slots
+        occupied = {d.disk_number for d in self._drives if d is not None}
+        for d in drives:
+            if d.disk_number in occupied:
+                continue
+            for i in range(NUM_SLOTS):
+                if self._drives[i] is None:
+                    self._drives[i] = d
+                    occupied.add(d.disk_number)
+                    break
+
+        # Drop queued slots whose drives are truly gone
         self._queue = [i for i in self._queue if self._drives[i] is not None]
 
-        self._window.update_drives(drives[:NUM_SLOTS])
+        self._window.update_drives(list(self._drives))
         self._window.log(f"[Drives] {len(drives)} removable drive(s) detected")
 
         # Auto-clone newly inserted drives if the setting is enabled
