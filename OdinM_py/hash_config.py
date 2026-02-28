@@ -23,6 +23,10 @@ def _config_path() -> str:
 
 
 def blank_partition() -> dict:
+    # TODO(v0.5): add MD5 support — some gaming jurisdictions require it.
+    # Pattern: add md5_value/md5_enabled/md5_fail here, update has_any_enabled()
+    # and get_enabled_partitions(), add hashlib.md5 branch in hash_worker.py,
+    # and add an MD5 row in configure_hash_dialog.py.
     return {
         "sha1_value":     "",
         "sha1_enabled":   False,

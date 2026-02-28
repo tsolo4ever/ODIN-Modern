@@ -7,6 +7,8 @@ Debug-Win32/
 Debug-x64/
 Release-Win32/
 Release-x64/
+dist/
+build/
 
 # --- Visual Studio IDE files ---
 .vs/
@@ -62,6 +64,9 @@ ehthumbs.db
 
 # --- Precompiled headers ---
 *.gch
+*.toc
+*.pkg
+*.pyz
 
 # --- zstd/lz4 if using local builds ---
 # (if not committing the libs)
@@ -70,6 +75,7 @@ ehthumbs.db
 # --- OdinM settings (runtime generated) ---
 OdinM.ini
 *.hashcfg
+
 
 # --- env ---
 .venv/
