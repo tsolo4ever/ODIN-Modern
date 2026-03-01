@@ -69,6 +69,7 @@ ehthumbs.db
 
 # --- OdinM settings (runtime generated) ---
 OdinM.ini
+odinm_py.ini
 *.hashcfg
 
 # --- env ---
