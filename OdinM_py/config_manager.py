@@ -13,6 +13,7 @@ DEFAULTS = {
     "last_image": "",
     "verify_after_clone": "false",
     "stop_on_verify_fail": "false",
+    "randomize_mbr_after_flash": "false",
 }
 
 
@@ -108,6 +109,13 @@ class ConfigManager:
 
     def set_stop_on_verify_fail(self, v: bool):
         self._cfg["settings"]["stop_on_verify_fail"] = "true" if v else "false"
+        self._save()
+
+    def get_randomize_mbr_after_flash(self) -> bool:
+        return self._cfg["settings"].get("randomize_mbr_after_flash", "false").lower() == "true"
+
+    def set_randomize_mbr_after_flash(self, v: bool):
+        self._cfg["settings"]["randomize_mbr_after_flash"] = "true" if v else "false"
         self._save()
 
     def _save(self):

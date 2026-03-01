@@ -3,27 +3,31 @@ drive_manager.py
 Polls for removable drives every 2 seconds using Win32 ctypes calls.
 Groups partitions by physical disk so a USB with multiple partitions
 appears as a single slot. The ODINC target is \\Device\\HarddiskN\\Partition0 (whole disk).
+
+Drive detection enumerates PhysicalDriveN directly via IOCTL_STORAGE_QUERY_PROPERTY
+so that drives without assigned letters (e.g. suppressed by Windows due to MBR
+signature collision after cloning) are still detected.
 """
 
 import ctypes
+import os
 import struct
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 DRIVE_REMOVABLE               = 2
 POLL_INTERVAL_MS              = 2000
 INVALID_HANDLE_VALUE          = ctypes.c_void_p(-1).value
-IOCTL_STORAGE_GET_DEVICE_NUM  = 0x2D1080  # DeviceIoControl code
+IOCTL_STORAGE_QUERY_PROPERTY  = 0x2D1400  # queries STORAGE_DEVICE_DESCRIPTOR
 FILE_SHARE_READ_WRITE         = 0x1 | 0x2
 OPEN_EXISTING                 = 3
+GENERIC_READ                  = 0x80000000
+ERROR_FILE_NOT_FOUND          = 2
 
 
 @dataclass
 class DriveInfo:
     disk_number: int          # physical disk index (e.g. 3)
-    first_letter: str         # first partition letter found, e.g. "E:"
-    all_letters: List[str]    # all partition letters on this disk
-    label: str = ""
     size_bytes: int = 0
 
     @property
@@ -44,119 +48,123 @@ class DriveInfo:
 
     @property
     def display(self) -> str:
-        letters = ", ".join(self.all_letters)
-        label = self.label or "Removable"
-        return f"[Disk {self.disk_number}]  {letters}  {label}  ({self.size_str})"
+        return f"[Disk {self.disk_number}]  ({self.size_str})"
 
 
 # ── Win32 helpers ──────────────────────────────────────────────────────────────
 
-def _get_volume_label(root: str) -> str:
-    buf = ctypes.create_unicode_buffer(256)
-    try:
-        ctypes.windll.kernel32.GetVolumeInformationW(
-            root, buf, 256, None, None, None, None, 0
-        )
-        return buf.value
-    except Exception:
-        return ""
+def _check_physical_drive(disk_number: int) -> Tuple[Optional[bool], int]:
+    """
+    Open \\\\.\\PhysicalDriveN and query RemovableMedia flag and disk size.
 
-
-GENERIC_READ = 0x80000000   # required for IOCTL_DISK_GET_LENGTH_INFO
-
-
-def _get_physical_disk_size(disk_number: int) -> int:
-    """Return total size of PhysicalDriveN via IOCTL_DISK_GET_LENGTH_INFO."""
+    Returns:
+        (None,  0)          drive does not exist (ERROR_FILE_NOT_FOUND)
+        (False, 0)          drive exists but is not removable, or access denied
+        (True,  size_bytes) drive is removable; size_bytes may be 0 on error
+    """
     path = f"\\\\.\\PhysicalDrive{disk_number}"
     h = ctypes.windll.kernel32.CreateFileW(
         path, GENERIC_READ, FILE_SHARE_READ_WRITE, None, OPEN_EXISTING, 0, None
     )
     if h == INVALID_HANDLE_VALUE:
-        return 0
+        err = ctypes.windll.kernel32.GetLastError()
+        if err == ERROR_FILE_NOT_FOUND:
+            return None, 0   # no drive at this index
+        return False, 0      # access denied or other — drive exists but unreadable
+
     try:
-        buf      = ctypes.create_string_buffer(8)   # GET_LENGTH_INFORMATION = LARGE_INTEGER
+        # ── RemovableMedia flag via IOCTL_STORAGE_QUERY_PROPERTY ──
+        # Input: STORAGE_PROPERTY_QUERY {PropertyId=StorageDeviceProperty(0),
+        #                                QueryType=PropertyStandardQuery(0),
+        #                                AdditionalParameters[1]=0}
+        in_data = struct.pack("<IIB", 0, 0, 0)   # 9 bytes
+        in_buf  = ctypes.create_string_buffer(in_data, len(in_data))
+        out_buf = ctypes.create_string_buffer(512)
         returned = ctypes.c_ulong(0)
         ok = ctypes.windll.kernel32.DeviceIoControl(
-            h, 0x7405C, None, 0, buf, 8, ctypes.byref(returned), None
+            h, IOCTL_STORAGE_QUERY_PROPERTY,
+            in_buf, ctypes.sizeof(in_buf),
+            out_buf, ctypes.sizeof(out_buf),
+            ctypes.byref(returned), None,
         )
-        ctypes.windll.kernel32.CloseHandle(h)
-        if not ok:
-            return 0
-        return struct.unpack_from("<Q", buf.raw)[0]
+        # STORAGE_DEVICE_DESCRIPTOR.RemovableMedia is at byte offset 10
+        if not ok or returned.value < 11 or not out_buf.raw[10]:
+            return False, 0
+
+        # ── Disk size via IOCTL_DISK_GET_LENGTH_INFO ──
+        size_buf = ctypes.create_string_buffer(8)   # GET_LENGTH_INFORMATION = LARGE_INTEGER
+        size_ret = ctypes.c_ulong(0)
+        ok2 = ctypes.windll.kernel32.DeviceIoControl(
+            h, 0x7405C, None, 0, size_buf, 8, ctypes.byref(size_ret), None
+        )
+        size = struct.unpack_from("<Q", size_buf.raw)[0] if ok2 else 0
+        return True, size
+
     except OSError:
-        return 0
+        return False, 0
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
 
 
-def _get_physical_disk_number(drive_letter: str) -> int:
+def randomize_disk_signature(disk_number: int) -> bool:
     """
-    Return the physical disk number for a drive letter like 'E:'.
-    Uses IOCTL_STORAGE_GET_DEVICE_NUMBER.
-    Returns -1 on failure.
+    Write a random 4-byte disk signature to MBR offset 0x1B8 on PhysicalDriveN.
+    Called after a successful flash so each cloned drive gets a unique ID,
+    preventing Windows from suppressing drive letters on subsequent insertions.
+    Returns True on success, False on any error.
     """
-    path = f"\\\\.\\" + drive_letter.rstrip("\\")
+    GENERIC_WRITE = 0x40000000
+    path = f"\\\\.\\PhysicalDrive{disk_number}"
     h = ctypes.windll.kernel32.CreateFileW(
-        path, 0, FILE_SHARE_READ_WRITE, None, OPEN_EXISTING, 0, None
+        path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ_WRITE,
+        None, OPEN_EXISTING, 0, None,
     )
     if h == INVALID_HANDLE_VALUE:
-        return -1
-
-    # STORAGE_DEVICE_NUMBER: DeviceType(DWORD), DeviceNumber(DWORD), PartitionNumber(DWORD)
+        return False
     try:
-        buf = ctypes.create_string_buffer(12)
-        returned = ctypes.c_ulong(0)
-        ok = ctypes.windll.kernel32.DeviceIoControl(
-            h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0,
-            buf, 12, ctypes.byref(returned), None
-        )
-        ctypes.windll.kernel32.CloseHandle(h)
+        buf     = ctypes.create_string_buffer(512)
+        read_n  = ctypes.c_ulong(0)
+        if not ctypes.windll.kernel32.ReadFile(h, buf, 512, ctypes.byref(read_n), None):
+            return False
+        if read_n.value != 512:
+            return False
+
+        # Patch disk signature (4 bytes at 0x1B8 in the MBR)
+        buf[0x1B8:0x1BC] = os.urandom(4)
+
+        # Seek back to sector 0 (FILE_BEGIN = 0)
+        ctypes.windll.kernel32.SetFilePointer(h, 0, None, 0)
+
+        written = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.WriteFile(h, buf, 512, ctypes.byref(written), None)
+        return bool(ok) and written.value == 512
     except OSError:
-        return -1
-
-    if not ok:
-        return -1
-    _device_type, device_number, _partition = struct.unpack("III", buf.raw)
-    return device_number
+        return False
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
 
 
-def is_removable(drive_letter: str) -> bool:
-    """Return True only if drive_letter is still a removable drive."""
-    root = drive_letter.rstrip("\\") + "\\"
-    return ctypes.windll.kernel32.GetDriveTypeW(root) == DRIVE_REMOVABLE
+def is_removable(disk_number: int) -> bool:
+    """Return True if the physical disk is still present and removable."""
+    result, _ = _check_physical_drive(disk_number)
+    return result is True
 
 
 def get_removable_drives() -> List[DriveInfo]:
     """
-    Return one DriveInfo per physical removable disk.
-    Multiple partition letters on the same disk are merged into one entry.
+    Return one DriveInfo per physical removable disk, sorted by disk number.
+    Enumerates \\\\.\\PhysicalDriveN directly so drives with no letter
+    (suppressed by Windows due to MBR signature collision) are detected.
     """
-    bitmask = ctypes.windll.kernel32.GetLogicalDrives()
-    # disk_number → DriveInfo
     disks: Dict[int, DriveInfo] = {}
 
-    for i in range(26):
-        if not (bitmask & (1 << i)):
-            continue
-        letter = chr(65 + i) + ":"
-        root   = letter + "\\"
-        if ctypes.windll.kernel32.GetDriveTypeW(root) != DRIVE_REMOVABLE:
-            continue
-
-        disk_num = _get_physical_disk_number(letter)
-        if disk_num < 0:
-            continue  # couldn't determine disk — skip
-
-        if disk_num not in disks:
-            label = _get_volume_label(root)
-            size  = _get_physical_disk_size(disk_num)
-            disks[disk_num] = DriveInfo(
-                disk_number=disk_num,
-                first_letter=letter,
-                all_letters=[letter],
-                label=label,
-                size_bytes=size,
-            )
-        else:
-            disks[disk_num].all_letters.append(letter)
+    for n in range(32):
+        result, size = _check_physical_drive(n)
+        if result is None:
+            break      # ERROR_FILE_NOT_FOUND — no more drives at higher indices
+        if not result:
+            continue   # not removable or access denied
+        disks[n] = DriveInfo(disk_number=n, size_bytes=size)
 
     return sorted(disks.values(), key=lambda d: d.disk_number)
 

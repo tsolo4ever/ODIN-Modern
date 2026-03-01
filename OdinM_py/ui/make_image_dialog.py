@@ -181,8 +181,8 @@ class MakeImageDialog(ttk.Toplevel):
             self._status("No drive selected.", "danger")
             return
         drive: DriveInfo = self._drives[idx]
-        if not is_removable(drive.first_letter):
-            self._status(f"{drive.first_letter} is not removable — aborted.", "danger")
+        if not is_removable(drive.disk_number):
+            self._status(f"Disk {drive.disk_number} is not removable — aborted.", "danger")
             return
         output = self._output_var.get().strip()
         if not output:

@@ -97,7 +97,7 @@ class SlotWidget(ttk.Frame):
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
 
     def set_drive(self, display: str):
-        """Drive detected — show info, enable Start."""
+        """Drive newly arrived — full reset to ready state."""
         self._info_var.set(display)
         self._set_status(CloneStatus.IDLE)
         self._progress_var.set(0)
@@ -105,6 +105,10 @@ class SlotWidget(ttk.Frame):
         self._speed_var.set("")
         self._eta_var.set("")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
+
+    def update_info(self, display: str):
+        """Drive already in slot — update display text only, preserve status/button state."""
+        self._info_var.set(display)
 
     def set_progress(self, pct: int):
         self._progress_var.set(pct)

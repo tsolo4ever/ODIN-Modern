@@ -38,6 +38,7 @@ class MainWindow(ttk.Frame):
         self._config   = config
         self._root_win = parent   # root ttk.Window — needed for the menu bar
         self._slots: List[SlotWidget] = []
+        self._prev_drives: list = []          # last drive list passed to update_drives
         self._image_var = ttk.StringVar(value=config.get_last_image())
         self._build()
 
@@ -73,11 +74,16 @@ class MainWindow(ttk.Frame):
             self._slots.append(sw)
 
         for i, slot in enumerate(self._slots):
-            d = drives[i] if i < len(drives) else None
+            d    = drives[i] if i < len(drives) else None
+            prev = self._prev_drives[i] if i < len(self._prev_drives) else None
             if d is not None:
-                slot.set_drive(d.display)
+                if prev is None:
+                    slot.set_drive(d.display)    # new arrival — full reset to ready
+                else:
+                    slot.update_info(d.display)  # already present — text only, keep status
             else:
                 slot.reset()
+        self._prev_drives = list(drives)
 
     def set_slot_progress(self, idx: int, pct: int):
         self._slots[idx].set_progress(pct)
@@ -161,6 +167,16 @@ class MainWindow(ttk.Frame):
                 command=lambda v=gb: self._config.set_max_drive_gb(v),
             )
         options_menu.add_cascade(label="Max drive size", menu=size_menu)
+
+        # Randomize MBR signature after flash
+        self._randomize_mbr_var = tk.BooleanVar(
+            value=self._config.get_randomize_mbr_after_flash())
+        options_menu.add_checkbutton(
+            label="Randomize MBR after flash",
+            variable=self._randomize_mbr_var,
+            command=lambda: self._config.set_randomize_mbr_after_flash(
+                bool(self._randomize_mbr_var.get())),
+        )
         options_menu.add_separator()
 
         options_menu.add_command(label="Theme: Dark",  command=lambda: self._set_theme("darkly"))

@@ -13,7 +13,7 @@ from ttkbootstrap.constants import *
 
 from clone_worker import CloneStatus, CloneWorker
 from config_manager import ConfigManager
-from drive_manager import DriveInfo, DriveMonitor, is_removable
+from drive_manager import DriveInfo, DriveMonitor, is_removable, randomize_disk_signature
 from ui.main_window import MainWindow, NUM_SLOTS
 
 APP_TITLE   = "OdinM — Multi-Drive Clone Tool (Python)"
@@ -160,9 +160,9 @@ class OdinMApp:
         if drive is None:
             self._window.log(f"[Error] Slot {idx + 1} has no drive.")
             return
-        if not is_removable(drive.first_letter):
+        if not is_removable(drive.disk_number):
             self._window.log(
-                f"[Error] Slot {idx + 1} ({drive.first_letter}) is not a removable drive — aborted.")
+                f"[Error] Slot {idx + 1} (Disk {drive.disk_number}) is not a removable drive — aborted.")
             return
 
         max_conc = self._config.get_max_concurrent()
@@ -299,6 +299,14 @@ class OdinMApp:
         self._window.log(f"[Slot {idx+1}] {label}")
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
+            if self._config.get_randomize_mbr_after_flash():
+                drive = self._drives[idx]
+                if drive is not None:
+                    ok = randomize_disk_signature(drive.disk_number)
+                    if ok:
+                        self._window.log(f"[Slot {idx+1}] MBR signature randomized")
+                    else:
+                        self._window.log(f"[Slot {idx+1}] WARNING: MBR signature randomization failed")
         self._speed_samples.pop(idx, None)
         self._window.set_slot_speed(idx, "")
         self._window.set_slot_eta(idx, "")
