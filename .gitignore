@@ -60,6 +60,9 @@ ehthumbs.db
 *.exp
 *.pdb
 
+# --- Pre-built third-party static libs (committed as dependencies) ---
+!lib/**/*.lib
+
 # --- Precompiled headers ---
 *.gch
 
