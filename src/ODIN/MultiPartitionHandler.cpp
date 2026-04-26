@@ -76,10 +76,9 @@ void CMultiPartitionHandler::BackupPartitionOrDisk(int index, LPCWSTR fileName, 
       partInfoMgr.WritePartitionInfoToFile(mbrFileName.c_str());
 
       odinMgr.Uncancel();
-      if (odinMgr.GetTakeSnapshotOption())  {
-        odinMgr.SetMultiVolumeMode(true);
+      odinMgr.SetMultiVolumeMode(true);
+      if (odinMgr.GetTakeSnapshotOption())
         odinMgr.MakeSnapshot(index, wcb);
-      }
 
       for (int i=0; i<subPartitions && !odinMgr.WasCancelled(); i++) {
         CFileNameUtil::GenerateFileNameForEntireDiskBackup(volumeFileName, fileName, pContainedVolumes[i]->GetDeviceName());
@@ -93,10 +92,9 @@ void CMultiPartitionHandler::BackupPartitionOrDisk(int index, LPCWSTR fileName, 
 
       delete pContainedVolumes;
       odinMgr.SetMultiVolumeIndex(0);
-      if (odinMgr.GetTakeSnapshotOption()) {
+      if (odinMgr.GetTakeSnapshotOption())
         odinMgr.ReleaseSnapshot(false);
-        odinMgr.SetMultiVolumeMode(false);
-      }
+      odinMgr.SetMultiVolumeMode(false);
       odinMgr.Uncancel();
     }
   } else { // not a complete hard disk, but only a paritition or complete disk but with all blocks

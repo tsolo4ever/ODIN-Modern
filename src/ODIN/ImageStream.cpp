@@ -345,6 +345,41 @@ CDiskImageStream::CDiskImageStream(int volumeCount)
   fContainedVolumeCount = volumeCount;
 }
 
+#ifdef _DEBUG
+static void DbgLock(const wchar_t* fmt, ...) {
+  wchar_t buf[512];
+  va_list args;
+  va_start(args, fmt);
+  _vsnwprintf_s(buf, _countof(buf), _TRUNCATE, fmt, args);
+  va_end(args);
+  fwprintf(stderr, L"DBG[Lock] %s\n", buf);
+  fflush(stderr);
+}
+
+static bool IsProcessElevated() {
+  BOOL elevated = FALSE;
+  HANDLE token = NULL;
+  if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+    TOKEN_ELEVATION elev;
+    DWORD size = sizeof(elev);
+    if (GetTokenInformation(token, TokenElevation, &elev, sizeof(elev), &size))
+      elevated = elev.TokenIsElevated;
+    CloseHandle(token);
+  }
+  return elevated != FALSE;
+}
+
+static std::wstring WinErrorStr(DWORD err) {
+  wchar_t buf[256] = {};
+  FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                 nullptr, err, 0, buf, _countof(buf), nullptr);
+  std::wstring msg = buf;
+  while (!msg.empty() && (msg.back() == L'\n' || msg.back() == L'\r'))
+    msg.pop_back();
+  return msg;
+}
+#endif // _DEBUG
+
 void CDiskImageStream::Init() {
   fHandle = NULL;
   fBytesUsed = 0;
@@ -493,10 +528,21 @@ void CDiskImageStream::Open(LPCWSTR name, TOpenMode mode)
   // there are reserved areas that can not be written to even with admin rights, see
   // http://support.microsoft.com/kb/942448 for details. Therefore we unmount volume
   //http://msdn.microsoft.com/newsgroups/default.aspx?dg=microsoft.public.win32.programmer.kernel&tid=d0ff3e7a-e32c-49dc-b3e6-6cbdd1da67ac&cat=en-us-msdn-windev-winsdk&lang=en&cr=US&sloc=en-us&m=1&p=1
-  } else { // (fOpenMode==forWriting) 
+  } else { // (fOpenMode==forWriting)
+#ifdef _DEBUG
+    DbgLock(L"Volume='%s' Elevated=%s", fName.c_str(), IsProcessElevated() ? L"YES" : L"NO");
+    DbgLock(L"Attempt 1: FSCTL_LOCK_VOLUME...");
+#endif
     res = DeviceIoControl(fHandle, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
-    if (res == 0)
+    if (res == 0) {
+#ifdef _DEBUG
+      { DWORD _e = GetLastError(); DbgLock(L"Attempt 1 FAILED err=%lu (%s) — falling back to dismount+retry", _e, WinErrorStr(_e).c_str()); SetLastError(_e); }
+#endif
       DismountAndLockVolume();
+    }
+#ifdef _DEBUG
+    else { DbgLock(L"Attempt 1 OK — volume locked"); }
+#endif
         // see: http://www.eggheadcafe.com/software/aspnet/31520519/direct-disk-access-write-to-system-areas.aspx
         // In order to achieve that you need to lock the volume by sending FSCTL_LOCK_VOLUME. This has to
         // be issued on the same volume handle performing the actual writes. This
@@ -516,16 +562,48 @@ void CDiskImageStream::DismountAndLockVolume() {
 
  long ntStatus;
  DWORD dummy;
+#ifdef _DEBUG
+ DbgLock(L"Sending FSCTL_DISMOUNT_VOLUME on '%s'...", fName.c_str());
+#endif
  // force a dismount
  int res = DeviceIoControl(fHandle, FSCTL_DISMOUNT_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
  CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"FSCTL_DISMOUNT_VOLUME");
+#ifdef _DEBUG
+ DbgLock(L"Dismount OK — closing and reopening handle");
+#endif
  res = CloseHandle(fHandle);
 
  DWORD shareMode = FILE_SHARE_DELETE | FILE_SHARE_WRITE | FILE_SHARE_READ;
 
  ntStatus = OpenDevice(shareMode);
  CHECK_KERNEL_EX_HANDLE_PARAM1(ntStatus, EWinException::volumeOpenError, fName.c_str());
- res = DeviceIoControl(fHandle, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
+#ifdef _DEBUG
+ DbgLock(L"Handle reopened OK");
+#endif
+
+ // After dismount, other processes may still hold handles briefly; retry with backoff.
+ const int kMaxRetries = 5;
+ const DWORD kRetryDelayMs = 500;
+ for (int attempt = 0; attempt < kMaxRetries; ++attempt) {
+#ifdef _DEBUG
+   DbgLock(L"Retry %d/%d: FSCTL_LOCK_VOLUME...", attempt + 1, kMaxRetries);
+#endif
+   res = DeviceIoControl(fHandle, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
+   if (res != 0) {
+#ifdef _DEBUG
+     DbgLock(L"Retry %d OK — volume locked", attempt + 1);
+#endif
+     return;
+   }
+#ifdef _DEBUG
+   { DWORD _e = GetLastError(); DbgLock(L"Retry %d FAILED err=%lu (%s)", attempt + 1, _e, WinErrorStr(_e).c_str()); SetLastError(_e); }
+#endif
+   if (attempt + 1 < kMaxRetries)
+     Sleep(kRetryDelayMs);
+ }
+#ifdef _DEBUG
+ DbgLock(L"All %d retries exhausted — throwing", kMaxRetries);
+#endif
  CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"FSCTL_LOCK_VOLUME");
 }
 

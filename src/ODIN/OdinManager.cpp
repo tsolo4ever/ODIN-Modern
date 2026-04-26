@@ -223,8 +223,14 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
   LPCWSTR deviceName = pDriveInfo ? pDriveInfo->GetDeviceName().c_str() : NULL;
   unsigned bytesPerCluster = pDriveInfo ? pDriveInfo->GetClusterSize() : 0;
 
-  if (isHardDisk && !fSaveAllBlocks) {
-    ATLASSERT(fMultiVolumeMode);
+  if (isHardDisk) {
+    // Whole-disk ops never have a meaningful mount point.
+    // For backup with used-blocks mode, multi-volume mode is required so each
+    // partition can be enumerated; assert that the caller set it up correctly.
+    // Restore always writes every block from the image, so the flag is irrelevant.
+    if (!fSaveAllBlocks && operation != isRestore) {
+      ATLASSERT(fMultiVolumeMode);
+    }
   } else {
     mountPoint = pDriveInfo ? pDriveInfo->GetMountPoint().c_str() : NULL;
   }
