@@ -28,7 +28,8 @@
       "MultiEdit",
       "Glob",
       "Bash(cmd.exe /c '\"\"C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022\\\\Community\\\\MSBuild\\\\Current\\\\Bin\\\\MSBuild.exe\"\" \"\"d:\\\\OneDrive\\\\Documents\\\\GitHub\\\\odin-win-code-r71-trunk\\\\ODIN.sln\"\" /p:Configuration=Debug /p:Platform=x64 /t:Build /m /nologo /v:minimal 2>&1')",
-      "Bash(uvx:*)"
+      "Bash(uvx:*)",
+      "Bash(\"C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" ODIN.sln /p:Configuration=Debug /p:Platform=x64 /t:ODIN /m /nologo)"
     ],
     "deny": [
       "Bash(rm -rf*)",
@@ -44,6 +45,6 @@
     "defaultMode": "acceptEdits"
   },
   "model": "claude-sonnet-4-6",
-  "autoUpdatesChannel": "stable",
-  "outputStyle": "default"
+  "outputStyle": "default",
+  "autoUpdatesChannel": "stable"
 }

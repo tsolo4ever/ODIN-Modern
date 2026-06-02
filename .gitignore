@@ -7,6 +7,11 @@ Debug-Win32/
 Debug-x64/
 Release-Win32/
 Release-x64/
+build/
+dist/
+OdinM_py/build/
+OdinM_py/dist/
+__pycache__/
 
 # --- Visual Studio IDE files ---
 .vs/

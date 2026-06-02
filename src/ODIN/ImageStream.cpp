@@ -979,7 +979,25 @@ void CSubVolumeLocker::OpenAndLockVolume(LPCWSTR volName, int index) {
   CHECK_KERNEL_EX_HANDLE_PARAM1(ntStatus, EWinException::volumeOpenError, volName);
   ATLTRACE("Opened  sub volume: %S with handle %u\n", volName, h);
   fHandles[index] = h;
-  res = DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
+#ifdef _DEBUG
+  DbgLock(L"SubVolume '%s': FSCTL_LOCK_VOLUME...", volName);
+#endif
+  const int kMaxRetries = 5;
+  const DWORD kRetryDelayMs = 500;
+  for (int attempt = 0; attempt < kMaxRetries; ++attempt) {
+    res = DeviceIoControl(h, FSCTL_LOCK_VOLUME, NULL, 0, NULL, 0, &dummy, NULL);
+    if (res != 0) {
+#ifdef _DEBUG
+      DbgLock(L"SubVolume '%s': locked on retry %d", volName, attempt + 1);
+#endif
+      return;
+    }
+#ifdef _DEBUG
+    { DWORD _e = GetLastError(); DbgLock(L"SubVolume '%s': retry %d FAILED err=%lu (%s)", volName, attempt + 1, _e, WinErrorStr(_e).c_str()); SetLastError(_e); }
+#endif
+    if (attempt + 1 < kMaxRetries)
+      Sleep(kRetryDelayMs);
+  }
   CHECK_OS_EX_PARAM1(res, EWinException::ioControlError, L"FSCTL_LOCK_VOLUME");
 }
 
