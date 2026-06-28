@@ -94,6 +94,7 @@ private:
   TOdinOperation fOperation; // structure that contains the command and parameters
   std::unique_ptr<COdinManager> fOdinManager;
   HANDLE fTimer;
+  HANDLE fProgressPipe;
   int fLastPercent;
   DWORD fCrc32;
   int fExitCode;

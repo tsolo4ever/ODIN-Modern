@@ -17,19 +17,19 @@ def is_admin() -> bool:
         return False
 
 
-def request_elevation():
+def request_elevation() -> bool:
     """Re-launch this script with admin rights via UAC prompt."""
     script = os.path.abspath(sys.argv[0])
     params = " ".join(f'"{a}"' for a in sys.argv[1:])
-    ctypes.windll.shell32.ShellExecuteW(
+    result = ctypes.windll.shell32.ShellExecuteW(
         None, "runas", sys.executable, f'"{script}" {params}', None, 1
     )
+    return int(result) > 32
 
 
 def main():
     if not is_admin():
-        request_elevation()
-        sys.exit(0)
+        sys.exit(0 if request_elevation() else 1)
 
     from config_manager import ConfigManager
     from app import OdinMApp

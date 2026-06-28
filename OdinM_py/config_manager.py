@@ -12,6 +12,8 @@ DEFAULTS = {
     "last_image": "",
     "verify_after_clone": "false",
     "stop_on_verify_fail": "false",
+    "show_flash_widget": "true",
+    "max_drive_gb": "8",
 }
 
 
@@ -69,6 +71,15 @@ class ConfigManager:
     def get_stop_on_verify_fail(self) -> bool:
         return self._cfg["settings"].get("stop_on_verify_fail", "false").lower() == "true"
 
+    def get_show_flash_widget(self) -> bool:
+        return self._cfg["settings"].get("show_flash_widget", "true").lower() == "true"
+
+    def get_max_drive_gb(self) -> int:
+        try:
+            return int(self._cfg["settings"].get("max_drive_gb", "8"))
+        except ValueError:
+            return 8
+
     # ── setters ──────────────────────────────────────────────────────────────
 
     def set_odinc_path(self, path: str):
@@ -97,6 +108,14 @@ class ConfigManager:
 
     def set_stop_on_verify_fail(self, v: bool):
         self._cfg["settings"]["stop_on_verify_fail"] = "true" if v else "false"
+        self._save()
+
+    def set_show_flash_widget(self, v: bool):
+        self._cfg["settings"]["show_flash_widget"] = "true" if v else "false"
+        self._save()
+
+    def set_max_drive_gb(self, n: int):
+        self._cfg["settings"]["max_drive_gb"] = str(n)
         self._save()
 
     def _save(self):

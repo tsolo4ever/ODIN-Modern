@@ -165,7 +165,11 @@ class HashDialog(ttk.Toplevel):
             self._sha256_var.set(sha256)
             self._sha1_var.set(sha1)
             self._status_lbl.configure(text="Done", bootstyle="success")
-            self._log.save_entry(self._path, sha256, sha1)
+            if not self._log.save_entry(self._path, sha256, sha1):
+                self._status_lbl.configure(
+                    text="Done, but hash log save failed",
+                    bootstyle="warning",
+                )
             self._age_lbl.configure(text=self._age_text(), bootstyle=self._age_style())
             if self._expected_var.get().strip():
                 self._compare()
@@ -301,9 +305,20 @@ class StoredHashDialog(ttk.Toplevel):
 
             result_row = 7
             all_pass = True
+            needs_rehash = False
             for part_num in sorted(enabled):
                 cfg = enabled[part_num]
                 part_label = "Disk" if part_num == 0 else f"Partition {part_num}"
+                if part_num != 0:
+                    ttk.Label(
+                        outer,
+                        text=f"{part_label}: stored whole-file hash cannot verify this partition; recompute required",
+                        bootstyle="warning",
+                        anchor=W,
+                    ).grid(row=result_row, column=0, columnspan=3, sticky=W, padx=(8, 0))
+                    result_row += 1
+                    needs_rehash = True
+                    continue
                 results = []
                 if cfg["sha1_enabled"] and cfg["sha1_value"]:
                     match = sha1.lower() == cfg["sha1_value"].lower()
@@ -329,7 +344,11 @@ class StoredHashDialog(ttk.Toplevel):
                     result_row += 1
 
             summary_row = result_row
-            if all_pass:
+            if needs_rehash:
+                ttk.Label(outer, text="One or more partition checks require recomputing hashes.",
+                          bootstyle="warning", anchor=W).grid(
+                    row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
+            elif all_pass:
                 ttk.Label(outer, text="All configured checks passed.",
                           bootstyle="success", anchor=W).grid(
                     row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))

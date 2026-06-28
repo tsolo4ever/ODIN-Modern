@@ -83,6 +83,10 @@ int wmain(int argc, wchar_t* argv[])
     return 1;
   }
   WaitForSingleObject(procInfo.hProcess,INFINITE); // wait until ODIN terminates
-  return 0;
+  DWORD exitCode = 1;
+  if (!GetExitCodeProcess(procInfo.hProcess, &exitCode))
+    exitCode = 1;
+  CloseHandle(procInfo.hThread);
+  CloseHandle(procInfo.hProcess);
+  return (int)exitCode;
 }
-

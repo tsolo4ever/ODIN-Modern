@@ -8,7 +8,7 @@ After completing, per-partition verify is ready to use.
 """
 
 import os
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from typing import Optional
 
 _MB = 1_048_576
@@ -21,6 +21,7 @@ from drive_manager import DriveInfo, get_removable_drives, is_removable
 from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
+from partition_reader import get_image_hash_region
 
 
 class MakeImageDialog(ttk.Toplevel):
@@ -188,6 +189,15 @@ class MakeImageDialog(ttk.Toplevel):
         if not output:
             self._status("Choose an output file first.", "danger")
             return
+        if os.path.exists(output):
+            overwrite = messagebox.askyesno(
+                "Overwrite image?",
+                f"The output file already exists:\n\n{output}\n\nOverwrite it?",
+                parent=self,
+            )
+            if not overwrite:
+                self._status("Backup cancelled — output file already exists.", "warning")
+                return
 
         self._output_path       = output
         self._backup_drive_size = drive.size_bytes
@@ -270,13 +280,30 @@ class MakeImageDialog(ttk.Toplevel):
             return
         self._progress_var.set(0)
         self._set_step(1, "running")
-        self._status("Step 2/3: Computing hash…", "info")
+        self._status("Step 2/3: Computing disk data hash…", "info")
+
+        region = get_image_hash_region(self._output_path)
+        if region is None:
+            self._set_step(1, "failed")
+            self._status("Hash setup failed — image header is not readable.", "danger")
+            self._finish_buttons()
+            return
+        if not region.is_raw_supported:
+            self._set_step(1, "failed")
+            self._status(
+                "Hash setup failed — compressed ODIN images cannot be raw-drive verified.",
+                "danger",
+            )
+            self._finish_buttons()
+            return
 
         self._hasher = HashWorker(
             root=self._parent,
             file_path=self._output_path,
             on_progress=self._on_hash_progress,
             on_done=self._on_hash_done,
+            offset=region.offset,
+            byte_count=region.size,
         )
         self._hasher.start()
 
@@ -306,10 +333,11 @@ class MakeImageDialog(ttk.Toplevel):
 
         try:
             # Save to hash log (timestamp + values)
-            HashLog().save_entry(self._output_path, sha256, sha1)
+            if not HashLog().save_entry(self._output_path, sha256, sha1):
+                raise OSError("could not write hash log")
 
             # Save to partition 0 (whole-disk/image hash), both algos enabled+fail
-            HashConfig().save_partition(self._output_path, 0, {
+            saved = HashConfig().save_partition(self._output_path, 0, {
                 "sha1_value":     sha1,
                 "sha1_enabled":   True,
                 "sha1_fail":      True,
@@ -317,6 +345,8 @@ class MakeImageDialog(ttk.Toplevel):
                 "sha256_enabled": True,
                 "sha256_fail":    True,
             })
+            if not saved:
+                raise OSError("could not write hash config")
 
             self._set_step(2, "done")
             self._status(

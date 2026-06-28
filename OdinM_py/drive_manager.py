@@ -14,6 +14,7 @@ DRIVE_REMOVABLE               = 2
 POLL_INTERVAL_MS              = 2000
 INVALID_HANDLE_VALUE          = ctypes.c_void_p(-1).value
 IOCTL_STORAGE_GET_DEVICE_NUM  = 0x2D1080  # DeviceIoControl code
+IOCTL_STORAGE_QUERY_PROPERTY  = 0x002D1400
 FILE_SHARE_READ_WRITE         = 0x1 | 0x2
 OPEN_EXISTING                 = 3
 
@@ -25,6 +26,7 @@ class DriveInfo:
     all_letters: List[str]    # all partition letters on this disk
     label: str = ""
     size_bytes: int = 0
+    hw_serial: str = ""       # device firmware serial — stable across repartitions
 
     @property
     def target_path(self) -> str:
@@ -32,6 +34,11 @@ class DriveInfo:
         ODIN's PreprocessSourceAndTarget matches the Device prefix to look
         up the device index; Partition0 = the entire disk (not a volume)."""
         return f"\\Device\\Harddisk{self.disk_number}\\Partition0"
+
+    @property
+    def raw_device_path(self) -> str:
+        """Win32 path used by Python to read the whole physical disk."""
+        return f"\\\\.\\PhysicalDrive{self.disk_number}"
 
     @property
     def size_str(self) -> str:
@@ -79,12 +86,51 @@ def _get_physical_disk_size(disk_number: int) -> int:
         ok = ctypes.windll.kernel32.DeviceIoControl(
             h, 0x7405C, None, 0, buf, 8, ctypes.byref(returned), None
         )
-        ctypes.windll.kernel32.CloseHandle(h)
         if not ok:
             return 0
         return struct.unpack_from("<Q", buf.raw)[0]
     except OSError:
         return 0
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
+
+
+def _get_device_serial(disk_number: int) -> str:
+    """
+    Return the device firmware serial number for PhysicalDriveN via
+    IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceProperty.
+    Returns "" if the drive doesn't expose one (some cheap controllers don't).
+    The hardware serial is stable across repartition/reformat, so it uniquely
+    identifies a physical card even when Windows reuses the same disk index.
+    """
+    path = f"\\\\.\\PhysicalDrive{disk_number}"
+    h = ctypes.windll.kernel32.CreateFileW(
+        path, GENERIC_READ, FILE_SHARE_READ_WRITE, None, OPEN_EXISTING, 0, None
+    )
+    if h == INVALID_HANDLE_VALUE:
+        return ""
+    try:
+        # STORAGE_PROPERTY_QUERY: PropertyId=0 (StorageDeviceProperty), QueryType=0
+        query = ctypes.create_string_buffer(8)
+        buf = ctypes.create_string_buffer(1024)
+        returned = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.DeviceIoControl(
+            h, IOCTL_STORAGE_QUERY_PROPERTY,
+            query, 8, buf, 1024, ctypes.byref(returned), None,
+        )
+        if not ok or returned.value < 28:
+            return ""
+        # STORAGE_DEVICE_DESCRIPTOR: SerialNumberOffset is ULONG at byte 24
+        serial_offset = struct.unpack_from("<I", buf.raw, 24)[0]
+        if serial_offset == 0 or serial_offset >= returned.value:
+            return ""
+        end = buf.raw.find(b"\x00", serial_offset)
+        end = end if end != -1 else int(returned.value)
+        return buf.raw[serial_offset:end].decode("ascii", errors="ignore").strip()
+    except Exception:
+        return ""
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
 
 
 def _get_physical_disk_number(drive_letter: str) -> int:
@@ -108,9 +154,10 @@ def _get_physical_disk_number(drive_letter: str) -> int:
             h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0,
             buf, 12, ctypes.byref(returned), None
         )
-        ctypes.windll.kernel32.CloseHandle(h)
     except OSError:
         return -1
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
 
     if not ok:
         return -1
@@ -146,14 +193,16 @@ def get_removable_drives() -> List[DriveInfo]:
             continue  # couldn't determine disk — skip
 
         if disk_num not in disks:
-            label = _get_volume_label(root)
-            size  = _get_physical_disk_size(disk_num)
+            label     = _get_volume_label(root)
+            size      = _get_physical_disk_size(disk_num)
+            hw_serial = _get_device_serial(disk_num)
             disks[disk_num] = DriveInfo(
                 disk_number=disk_num,
                 first_letter=letter,
                 all_letters=[letter],
                 label=label,
                 size_bytes=size,
+                hw_serial=hw_serial,
             )
         else:
             disks[disk_num].all_letters.append(letter)
@@ -168,12 +217,20 @@ class DriveMonitor:
     Polls for removable drive changes and fires on_drives_changed
     when the set of physical disks changes.
     Uses tkinter root.after() — start after the root window exists.
+
+    Change detection uses (disk_number, hw_serial) pairs so that a card swap
+    that reuses the same Windows disk index is still detected as a new device.
     """
 
     def __init__(self, root, on_drives_changed: Callable[[List[DriveInfo]], None]):
         self._root       = root
         self._on_changed = on_drives_changed
-        self._last: List[int] = []   # last seen disk numbers
+        # Each entry is (disk_number, hw_serial) — hw_serial="" if unavailable
+        self._last: List[tuple] = []
+        # Last successfully read serial per disk_number.  Used to fill in ""
+        # when the device is locked by an active write so we don't misread a
+        # temporary read failure as a card swap.
+        self._known_serials: Dict[int, str] = {}
         self._running = False
 
     def start(self):
@@ -188,10 +245,22 @@ class DriveMonitor:
             return
         try:
             current = get_removable_drives()
-            current_nums = [d.disk_number for d in current]
-            if current_nums != self._last:
-                self._last = current_nums
-                self._on_changed(current)
-        except OSError:
-            pass  # transient Win32 error during active disk I/O — skip this poll
-        self._root.after(POLL_INTERVAL_MS, self._poll)
+            # Update cached serials for any drive that returned a readable value.
+            for d in current:
+                if d.hw_serial:
+                    self._known_serials[d.disk_number] = d.hw_serial
+            # Use the last known serial when the device is temporarily
+            # unreadable (locked by an active flash write), so a momentary ""
+            # does not look like a card swap and trigger a spurious auto-clone.
+            current_keys = [
+                (d.disk_number,
+                 d.hw_serial or self._known_serials.get(d.disk_number, ""))
+                for d in current
+            ]
+            if current_keys != self._last:
+                self._on_changed(current)   # update _last only after success
+                self._last = current_keys
+        except Exception:
+            pass  # swallow all errors — keeps polling alive even if callback throws
+        finally:
+            self._root.after(POLL_INTERVAL_MS, self._poll)

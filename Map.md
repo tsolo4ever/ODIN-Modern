@@ -1,8 +1,8 @@
 # ODIN Project Map
 
-**Updated:** 2026-02-23
+**Updated:** 2026-06-02
 
-## Current State (6/7 builds succeed)
+## Current State
 
 | Project | Status | Notes |
 |---------|--------|-------|
@@ -11,10 +11,10 @@
 | ODIN | ✅ | Main GUI app builds and runs |
 | ODINC | ✅ | Console version |
 | ODINHelp | ✅ | CHM built successfully |
-| OdinM | ✅ | Multi-drive clone tool (Debug-x64) |
-| ODINTest | ❌ | 33 errors — cppunit ABI mismatch (VS2008 libs vs VS2026) |
+| ODINTest | ✅ | cppunit restored through vcpkg manifest |
+| OdinM_py | ✅ | Python multi-drive clone UI |
 
-**ODINTest fix:** `vcpkg install cppunit:x64-windows` or replace with Catch2/Google Test (header-only)
+Native `OdinM.exe` was removed from the solution because it is abandoned and superseded by `OdinM_py`.
 
 ---
 
@@ -42,7 +42,7 @@ All smart pointer and malloc/free work complete. Deferred by design:
 | Issue | Severity | Notes |
 |-------|----------|-------|
 | ~~`-list` shows `Size: 0.000B` and `Type: Unknown`~~ | ~~Low~~ | Fixed da95404 — GPT partition style was resetting all geometry to 0 |
-| ODINTest — 33 build errors | Medium | cppunit ABI mismatch (VS2008 libs vs VS2026); fix: `vcpkg install cppunit:x64-windows` |
+| Hardware ODINManager tests disabled | Low | Expected by `ODINTest.ini`; they require a separate formatted drive |
 
 ---
 
@@ -50,29 +50,28 @@ All smart pointer and malloc/free work complete. Deferred by design:
 
 | File | Purpose |
 |------|---------|
-| `ODIN.sln` | Solution — 7 projects |
+| `ODIN.sln` | Solution — 6 native projects |
 | `ODIN.vcxproj` | Main GUI application |
 | `ODINC.vcxproj` | Console version |
-| `OdinM.vcxproj` | Multi-drive clone tool |
-| `ODINTest.vcxproj` | Unit tests — blocked on cppunit ABI |
+| `OdinM_py/` | Python multi-drive clone tool |
+| `ODINTest.vcxproj` | Unit tests |
 | `zlib.vcxproj` | zlib 1.3.2 static library |
 | `libz2.vcxproj` | bzip2 static library |
 | `lib/WTL10/Include/` | WTL 10.0 headers |
 | `src/ODIN/` | Main ODIN source |
-| `src/ODINM/` | OdinM source |
 | `src/zlib-1.3.2/` | zlib 1.3.2 sources |
 | `CLAUDE.md` | Project rules for Claude Code |
 | `docs/MODERNIZATION_CHECKLIST.md` | Detailed per-task progress |
 
 ---
 
-## OdinM Feature Summary
+## OdinM_py Feature Summary
 - Clone one ODIN image to up to **5 USB drives simultaneously**
 - **SHA-1 and SHA-256** hash verification post-clone
-- Auto-clone on device insertion (WM_DEVICECHANGE)
+- Auto-clone on device insertion
 - Activity log with timestamps + CSV export
-- Settings persisted to `OdinM.ini` (next to executable)
-- ODINC.exe must be in same folder as OdinM.exe
+- Settings persisted to `odinm_py.ini`
+- Uses `ODINC.exe` for restore/backup operations
 
 ---
 
@@ -89,7 +88,7 @@ All smart pointer and malloc/free work complete. Deferred by design:
 | File | EXE | Description | Status |
 |------|-----|-------------|--------|
 | `src/ODIN/res/ODIN.ico` | ODIN.exe | Blue floppy + HDD + arrow | Active ✅ |
-| `src/ODINM/res/OdinM.ico` | OdinM.exe | 5 coloured SD cards (= 5 slots) | Active ✅ |
+| `OdinM_py/assets/OdinM.ico` | OdinM_py | 5 coloured SD cards (= 5 slots) | Active ✅ |
 | `src/ODIN/res/ODIN2.ico` | — | Dark SD card + HDD variant | Archived |
 | `src/ODIN/res/odinc.png` | — | Terminal `>_` style — future use | PNG only |
 
@@ -117,7 +116,7 @@ All smart pointer and malloc/free work complete. Deferred by design:
 - Output dirs: `Debug-x64\`, `Debug-Win32\`, `Release-x64\`, `Release-Win32\`
 - ODINC.exe may trigger AV false positives (Gen:Variant.Fugrafa) — add output folder to AV exclusions
 - WTL path in all projects: `$(SolutionDir)lib\WTL10\Include`
-- OdinM: no `_ATL_NO_AUTOMATIC_NAMESPACE` (breaks CDialogImpl); IDC_STATIC needs `#ifndef` guard
+- Native `OdinM.exe` is removed; use `OdinM_py` for multi-drive flashing
 - Build command: `msbuild ODIN.sln /p:Configuration=Debug;Platform=x64`
 
 ---
@@ -126,9 +125,6 @@ All smart pointer and malloc/free work complete. Deferred by design:
 
 ### Priority 2 — Do Soon
 - [ ] **Dark mode (Win10 1809+)** — Partially implemented (title bar, menu, controls, brushes) then **disabled**. Blocker: `SysHeader32` text stays dark. Root cause: the ListView handles header `NM_CUSTOMDRAW` internally — it never reaches the dialog message map. `AllowDarkModeForWindow` + `SetWindowTheme` on the header changes background but not text color. Fix options: (a) `SetWindowSubclass` on the ListView to intercept header `WM_NOTIFY`; (b) set `HDF_OWNERDRAW` per item + handle `WM_DRAWITEM` from within a ListView subclass. All dark mode code is in `ODINDlg.cpp::ApplyDarkMode` — re-enable by removing the early `return;` at the top of that function.
-- [ ] **OdinM: Inline progress bar in grid cell** — Custom draw replacing progress text column
-- [ ] **OdinM: Status color badges** — NM_CUSTOMDRAW, alternating rows, color by status (blue=Cloning, green=Done, red=Failed)
-- [ ] **OdinM: Gray placeholder in empty cells** — Replace plain `-` with styled text
 
 ### Priority 3 — Nice to Have
 - [ ] **System accent color** — Read from `HKCU\Software\Microsoft\Windows\DWM\AccentColor`

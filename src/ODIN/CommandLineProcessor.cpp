@@ -401,6 +401,41 @@ void CCommandLineProcessor::Parse(CStlCmdLineArgsWin<wchar_t>& cmdLineParser) {
 void CCommandLineProcessor::ProcessCommandLine() {
 
   Init();
+
+  // Connect to the progress pipe if the caller supplied one.
+  {
+    wchar_t pipeName[MAX_PATH] = {};
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD dbgWritten;
+    char dbgBuf[MAX_PATH + 64];
+    if (GetEnvironmentVariableW(L"ODINM_PROGRESS_PIPE", pipeName, MAX_PATH) > 0) {
+      int n = wsprintfA(dbgBuf, "[Pipe] Connecting: %S\n", pipeName);
+      WriteFile(hOut, dbgBuf, n, &dbgWritten, NULL);
+      fProgressPipe = CreateFileW(pipeName, GENERIC_WRITE, 0, NULL,
+                                  OPEN_EXISTING, 0, NULL);
+      if (fProgressPipe == INVALID_HANDLE_VALUE) {
+        n = wsprintfA(dbgBuf, "[Pipe] CreateFileW failed, err=%lu\n", GetLastError());
+        WriteFile(hOut, dbgBuf, n, &dbgWritten, NULL);
+      } else {
+        n = wsprintfA(dbgBuf, "[Pipe] Connected OK\n");
+        WriteFile(hOut, dbgBuf, n, &dbgWritten, NULL);
+      }
+    } else {
+      const char* msg = "[Pipe] ODINM_PROGRESS_PIPE not set\n";
+      WriteFile(hOut, msg, 35, &dbgWritten, NULL);
+    }
+  }
+
+  // Apply parsed command-line options to OdinManager, overriding INI-file defaults.
+  // Without these calls the parsed flags (-allBlocks, -compression=, -split=, -makeSnapshot)
+  // are stored in fOperation but never reach the manager, so the INI values silently win.
+  fOdinManager->SetSaveOnlyUsedBlocksOption(fOperation.mode == modeOnlyUsedBlocks);
+  fOdinManager->SetCompressionMode((TCompressionFormat)fOperation.compression);
+  fOdinManager->SetSplitSize(fOperation.splitSizeMB > 0
+    ? (unsigned __int64)fOperation.splitSizeMB * 1024 * 1024
+    : 0);
+  fOdinManager->SetTakeSnapshotOption(fOperation.mode == modeUsedBlocksAndSnapshot);
+
   if (fOperation.cmd == CmdUsage) {
     PrintUsage();
     return;
@@ -627,8 +662,9 @@ void CCommandLineProcessor::Reset() {
   fOperation.mode         = modeOnlyUsedBlocks;
   fOperation.compression  = compressionGZip;
   fOperation.force        = false;
-  fTimer      = NULL;
-  fLastPercent = 0;
+  fTimer        = NULL;
+  fProgressPipe = INVALID_HANDLE_VALUE;
+  fLastPercent  = 0;
   fFeedback.reset();
 }
 
@@ -658,6 +694,10 @@ void CCommandLineProcessor::OnFinished()
     fLastPercent = 0;
     fCrc32 = 0;
     fVerifyRun = false;
+    if (fProgressPipe != INVALID_HANDLE_VALUE) {
+      CloseHandle(fProgressPipe);
+      fProgressPipe = INVALID_HANDLE_VALUE;
+    }
   }
 }
 
@@ -699,17 +739,24 @@ void CCommandLineProcessor::OnPrepareSnapshotReady()
 
 void CCommandLineProcessor::ReportFeedback()
 {
-  wcout << L'.';
-  unsigned __int64 bytesTotal = fOdinManager->GetTotalBytesToProcess();
+  HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  DWORD written;
+  WriteFile(hOut, ".", 1, &written, NULL);
+
+  unsigned __int64 bytesTotal     = fOdinManager->GetTotalBytesToProcess();
   unsigned __int64 bytesProcessed = fOdinManager->GetBytesProcessed();
-  if (bytesTotal) {
-    int percent = (int) ((bytesProcessed * 100 + (bytesTotal/2)) / bytesTotal);
-    if (percent > fLastPercent+5) {
-      wcout << percent/5*5 << L'%';
+  if (bytesTotal > 0) {
+    int percent = (int)((bytesProcessed * 100 + bytesTotal / 2) / bytesTotal);
+    if (percent > fLastPercent) {
+      // Send progress over the named pipe (real-time, no stdout buffering issues).
+      if (fProgressPipe != INVALID_HANDLE_VALUE) {
+        char buf[16];
+        int len = wsprintfA(buf, "%d\n", percent);
+        WriteFile(fProgressPipe, buf, len, &written, NULL);
+      }
       fLastPercent = percent;
     }
   }
-  wcout.flush();
 }
 
 // Code taken from: http://dslweb.nwnexus.com/~ast/dload/guicon.htm
@@ -723,10 +770,19 @@ bool  CCommandLineProcessor::InitConsole(bool createConsole) {
   // parent process.  Just configure unbuffered UTF-8 text mode and return.
   HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   if (hStdOut != INVALID_HANDLE_VALUE && GetFileType(hStdOut) == FILE_TYPE_PIPE) {
+    // odin.exe is a Windows-subsystem app: the CRT's fd 1 (stdout) is not
+    // automatically wired to the inherited pipe handle from STARTF_USESTDHANDLES.
+    // _open_osfhandle + _dup2 forces the connection so that setvbuf/_setmode
+    // actually take effect and wcout writes flush immediately to the pipe.
+    int pipeFd = _open_osfhandle((intptr_t)hStdOut, _O_WRONLY | _O_TEXT);
+    if (pipeFd != -1) {
+      _dup2(pipeFd, 1);
+      _close(pipeFd);
+    }
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
-    _setmode(_fileno(stdout), _O_U8TEXT);
-    _setmode(_fileno(stderr), _O_U8TEXT);
+    _setmode(1, _O_U8TEXT);
+    _setmode(2, _O_U8TEXT);
     ios::sync_with_stdio(true);
     wcout.flush();
     wcout.clear();

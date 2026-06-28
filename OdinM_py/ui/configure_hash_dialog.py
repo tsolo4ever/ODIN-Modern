@@ -16,7 +16,7 @@ from ttkbootstrap.constants import *
 
 from hash_config import HashConfig, NUM_PARTITIONS, blank_partition
 from hash_worker import HashStatus, HashWorker
-from partition_reader import PartitionInfo, read_mbr_partitions
+from partition_reader import PartitionInfo, get_image_hash_region, read_mbr_partitions
 
 
 class ConfigureHashDialog(ttk.Toplevel):
@@ -35,7 +35,7 @@ class ConfigureHashDialog(ttk.Toplevel):
         self._path       = image_path
         self._hcfg       = HashConfig()
         self._worker: Optional[HashWorker] = None
-        self._partition  = 1
+        self._partition  = 0   # must match the initial combobox selection ("Partition 0")
         # keyed by 1-based partition number
         self._partitions: Dict[int, PartitionInfo] = {}
 
@@ -190,7 +190,8 @@ class ConfigureHashDialog(ttk.Toplevel):
             "sha256_enabled": bool(self._sha256_enable_var.get()),
             "sha256_fail":    bool(self._sha256_fail_var.get()),
         }
-        self._hcfg.save_partition(self._path, self._partition, cfg)
+        if not self._hcfg.save_partition(self._path, self._partition, cfg):
+            self._calc_status_var.set("Save failed — check config file permissions.")
 
     def _refresh_status(self):
         sha1 = self._sha1_var.get().strip()
@@ -246,6 +247,9 @@ class ConfigureHashDialog(ttk.Toplevel):
                 f"Partition {p.number}: {p.summary}  "
                 f"(offset {p.offset // (1 << 20):.1f} MB, "
                 f"will hash partition only)")
+        elif self._partition == 0:
+            self._part_info_var.set(
+                "Disk-level hash — will hash the raw disk payload used for target verification")
         else:
             self._part_info_var.set(
                 "Partition not detected — will hash entire file")
@@ -258,7 +262,27 @@ class ConfigureHashDialog(ttk.Toplevel):
         self._calc_pbar_var.set(0)
 
         p = self._partitions.get(self._partition)
-        if p:
+        if self._partition == 0:
+            region = get_image_hash_region(self._path)
+            if region is None:
+                self._calc_status_var.set("Failed — image header is not readable")
+                return
+            if not region.is_raw_supported:
+                self._calc_status_var.set(
+                    f"Failed — compressed ODIN image verification is unsupported "
+                    f"(compression {region.compression_scheme})")
+                return
+            self._calc_status_var.set(
+                f"Computing disk-level hash ({region.size} bytes)…")
+            self._worker = HashWorker(
+                root=self._parent,
+                file_path=self._path,
+                on_progress=self._on_calc_progress,
+                on_done=lambda s, sha256, sha1: self._on_calc_done(s, sha256, sha1, mode),
+                offset=region.offset,
+                byte_count=region.size,
+            )
+        elif p:
             self._calc_status_var.set(
                 f"Computing hash of partition {p.number} ({p.size_str})…")
             self._worker = HashWorker(

@@ -1,8 +1,8 @@
 # ODIN Project Rules
 
 ## Project Overview
-Windows disk imaging and backup utility (C++17, WTL 10.0, VS2022 v145 toolset, x64-only).
-Solution file: `ODIN.sln` — 7 projects (ODIN, ODINC, OdinM, zlib, libz2, ODINHelp, ODINTest).
+Windows disk imaging and backup utility (C++17, WTL 10.0, VS2026 v145 toolset, x64-only).
+Solution file: `ODIN.sln` — 6 projects (ODIN, ODINC, zlib, libz2, ODINHelp, ODINTest). The multi-drive UI lives in `OdinM_py`.
 
 ## Build Command
 ```
@@ -19,7 +19,7 @@ Solution file: `ODIN.sln` — 7 projects (ODIN, ODINC, OdinM, zlib, libz2, ODINH
 ```
 "C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe" ODIN.sln /p:Configuration=Debug /p:Platform=x64 /t:ODIN /m /nologo
 ```
-Replace `/t:ODIN` with `/t:OdinM`, `/t:ODINTest`, etc. as needed.
+Replace `/t:ODIN` with `/t:ODINC`, `/t:ODINTest`, etc. as needed.
 
 ## C++ Rules
 - **C++17 throughout** — MSVC v143 toolset

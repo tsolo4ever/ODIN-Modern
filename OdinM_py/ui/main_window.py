@@ -51,6 +51,7 @@ class MainWindow(ttk.Frame):
     def on_configure_hashes(self):      pass
     def on_verify_stored(self):         pass
     def on_make_image(self):            pass
+    def on_flash_widget_toggle(self, enabled: bool): pass
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -211,7 +212,7 @@ class MainWindow(ttk.Frame):
             side=LEFT, padx=(8, 12), pady=6)
 
         self._verify_after_var = ttk.BooleanVar(value=self._config.get_verify_after_clone())
-        ttk.Checkbutton(frame, text="Verify hash after clone",
+        ttk.Checkbutton(frame, text="Verify target disk hash after clone",
                         variable=self._verify_after_var, bootstyle="round-toggle",
                         command=lambda: self._config.set_verify_after_clone(
                             bool(self._verify_after_var.get()))).pack(
@@ -222,6 +223,12 @@ class MainWindow(ttk.Frame):
                         variable=self._stop_on_fail_var, bootstyle="round-toggle",
                         command=lambda: self._config.set_stop_on_verify_fail(
                             bool(self._stop_on_fail_var.get()))).pack(
+            side=LEFT, padx=(0, 12), pady=6)
+
+        self._flash_widget_var = ttk.BooleanVar(value=self._config.get_show_flash_widget())
+        ttk.Checkbutton(frame, text="Show flash widget",
+                        variable=self._flash_widget_var, bootstyle="round-toggle",
+                        command=self._toggle_flash_widget).pack(
             side=LEFT, padx=(0, 12), pady=6)
 
     def _build_log(self):
@@ -270,6 +277,11 @@ class MainWindow(ttk.Frame):
         ttk.Button(btn_f, text="Cancel", command=dlg.destroy).pack(side=RIGHT)
 
         dlg.wait_window()
+
+    def _toggle_flash_widget(self):
+        enabled = bool(self._flash_widget_var.get())
+        self._config.set_show_flash_widget(enabled)
+        self.on_flash_widget_toggle(enabled)
 
     def _set_theme(self, theme: str):
         self._config.set_theme(theme)

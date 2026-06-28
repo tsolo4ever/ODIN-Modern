@@ -61,15 +61,17 @@ class HashWorker:
     # ── private ──────────────────────────────────────────────────────────────
 
     def _run(self):
-        try:
-            file_size = os.path.getsize(self._path)
-        except OSError:
-            self._fire_done(HashStatus.FAILED, "", "")
-            return
-
         offset = self._offset
-        total  = self._byte_count if self._byte_count >= 0 else file_size - offset
-        total  = max(0, min(total, file_size - offset))
+        if self._byte_count >= 0:
+            total = self._byte_count
+        else:
+            try:
+                file_size = os.path.getsize(self._path)
+            except OSError:
+                self._fire_done(HashStatus.FAILED, "", "")
+                return
+            total = file_size - offset
+        total = max(0, total)
 
         sha256 = hashlib.sha256()
         sha1   = hashlib.sha1()
@@ -97,6 +99,10 @@ class HashWorker:
                             self._fire_progress(pct)
                             last_pct = pct
         except OSError:
+            self._fire_done(HashStatus.FAILED, "", "")
+            return
+
+        if done < total:
             self._fire_done(HashStatus.FAILED, "", "")
             return
 

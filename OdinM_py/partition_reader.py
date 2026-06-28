@@ -7,9 +7,10 @@ Returns byte offset and size for each partition so HashWorker can
 hash individual partitions rather than the whole file.
 """
 
+import os
 import struct
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 SECTOR_SIZE     = 512
 MBR_SIG_OFFSET  = 510
@@ -28,6 +29,9 @@ _ODIN_MAGIC = bytes([
 # dataOffset is the 5th UINT64 field (index [15] after unpack)
 _ODIN_HDR_FMT  = "<16sHHIIIIIIII4xQQQQQQQQQ"
 _ODIN_HDR_SIZE = struct.calcsize(_ODIN_HDR_FMT)   # 128
+_ODIN_NO_COMPRESSION = 0
+_ODIN_NO_BITMAP      = 0   # volumeBitmapEncodingScheme == 0 → all-blocks (raw sectors)
+                            # == 1 → used-blocks (packed cluster data, not raw sectors)
 
 
 _TYPE_NAMES = {
@@ -55,9 +59,12 @@ class PartitionInfo:
     offset:    int   # byte offset into image FILE (includes ODIN header if present)
     size:      int   # byte count
     active:    bool  # bootable flag
+    type_label: str = ""
 
     @property
     def type_name(self) -> str:
+        if self.type_label:
+            return self.type_label
         return _TYPE_NAMES.get(self.part_type, f"Type 0x{self.part_type:02X}")
 
     @property
@@ -74,6 +81,29 @@ class PartitionInfo:
         return f"{self.type_name}, {self.size_str}{boot}"
 
 
+@dataclass
+class ImageHashRegion:
+    offset: int
+    size: int
+    is_odin: bool
+    compression_scheme: int = _ODIN_NO_COMPRESSION
+    volume_bitmap_scheme: int = _ODIN_NO_BITMAP
+
+    @property
+    def is_raw_supported(self) -> bool:
+        """True when the image file can be hashed (uncompressed at file level)."""
+        return not self.is_odin or self.compression_scheme == _ODIN_NO_COMPRESSION
+
+    @property
+    def is_disk_verifiable(self) -> bool:
+        """True only for uncompressed all-blocks images.
+        Used-blocks images store packed cluster data, not raw sequential sectors,
+        so their bytes cannot be compared directly against a raw disk read."""
+        return (not self.is_odin or
+                (self.compression_scheme == _ODIN_NO_COMPRESSION and
+                 self.volume_bitmap_scheme == _ODIN_NO_BITMAP))
+
+
 def _odin_data_offset(image_path: str) -> int:
     """Return the byte offset where raw disk data begins in an ODIN .img file.
     Returns 0 if the file is not an ODIN image (treat as raw disk image)."""
@@ -88,6 +118,83 @@ def _odin_data_offset(image_path: str) -> int:
         return int(fields[15])  # dataOffset
     except OSError:
         return 0
+
+
+def get_image_hash_region(image_path: str) -> Optional[ImageHashRegion]:
+    """Return the raw disk byte region to hash for disk-level verification.
+
+    Raw files hash the entire file. ODIN images hash only the raw data payload.
+    Compressed ODIN images are reported but not considered raw-supported.
+    """
+    try:
+        file_size = os.path.getsize(image_path)
+        with open(image_path, "rb") as f:
+            header = f.read(_ODIN_HDR_SIZE)
+    except OSError:
+        return None
+
+    if len(header) < _ODIN_HDR_SIZE or header[:16] != _ODIN_MAGIC:
+        return ImageHashRegion(offset=0, size=file_size, is_odin=False)
+
+    fields = struct.unpack_from(_ODIN_HDR_FMT, header)
+    compression_scheme      = int(fields[3])
+    volume_bitmap_scheme    = int(fields[5])   # 0=no bitmap (all-blocks), 1=used-blocks
+    data_offset             = int(fields[15])
+    data_size               = int(fields[16])
+    used_size               = int(fields[17])
+    volume_size             = int(fields[18])
+
+    if data_offset < 0 or data_offset > file_size:
+        return None
+    remaining = file_size - data_offset
+    if compression_scheme != _ODIN_NO_COMPRESSION:
+        size = min(max(data_size, 0), remaining)
+    else:
+        candidates = [n for n in (volume_size, used_size, data_size) if n > 0]
+        size = min(candidates[0] if candidates else remaining, remaining)
+    return ImageHashRegion(
+        offset=data_offset,
+        size=size,
+        is_odin=True,
+        compression_scheme=compression_scheme,
+        volume_bitmap_scheme=volume_bitmap_scheme,
+    )
+
+
+def _read_gpt_partitions(f, data_offset: int) -> List[PartitionInfo]:
+    f.seek(data_offset + SECTOR_SIZE)
+    header = f.read(SECTOR_SIZE)
+    if len(header) < 92 or header[:8] != b"EFI PART":
+        return []
+
+    entries_lba = struct.unpack_from("<Q", header, 72)[0]
+    entry_count = struct.unpack_from("<I", header, 80)[0]
+    entry_size = struct.unpack_from("<I", header, 84)[0]
+    if entry_count == 0 or entry_size < 56 or entry_size > 4096:
+        return []
+
+    entries: List[PartitionInfo] = []
+    f.seek(data_offset + entries_lba * SECTOR_SIZE)
+    zero_guid = b"\x00" * 16
+    for _ in range(min(entry_count, 128)):
+        raw = f.read(entry_size)
+        if len(raw) < entry_size:
+            break
+        if raw[:16] == zero_guid:
+            continue
+        first_lba = struct.unpack_from("<Q", raw, 32)[0]
+        last_lba = struct.unpack_from("<Q", raw, 40)[0]
+        if last_lba < first_lba:
+            continue
+        entries.append(PartitionInfo(
+            number=len(entries) + 1,
+            part_type=0xEE,
+            offset=data_offset + first_lba * SECTOR_SIZE,
+            size=(last_lba - first_lba + 1) * SECTOR_SIZE,
+            active=False,
+            type_label="GPT partition",
+        ))
+    return entries
 
 
 def read_mbr_partitions(image_path: str) -> List[PartitionInfo]:
@@ -117,6 +224,12 @@ def read_mbr_partitions(image_path: str) -> List[PartitionInfo]:
                 lba_size  = struct.unpack_from("<I", raw, 12)[0]
                 if lba_size == 0 or part_type == 0x00:
                     continue
+                if part_type == 0xEE:
+                    resume_pos = f.tell()
+                    gpt_entries = _read_gpt_partitions(f, data_offset)
+                    if gpt_entries:
+                        return gpt_entries
+                    f.seek(resume_pos)
                 entries.append(PartitionInfo(
                     number    = i + 1,
                     part_type = part_type,

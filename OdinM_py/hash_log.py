@@ -32,7 +32,7 @@ class HashLog:
         """Return stored entry for filepath, or None if not recorded."""
         return self._data.get(os.path.normcase(filepath))
 
-    def save_entry(self, filepath: str, sha256: str, sha1: str):
+    def save_entry(self, filepath: str, sha256: str, sha1: str) -> bool:
         """Record a successful hash result with current UTC timestamp."""
         key = os.path.normcase(filepath)
         self._data[key] = {
@@ -41,7 +41,7 @@ class HashLog:
             "sha1":     sha1,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        self._save()
+        return self._save()
 
     def days_since(self, filepath: str) -> Optional[int]:
         """Days since the last recorded hash, or None if never recorded."""
@@ -67,9 +67,10 @@ class HashLog:
         except (FileNotFoundError, json.JSONDecodeError):
             self._data = {}
 
-    def _save(self):
+    def _save(self) -> bool:
         try:
             with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2)
+            return True
         except OSError:
-            pass
+            return False

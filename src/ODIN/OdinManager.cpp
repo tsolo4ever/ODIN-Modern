@@ -320,7 +320,8 @@ void COdinManager::DoCopy(TOdinOperation operation, LPCWSTR fileName, int driveI
       if (!verifyOnly) {
         static_cast<CDiskImageStream*>(fTargetImage.get())->SetBytesPerCluster(bytesPerCluster);
         fileStream->GetImageFileHeader().GetClusterBitmapOffsetAndLength(volumeBitmapOffset, volumeBitmapLength);
-        fWriteThread->SetAllocationMapReaderInfo(fSourceImage->GetRunLengthStreamReader(), fileStream->GetImageFileHeader().GetClusterSize());
+        if (volumeBitmapLength > 0)
+          fWriteThread->SetAllocationMapReaderInfo(fSourceImage->GetRunLengthStreamReader(), fileStream->GetImageFileHeader().GetClusterSize());
       }
       dataOffset = fileStream->GetImageFileHeader().GetVolumeDataOffset();
       fReadThread->SetVolumeDataOffset(dataOffset);

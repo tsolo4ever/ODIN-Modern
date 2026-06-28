@@ -45,7 +45,7 @@ class HashConfig:
         partitions = self._data.get(key, {}).get("partitions", {})
         return dict(partitions.get(str(partition), blank_partition()))
 
-    def save_partition(self, filepath: str, partition: int, cfg: dict):
+    def save_partition(self, filepath: str, partition: int, cfg: dict) -> bool:
         """Persist config for a specific partition."""
         key = os.path.normcase(filepath)
         if key not in self._data:
@@ -54,7 +54,7 @@ class HashConfig:
                 "partitions": {},
             }
         self._data[key]["partitions"][str(partition)] = dict(cfg)
-        self._save()
+        return self._save()
 
     def has_any_enabled(self, filepath: str) -> bool:
         """True if any partition has at least one algorithm enabled."""
@@ -82,9 +82,10 @@ class HashConfig:
         except (FileNotFoundError, json.JSONDecodeError):
             self._data = {}
 
-    def _save(self):
+    def _save(self) -> bool:
         try:
             with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(self._data, f, indent=2)
+            return True
         except OSError:
-            pass
+            return False

@@ -15,8 +15,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINHelp", "ODINHelp.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ODINC", "ODINC.vcxproj", "{F540A81C-48F2-45F1-A9E4-664D1670CDFC}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OdinM", "OdinM.vcxproj", "{3C9E4F1A-8B2D-4E6C-A190-5D7B3F8C2E4A}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -36,6 +34,7 @@ Global
 		{183C0677-B102-4918-8432-603CE2786060}.Release|x64.ActiveCfg = Release|x64
 		{183C0677-B102-4918-8432-603CE2786060}.Release|x64.Build.0 = Release|x64
 		{1F5DFFEC-276B-436C-8F78-7332B5BA1407}.Debug|x64.ActiveCfg = Debug|x64
+		{1F5DFFEC-276B-436C-8F78-7332B5BA1407}.Debug|x64.Build.0 = Debug|x64
 		{1F5DFFEC-276B-436C-8F78-7332B5BA1407}.Release|x64.ActiveCfg = Release|x64
 		{D5241911-1B41-45CC-99D7-795A7D6221B9}.Debug|x64.ActiveCfg = Debug|x64
 		{D5241911-1B41-45CC-99D7-795A7D6221B9}.Release|x64.ActiveCfg = Release|x64
@@ -43,10 +42,6 @@ Global
 		{F540A81C-48F2-45F1-A9E4-664D1670CDFC}.Debug|x64.Build.0 = Debug|x64
 		{F540A81C-48F2-45F1-A9E4-664D1670CDFC}.Release|x64.ActiveCfg = Release|x64
 		{F540A81C-48F2-45F1-A9E4-664D1670CDFC}.Release|x64.Build.0 = Release|x64
-		{3C9E4F1A-8B2D-4E6C-A190-5D7B3F8C2E4A}.Debug|x64.ActiveCfg = Debug|x64
-		{3C9E4F1A-8B2D-4E6C-A190-5D7B3F8C2E4A}.Debug|x64.Build.0 = Debug|x64
-		{3C9E4F1A-8B2D-4E6C-A190-5D7B3F8C2E4A}.Release|x64.ActiveCfg = Release|x64
-		{3C9E4F1A-8B2D-4E6C-A190-5D7B3F8C2E4A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
