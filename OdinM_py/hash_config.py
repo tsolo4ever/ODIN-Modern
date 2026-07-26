@@ -8,10 +8,8 @@ Used for Missouri Gaming Commission compliance verification.
 import json
 import os
 import sys
-from typing import Dict, Optional
 
-CONFIG_FILE    = "odinm_hash_config.json"
-NUM_PARTITIONS = 5
+CONFIG_FILE = "odinm_hash_config.json"
 
 
 def _config_path() -> str:
@@ -24,19 +22,19 @@ def _config_path() -> str:
 
 def blank_partition() -> dict:
     return {
-        "sha1_value":     "",
-        "sha1_enabled":   False,
-        "sha1_fail":      False,
-        "sha256_value":   "",
+        "sha1_value": "",
+        "sha1_enabled": False,
+        "sha1_fail": False,
+        "sha256_value": "",
         "sha256_enabled": False,
-        "sha256_fail":    False,
+        "sha256_fail": False,
     }
 
 
 class HashConfig:
     def __init__(self):
         self._path = _config_path()
-        self._data: Dict[str, dict] = {}
+        self._data: dict[str, dict] = {}
         self._load()
 
     def get_partition(self, filepath: str, partition: int) -> dict:
@@ -56,15 +54,7 @@ class HashConfig:
         self._data[key]["partitions"][str(partition)] = dict(cfg)
         return self._save()
 
-    def has_any_enabled(self, filepath: str) -> bool:
-        """True if any partition has at least one algorithm enabled."""
-        key = os.path.normcase(filepath)
-        for part_cfg in self._data.get(key, {}).get("partitions", {}).values():
-            if part_cfg.get("sha1_enabled") or part_cfg.get("sha256_enabled"):
-                return True
-        return False
-
-    def get_enabled_partitions(self, filepath: str) -> Dict[int, dict]:
+    def get_enabled_partitions(self, filepath: str) -> dict[int, dict]:
         """Return {partition_number: cfg} for all partitions with any algo enabled."""
         key = os.path.normcase(filepath)
         result = {}
@@ -77,7 +67,7 @@ class HashConfig:
 
     def _load(self):
         try:
-            with open(self._path, "r", encoding="utf-8") as f:
+            with open(self._path, encoding="utf-8") as f:
                 self._data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             self._data = {}

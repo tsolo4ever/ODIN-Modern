@@ -5,7 +5,7 @@ import configparser
 CONFIG_FILE = "odinm_py.ini"
 
 DEFAULTS = {
-    "odinc_path": "",   # resolved at runtime if blank
+    "odinc_path": "",  # resolved at runtime if blank
     "theme": "darkly",
     "max_concurrent": "3",
     "auto_clone": "false",
@@ -112,10 +112,6 @@ class ConfigManager:
 
     def set_show_flash_widget(self, v: bool):
         self._cfg["settings"]["show_flash_widget"] = "true" if v else "false"
-        self._save()
-
-    def set_max_drive_gb(self, n: int):
-        self._cfg["settings"]["max_drive_gb"] = str(n)
         self._save()
 
     def _save(self):

@@ -10,28 +10,51 @@ hash individual partitions rather than the whole file.
 import os
 import struct
 from dataclasses import dataclass
-from typing import List, Optional
 
-SECTOR_SIZE     = 512
-MBR_SIG_OFFSET  = 510
-MBR_PART_OFFSET = 446   # start of 4 x 16-byte partition entries
+SECTOR_SIZE = 512
+MBR_SIG_OFFSET = 510
+MBR_PART_OFFSET = 446  # start of 4 x 16-byte partition entries
 
 # ODIN .img file header constants
 # GUID {1d4d7b73-fa01-40e1-b094-5267d8fa0be7} in Windows mixed-endian byte order
-_ODIN_MAGIC = bytes([
-    0x73, 0x7b, 0x4d, 0x1d,  # Data1 LE
-    0x01, 0xfa,               # Data2 LE
-    0xe1, 0x40,               # Data3 LE
-    0xb0, 0x94, 0x52, 0x67, 0xd8, 0xfa, 0x0b, 0xe7,  # Data4
-])
+_ODIN_MAGIC = bytes(
+    [
+        0x73,
+        0x7B,
+        0x4D,
+        0x1D,  # Data1 LE
+        0x01,
+        0xFA,  # Data2 LE
+        0xE1,
+        0x40,  # Data3 LE
+        0xB0,
+        0x94,
+        0x52,
+        0x67,
+        0xD8,
+        0xFA,
+        0x0B,
+        0xE7,  # Data4
+    ]
+)
 # TDiskImageFileHeader layout (MSVC /Zp8, 128 bytes total):
 #   GUID(16) + WORD(2) + WORD(2) + DWORD*8(32) + pad(4) + UINT64*9(72) = 128
 # dataOffset is the 5th UINT64 field (index [15] after unpack)
-_ODIN_HDR_FMT  = "<16sHHIIIIIIII4xQQQQQQQQQ"
-_ODIN_HDR_SIZE = struct.calcsize(_ODIN_HDR_FMT)   # 128
+_ODIN_HDR_FMT = "<16sHHIIIIIIII4xQQQQQQQQQ"
+_ODIN_HDR_SIZE = struct.calcsize(_ODIN_HDR_FMT)  # 128
 _ODIN_NO_COMPRESSION = 0
-_ODIN_NO_BITMAP      = 0   # volumeBitmapEncodingScheme == 0 → all-blocks (raw sectors)
-                            # == 1 → used-blocks (packed cluster data, not raw sectors)
+_ODIN_NO_BITMAP = 0  # volumeBitmapEncodingScheme == 0 → all-blocks (raw sectors)
+# == 1 → used-blocks (packed cluster data, not raw sectors)
+
+# Maps compressionScheme header value → -compression= CLI flag
+_COMPRESSION_FLAG: dict[int, str] = {
+    0: "none",
+    1: "gzip",
+    2: "bzip",
+    3: "lz4",
+    4: "lz4hc",
+    5: "zstd",
+}
 
 
 _TYPE_NAMES = {
@@ -54,11 +77,11 @@ _TYPE_NAMES = {
 
 @dataclass
 class PartitionInfo:
-    number:    int   # 1-based (matches Configure Hashes partition numbers)
-    part_type: int   # partition type byte
-    offset:    int   # byte offset into image FILE (includes ODIN header if present)
-    size:      int   # byte count
-    active:    bool  # bootable flag
+    number: int  # 1-based (matches Configure Hashes partition numbers)
+    part_type: int  # partition type byte
+    offset: int  # byte offset into image FILE (includes ODIN header if present)
+    size: int  # byte count
+    active: bool  # bootable flag
     type_label: str = ""
 
     @property
@@ -99,9 +122,10 @@ class ImageHashRegion:
         """True only for uncompressed all-blocks images.
         Used-blocks images store packed cluster data, not raw sequential sectors,
         so their bytes cannot be compared directly against a raw disk read."""
-        return (not self.is_odin or
-                (self.compression_scheme == _ODIN_NO_COMPRESSION and
-                 self.volume_bitmap_scheme == _ODIN_NO_BITMAP))
+        return not self.is_odin or (
+            self.compression_scheme == _ODIN_NO_COMPRESSION
+            and self.volume_bitmap_scheme == _ODIN_NO_BITMAP
+        )
 
 
 def _odin_data_offset(image_path: str) -> int:
@@ -120,7 +144,7 @@ def _odin_data_offset(image_path: str) -> int:
         return 0
 
 
-def get_image_hash_region(image_path: str) -> Optional[ImageHashRegion]:
+def get_image_hash_region(image_path: str) -> ImageHashRegion | None:
     """Return the raw disk byte region to hash for disk-level verification.
 
     Raw files hash the entire file. ODIN images hash only the raw data payload.
@@ -137,12 +161,12 @@ def get_image_hash_region(image_path: str) -> Optional[ImageHashRegion]:
         return ImageHashRegion(offset=0, size=file_size, is_odin=False)
 
     fields = struct.unpack_from(_ODIN_HDR_FMT, header)
-    compression_scheme      = int(fields[3])
-    volume_bitmap_scheme    = int(fields[5])   # 0=no bitmap (all-blocks), 1=used-blocks
-    data_offset             = int(fields[15])
-    data_size               = int(fields[16])
-    used_size               = int(fields[17])
-    volume_size             = int(fields[18])
+    compression_scheme = int(fields[3])
+    volume_bitmap_scheme = int(fields[5])  # 0=no bitmap (all-blocks), 1=used-blocks
+    data_offset = int(fields[15])
+    data_size = int(fields[16])
+    used_size = int(fields[17])
+    volume_size = int(fields[18])
 
     if data_offset < 0 or data_offset > file_size:
         return None
@@ -161,7 +185,7 @@ def get_image_hash_region(image_path: str) -> Optional[ImageHashRegion]:
     )
 
 
-def _read_gpt_partitions(f, data_offset: int) -> List[PartitionInfo]:
+def _read_gpt_partitions(f, data_offset: int) -> list[PartitionInfo]:
     f.seek(data_offset + SECTOR_SIZE)
     header = f.read(SECTOR_SIZE)
     if len(header) < 92 or header[:8] != b"EFI PART":
@@ -173,7 +197,7 @@ def _read_gpt_partitions(f, data_offset: int) -> List[PartitionInfo]:
     if entry_count == 0 or entry_size < 56 or entry_size > 4096:
         return []
 
-    entries: List[PartitionInfo] = []
+    entries: list[PartitionInfo] = []
     f.seek(data_offset + entries_lba * SECTOR_SIZE)
     zero_guid = b"\x00" * 16
     for _ in range(min(entry_count, 128)):
@@ -186,18 +210,35 @@ def _read_gpt_partitions(f, data_offset: int) -> List[PartitionInfo]:
         last_lba = struct.unpack_from("<Q", raw, 40)[0]
         if last_lba < first_lba:
             continue
-        entries.append(PartitionInfo(
-            number=len(entries) + 1,
-            part_type=0xEE,
-            offset=data_offset + first_lba * SECTOR_SIZE,
-            size=(last_lba - first_lba + 1) * SECTOR_SIZE,
-            active=False,
-            type_label="GPT partition",
-        ))
+        entries.append(
+            PartitionInfo(
+                number=len(entries) + 1,
+                part_type=0xEE,
+                offset=data_offset + first_lba * SECTOR_SIZE,
+                size=(last_lba - first_lba + 1) * SECTOR_SIZE,
+                active=False,
+                type_label="GPT partition",
+            )
+        )
     return entries
 
 
-def read_mbr_partitions(image_path: str) -> List[PartitionInfo]:
+def get_image_compression_flag(image_path: str) -> str:
+    """Return the -compression= flag value for the given image file.
+    Reads the ODIN header and maps compressionScheme to a CLI flag.
+    Returns 'none' for raw images, unreadable files, or unknown schemes."""
+    try:
+        with open(image_path, "rb") as f:
+            header = f.read(_ODIN_HDR_SIZE)
+        if len(header) < _ODIN_HDR_SIZE or header[:16] != _ODIN_MAGIC:
+            return "none"
+        fields = struct.unpack_from(_ODIN_HDR_FMT, header)
+        return _COMPRESSION_FLAG.get(int(fields[3]), "none")
+    except OSError:
+        return "none"
+
+
+def read_mbr_partitions(image_path: str) -> list[PartitionInfo]:
     """
     Parse the primary MBR partition table from image_path.
     Handles ODIN .img files (binary header) and raw disk images.
@@ -207,21 +248,21 @@ def read_mbr_partitions(image_path: str) -> List[PartitionInfo]:
     use directly in HashWorker(offset=...).
     """
     data_offset = _odin_data_offset(image_path)
-    entries: List[PartitionInfo] = []
+    entries: list[PartitionInfo] = []
     try:
         with open(image_path, "rb") as f:
             f.seek(data_offset + MBR_SIG_OFFSET)
-            if f.read(2) != b"\x55\xAA":
+            if f.read(2) != b"\x55\xaa":
                 return []
             f.seek(data_offset + MBR_PART_OFFSET)
             for i in range(4):
                 raw = f.read(16)
                 if len(raw) < 16:
                     break
-                status    = raw[0]
+                status = raw[0]
                 part_type = raw[4]
                 lba_start = struct.unpack_from("<I", raw, 8)[0]
-                lba_size  = struct.unpack_from("<I", raw, 12)[0]
+                lba_size = struct.unpack_from("<I", raw, 12)[0]
                 if lba_size == 0 or part_type == 0x00:
                     continue
                 if part_type == 0xEE:
@@ -230,13 +271,15 @@ def read_mbr_partitions(image_path: str) -> List[PartitionInfo]:
                     if gpt_entries:
                         return gpt_entries
                     f.seek(resume_pos)
-                entries.append(PartitionInfo(
-                    number    = i + 1,
-                    part_type = part_type,
-                    offset    = data_offset + lba_start * SECTOR_SIZE,
-                    size      = lba_size * SECTOR_SIZE,
-                    active    = status == 0x80,
-                ))
+                entries.append(
+                    PartitionInfo(
+                        number=i + 1,
+                        part_type=part_type,
+                        offset=data_offset + lba_start * SECTOR_SIZE,
+                        size=lba_size * SECTOR_SIZE,
+                        active=status == 0x80,
+                    )
+                )
     except OSError:
         return []
     return entries

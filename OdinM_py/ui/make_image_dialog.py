@@ -9,7 +9,6 @@ After completing, per-partition verify is ready to use.
 
 import os
 from tkinter import filedialog, messagebox
-from typing import Optional
 
 _MB = 1_048_576
 
@@ -25,30 +24,29 @@ from partition_reader import get_image_hash_region
 
 
 class MakeImageDialog(ttk.Toplevel):
-
     def __init__(self, parent, odinc_path: str):
         super().__init__(parent)
         self.title("Make Image")
         self.resizable(False, False)
         self.grab_set()
 
-        self._parent     = parent
-        self._odinc      = odinc_path
-        self._drives     = get_removable_drives()
-        self._worker: Optional[CloneWorker] = None
-        self._hasher: Optional[HashWorker]  = None
-        self._output_path  = ""
+        self._parent = parent
+        self._odinc = odinc_path
+        self._drives = get_removable_drives()
+        self._worker: CloneWorker | None = None
+        self._hasher: HashWorker | None = None
+        self._output_path = ""
         self._backup_flags = ["-allBlocks", "-compression=none"]
-        self._backup_polling    = False  # set True while file-size poll is active
-        self._poll_ticks        = 0      # seconds since backup started
-        self._poll_last_size    = -1     # last seen file size (bytes)
-        self._poll_stall_ticks  = 0      # consecutive ticks with same size
-        self._backup_drive_size = 0      # total drive bytes — used for progress %
+        self._backup_polling = False  # set True while file-size poll is active
+        self._poll_ticks = 0  # seconds since backup started
+        self._poll_last_size = -1  # last seen file size (bytes)
+        self._poll_stall_ticks = 0  # consecutive ticks with same size
+        self._backup_drive_size = 0  # total drive bytes — used for progress %
 
         self._build()
 
         self.update_idletasks()
-        px = parent.winfo_rootx() + (parent.winfo_width()  - self.winfo_width())  // 2
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
         py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
         self.geometry(f"+{px}+{py}")
 
@@ -64,34 +62,39 @@ class MakeImageDialog(ttk.Toplevel):
 
         # Source drive
         ttk.Label(outer, text="Source drive:", anchor=W).grid(
-            row=0, column=0, sticky=W, pady=(0, 4))
+            row=0, column=0, sticky=W, pady=(0, 4)
+        )
         drive_labels = [d.display for d in self._drives]
         self._drive_var = ttk.StringVar(
-            value=drive_labels[0] if drive_labels else "No removable drives found")
+            value=drive_labels[0] if drive_labels else "No removable drives found"
+        )
         self._drive_cb = ttk.Combobox(
-            outer, textvariable=self._drive_var, state="readonly",
-            values=drive_labels, width=46)
-        self._drive_cb.grid(row=0, column=1, columnspan=2, sticky=EW,
-                            padx=(8, 0), pady=(0, 4))
+            outer, textvariable=self._drive_var, state="readonly", values=drive_labels, width=46
+        )
+        self._drive_cb.grid(row=0, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=(0, 4))
 
         # Output file
-        ttk.Label(outer, text="Output file:", anchor=W).grid(
-            row=1, column=0, sticky=W, pady=(0, 4))
+        ttk.Label(outer, text="Output file:", anchor=W).grid(row=1, column=0, sticky=W, pady=(0, 4))
         self._output_var = ttk.StringVar()
         ttk.Entry(outer, textvariable=self._output_var).grid(
-            row=1, column=1, sticky=EW, padx=(8, 4), pady=(0, 4))
-        ttk.Button(outer, text="Browse…", width=9,
-                   command=self._browse_output).grid(row=1, column=2, pady=(0, 4))
+            row=1, column=1, sticky=EW, padx=(8, 4), pady=(0, 4)
+        )
+        ttk.Button(outer, text="Browse…", width=9, command=self._browse_output).grid(
+            row=1, column=2, pady=(0, 4)
+        )
 
         # Auto-workflow toggle
         self._auto_var = ttk.BooleanVar(value=True)
-        ttk.Checkbutton(outer, text="Auto hash & configure after backup",
-                        variable=self._auto_var,
-                        bootstyle="round-toggle").grid(
-            row=2, column=0, columnspan=3, sticky=W, pady=(4, 8))
+        ttk.Checkbutton(
+            outer,
+            text="Auto hash & configure after backup",
+            variable=self._auto_var,
+            bootstyle="round-toggle",
+        ).grid(row=2, column=0, columnspan=3, sticky=W, pady=(4, 8))
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=3, column=0, columnspan=3, sticky=EW, pady=(0, 8))
+            row=3, column=0, columnspan=3, sticky=EW, pady=(0, 8)
+        )
 
         # Step indicators
         step_frame = ttk.Frame(outer)
@@ -108,18 +111,19 @@ class MakeImageDialog(ttk.Toplevel):
         for i, text in enumerate(step_texts):
             icon = ttk.Label(step_frame, text="○", width=2, bootstyle="secondary")
             icon.grid(row=i, column=0, sticky=W)
-            lbl  = ttk.Label(step_frame, text=text, anchor=W, bootstyle="secondary")
+            lbl = ttk.Label(step_frame, text=text, anchor=W, bootstyle="secondary")
             lbl.grid(row=i, column=1, sticky=W, padx=(4, 0))
             self._step_lbls.append((icon, lbl))
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=5, column=0, columnspan=3, sticky=EW, pady=(6, 8))
+            row=5, column=0, columnspan=3, sticky=EW, pady=(6, 8)
+        )
 
         # Progress + status
         self._progress_var = ttk.IntVar(value=0)
-        self._pbar = ttk.Progressbar(outer, variable=self._progress_var,
-                                      maximum=100, length=420,
-                                      bootstyle="info-striped")
+        self._pbar = ttk.Progressbar(
+            outer, variable=self._progress_var, maximum=100, length=420, bootstyle="info-striped"
+        )
         self._pbar.grid(row=6, column=0, columnspan=3, sticky=EW, pady=(0, 4))
 
         self._status_lbl = ttk.Label(outer, text="Ready", bootstyle="secondary")
@@ -129,17 +133,20 @@ class MakeImageDialog(ttk.Toplevel):
         btn_frame = ttk.Frame(outer)
         btn_frame.grid(row=8, column=0, columnspan=3, sticky=EW)
 
-        self._start_btn = ttk.Button(btn_frame, text="Start",
-                                      bootstyle="success", command=self._start)
+        self._start_btn = ttk.Button(
+            btn_frame, text="Start", bootstyle="success", command=self._start
+        )
         self._start_btn.pack(side=LEFT, padx=(0, 6))
-        self._stop_btn = ttk.Button(btn_frame, text="Stop",
-                                     bootstyle="danger-outline", command=self._stop,
-                                     state=DISABLED)
+        self._stop_btn = ttk.Button(
+            btn_frame, text="Stop", bootstyle="danger-outline", command=self._stop, state=DISABLED
+        )
         self._stop_btn.pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Options…", bootstyle="secondary-outline",
-                   command=self._open_options).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Close", bootstyle="outline",
-                   command=self._on_close).pack(side=RIGHT)
+        ttk.Button(
+            btn_frame, text="Options…", bootstyle="secondary-outline", command=self._open_options
+        ).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(btn_frame, text="Close", bootstyle="outline", command=self._on_close).pack(
+            side=RIGHT
+        )
 
     # ── step indicator helpers ────────────────────────────────────────────────
 
@@ -151,8 +158,8 @@ class MakeImageDialog(ttk.Toplevel):
         styles = {
             "pending": ("○", "secondary"),
             "running": ("▶", "info"),
-            "done":    ("✓", "success"),
-            "failed":  ("✗", "danger"),
+            "done": ("✓", "success"),
+            "failed": ("✗", "danger"),
         }
         sym, style = styles.get(state, ("○", "secondary"))
         icon.configure(text=sym, bootstyle=style)
@@ -172,6 +179,7 @@ class MakeImageDialog(ttk.Toplevel):
 
     def _open_options(self):
         from ui.image_options_dialog import ImageOptionsDialog
+
         dlg = ImageOptionsDialog(self, self._backup_flags)
         if dlg.result is not None:
             self._backup_flags = dlg.result
@@ -199,7 +207,7 @@ class MakeImageDialog(ttk.Toplevel):
                 self._status("Backup cancelled — output file already exists.", "warning")
                 return
 
-        self._output_path       = output
+        self._output_path = output
         self._backup_drive_size = drive.size_bytes
         self._progress_var.set(0)
         self._start_btn.configure(state=DISABLED)
@@ -230,9 +238,9 @@ class MakeImageDialog(ttk.Toplevel):
         self._worker.start()
 
         # Start file-size poller for error detection
-        self._backup_polling   = True
-        self._poll_ticks       = 0
-        self._poll_last_size   = -1
+        self._backup_polling = True
+        self._poll_ticks = 0
+        self._poll_last_size = -1
         self._poll_stall_ticks = 0
         self.after(1000, self._poll_backup_file)
 
@@ -251,7 +259,7 @@ class MakeImageDialog(ttk.Toplevel):
     def _on_backup_done(self, status: CloneStatus):
         if not self.winfo_exists():
             return
-        self._backup_polling = False   # stop file-size poller
+        self._backup_polling = False  # stop file-size poller
         self._pbar.stop()
         self._pbar.configure(mode="determinate")
         if status == CloneStatus.DONE:
@@ -337,14 +345,18 @@ class MakeImageDialog(ttk.Toplevel):
                 raise OSError("could not write hash log")
 
             # Save to partition 0 (whole-disk/image hash), both algos enabled+fail
-            saved = HashConfig().save_partition(self._output_path, 0, {
-                "sha1_value":     sha1,
-                "sha1_enabled":   True,
-                "sha1_fail":      True,
-                "sha256_value":   sha256,
-                "sha256_enabled": True,
-                "sha256_fail":    True,
-            })
+            saved = HashConfig().save_partition(
+                self._output_path,
+                0,
+                {
+                    "sha1_value": sha1,
+                    "sha1_enabled": True,
+                    "sha1_fail": True,
+                    "sha256_value": sha256,
+                    "sha256_enabled": True,
+                    "sha256_fail": True,
+                },
+            )
             if not saved:
                 raise OSError("could not write hash config")
 
@@ -352,7 +364,8 @@ class MakeImageDialog(ttk.Toplevel):
             self._status(
                 "Setup complete — disk-level hash saved (partition 0). "
                 "Use Options → Configure Hashes to add per-partition hashes.",
-                "success")
+                "success",
+            )
         except Exception as exc:
             self._set_step(2, "failed")
             self._status(f"Config save failed: {exc}", "danger")
@@ -395,7 +408,7 @@ class MakeImageDialog(ttk.Toplevel):
                 self._poll_stall_ticks = 0
 
             self._poll_last_size = size
-            mb  = size / _MB
+            mb = size / _MB
             tot = self._backup_drive_size
 
             if tot > 0:

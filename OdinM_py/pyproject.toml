@@ -1,0 +1,61 @@
+# pyproject.toml — tooling configuration for OdinM_py
+# Not a Python package; no [project] section.
+#
+# Normal usage (run from OdinM_py/):
+#   ruff check .
+#   ruff format --check .
+#   mypy .
+
+# ---------------------------------------------------------------------------
+# Ruff — linting and formatting
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["."]
+exclude = [
+    ".git",
+    "__pycache__",
+    "*.bak",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes — undefined names, unused imports, redefined builtins
+    "E7",   # pycodestyle statement errors (e.g. E711 comparison to None)
+    "E722", # bare except — masks real exception types
+    "W",    # pycodestyle warnings
+    "B",    # flake8-bugbear — common correctness pitfalls
+    "UP",   # pyupgrade — modernize syntax where safe
+    "C4",   # flake8-comprehensions — unnecessary list/dict/set calls
+]
+ignore = [
+    "E501",  # line too long — formatter enforces line-length
+    "B008",  # function calls in default args — normal for Tkinter callbacks
+    "UP034", # extraneous parentheses — aids readability in long conditions
+    "W291",  # trailing whitespace — formatter handles this
+    "F403",  # star import — ttkbootstrap.constants is idiomatic ttkbootstrap usage
+    "F405",  # may-be-from-star — W/EW/HORIZONTAL etc. are standard tkinter layout constants
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+# ---------------------------------------------------------------------------
+# mypy — type checking
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.11"
+files = ["."]
+exclude = [".*\\.bak$"]
+ignore_missing_imports = true   # ttkbootstrap, ctypes.windll have no stubs
+check_untyped_defs = true
+warn_return_any = false         # too noisy with dynamic Tkinter attribute access
+warn_unused_ignores = true
+no_implicit_reexport = false

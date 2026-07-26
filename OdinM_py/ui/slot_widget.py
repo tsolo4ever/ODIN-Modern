@@ -11,12 +11,12 @@ from clone_worker import CloneStatus
 
 # Status → (ttkbootstrap bootstyle, label text)
 STATUS_STYLE = {
-    CloneStatus.IDLE:    ("secondary", "Empty"),
-    CloneStatus.QUEUED:  ("warning",   "Queued"),
-    CloneStatus.RUNNING: ("info",      "Cloning"),
-    CloneStatus.DONE:    ("success",   "Done"),
-    CloneStatus.FAILED:  ("danger",    "Failed"),
-    CloneStatus.STOPPED: ("warning",   "Stopped"),
+    CloneStatus.IDLE: ("secondary", "Empty"),
+    CloneStatus.QUEUED: ("warning", "Queued"),
+    CloneStatus.RUNNING: ("info", "Cloning"),
+    CloneStatus.DONE: ("success", "Done"),
+    CloneStatus.FAILED: ("danger", "Failed"),
+    CloneStatus.STOPPED: ("warning", "Stopped"),
 }
 
 
@@ -33,7 +33,7 @@ class SlotWidget(ttk.Frame):
         super().__init__(parent, **kwargs)
         self._idx = slot_index
         self._on_start = on_start
-        self._on_stop  = on_stop
+        self._on_stop = on_stop
         self._build()
         self.reset()
 
@@ -43,45 +43,51 @@ class SlotWidget(ttk.Frame):
         self.columnconfigure(2, weight=1)  # drive info column expands
 
         # Slot number label
-        ttk.Label(self, text=f"Slot {self._idx + 1}", width=6,
-                  anchor=W).grid(row=0, column=0, padx=(0, 6), pady=4, sticky=W)
+        ttk.Label(self, text=f"Slot {self._idx + 1}", width=6, anchor=W).grid(
+            row=0, column=0, padx=(0, 6), pady=4, sticky=W
+        )
 
         # Status badge
-        self._status_lbl = ttk.Label(self, text="Empty", width=9,
-                                      bootstyle="secondary-inverse", anchor=CENTER)
+        self._status_lbl = ttk.Label(
+            self, text="Empty", width=9, bootstyle="secondary-inverse", anchor=CENTER
+        )
         self._status_lbl.grid(row=0, column=1, padx=(0, 8), pady=4)
 
         # Drive info (letter + label + size)
         self._info_var = ttk.StringVar(value="—")
         ttk.Label(self, textvariable=self._info_var, anchor=W).grid(
-            row=0, column=2, padx=(0, 8), pady=4, sticky=EW)
+            row=0, column=2, padx=(0, 8), pady=4, sticky=EW
+        )
 
         # Progress bar
         self._progress_var = ttk.IntVar(value=0)
-        self._pbar = ttk.Progressbar(self, variable=self._progress_var,
-                                      maximum=100, length=160,
-                                      bootstyle="info-striped")
+        self._pbar = ttk.Progressbar(
+            self, variable=self._progress_var, maximum=100, length=160, bootstyle="info-striped"
+        )
         self._pbar.grid(row=0, column=3, padx=(0, 8), pady=4)
 
         # Percentage label
         self._pct_var = ttk.StringVar(value="")
-        ttk.Label(self, textvariable=self._pct_var, width=5,
-                  anchor=E).grid(row=0, column=4, padx=(0, 4), pady=4)
+        ttk.Label(self, textvariable=self._pct_var, width=5, anchor=E).grid(
+            row=0, column=4, padx=(0, 4), pady=4
+        )
 
         # Transfer speed label
         self._speed_var = ttk.StringVar(value="")
-        ttk.Label(self, textvariable=self._speed_var, width=9,
-                  bootstyle="secondary", anchor=W).grid(row=0, column=5, padx=(0, 8), pady=4)
+        ttk.Label(
+            self, textvariable=self._speed_var, width=9, bootstyle="secondary", anchor=W
+        ).grid(row=0, column=5, padx=(0, 8), pady=4)
 
         # ETA label
         self._eta_var = ttk.StringVar(value="")
-        ttk.Label(self, textvariable=self._eta_var, width=8,
-                  bootstyle="secondary", anchor=W).grid(row=0, column=6, padx=(0, 8), pady=4)
+        ttk.Label(self, textvariable=self._eta_var, width=8, bootstyle="secondary", anchor=W).grid(
+            row=0, column=6, padx=(0, 8), pady=4
+        )
 
         # Start / Stop button
-        self._btn = ttk.Button(self, text="Start", width=7,
-                                bootstyle="outline",
-                                command=self._on_btn_click)
+        self._btn = ttk.Button(
+            self, text="Start", width=7, bootstyle="outline", command=self._on_btn_click
+        )
         self._btn.grid(row=0, column=7, pady=4)
 
     # ── public API ────────────────────────────────────────────────────────────

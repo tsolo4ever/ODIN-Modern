@@ -9,8 +9,8 @@ Top-level UI layout:
 
 import os
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import filedialog, messagebox
-from typing import Callable, List, Optional
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -35,23 +35,35 @@ class MainWindow(ttk.Frame):
 
     def __init__(self, parent, config, **kwargs):
         super().__init__(parent, padding=12, **kwargs)
-        self._config   = config
-        self._root_win = parent   # root ttk.Window — needed for the menu bar
-        self._slots: List[SlotWidget] = []
+        self._config = config
+        self._root_win = parent  # root ttk.Window — needed for the menu bar
+        self._slots: list[SlotWidget] = []
         self._image_var = ttk.StringVar(value=config.get_last_image())
+        self._init_callbacks()
         self._build()
 
-    # ── callbacks to be overridden by app.py ─────────────────────────────────
+    # ── callbacks — wired by app.py ──────────────────────────────────────────
 
-    def on_start_slot(self, idx: int):  pass
-    def on_stop_slot(self, idx: int):   pass
-    def on_start_all(self):             pass
-    def on_stop_all(self):              pass
-    def on_verify_image(self):          pass
-    def on_configure_hashes(self):      pass
-    def on_verify_stored(self):         pass
-    def on_make_image(self):            pass
-    def on_flash_widget_toggle(self, enabled: bool): pass
+    on_start_slot: Callable[[int], None]
+    on_stop_slot: Callable[[int], None]
+    on_start_all: Callable[[], None]
+    on_stop_all: Callable[[], None]
+    on_verify_image: Callable[[], None]
+    on_configure_hashes: Callable[[], None]
+    on_verify_stored: Callable[[], None]
+    on_make_image: Callable[[], None]
+    on_flash_widget_toggle: Callable[[bool], None]
+
+    def _init_callbacks(self):
+        self.on_start_slot = lambda idx: None
+        self.on_stop_slot = lambda idx: None
+        self.on_start_all = lambda: None
+        self.on_stop_all = lambda: None
+        self.on_verify_image = lambda: None
+        self.on_configure_hashes = lambda: None
+        self.on_verify_stored = lambda: None
+        self.on_make_image = lambda: None
+        self.on_flash_widget_toggle = lambda enabled: None
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -59,15 +71,18 @@ class MainWindow(ttk.Frame):
     def image_path(self) -> str:
         return self._image_var.get().strip()
 
-    def update_drives(self, drives: List[DriveInfo]):
+    def update_drives(self, drives: list[DriveInfo]):
         """Called by DriveMonitor when the drive list changes."""
         # Keep one empty slot visible beyond occupied slots (min 1, max NUM_SLOTS)
         target = max(1, min(NUM_SLOTS, len(drives) + 1))
         while len(self._slots) < target:
             idx = len(self._slots)
-            sw = SlotWidget(self._slots_frame, slot_index=idx,
-                            on_start=lambda i: self.on_start_slot(i),
-                            on_stop=lambda i: self.on_stop_slot(i))
+            sw = SlotWidget(
+                self._slots_frame,
+                slot_index=idx,
+                on_start=lambda i: self.on_start_slot(i),
+                on_stop=lambda i: self.on_stop_slot(i),
+            )
             sw.grid(row=idx, column=0, sticky=EW, padx=4, pady=2)
             self._slots.append(sw)
 
@@ -94,15 +109,15 @@ class MainWindow(ttk.Frame):
         self._slots[idx].set_eta(eta_str)
 
     def log(self, text: str):
-        self._log_box.configure(state=NORMAL)
+        self._log_box.configure(state=NORMAL)  # type: ignore[arg-type]
         self._log_box.insert(END, text + "\n")
         self._log_box.see(END)
-        self._log_box.configure(state=DISABLED)
+        self._log_box.configure(state=DISABLED)  # type: ignore[arg-type]
 
     def clear_log(self):
-        self._log_box.configure(state=NORMAL)
+        self._log_box.configure(state=NORMAL)  # type: ignore[arg-type]
         self._log_box.delete("1.0", END)
-        self._log_box.configure(state=DISABLED)
+        self._log_box.configure(state=DISABLED)  # type: ignore[arg-type]
 
     # ── build ─────────────────────────────────────────────────────────────────
 
@@ -125,15 +140,16 @@ class MainWindow(ttk.Frame):
         menubar.add_cascade(label="File", menu=file_menu)
 
         options_menu = tk.Menu(menubar, tearoff=0)
-        options_menu.add_command(label="Make Image…",
-                                  command=lambda: self.on_make_image())
+        options_menu.add_command(label="Make Image…", command=lambda: self.on_make_image())
         options_menu.add_separator()
         options_menu.add_command(label="ODINC Path…", command=self._show_odinc_settings)
-        options_menu.add_command(label="Configure Hashes…",
-                                  command=lambda: self.on_configure_hashes())
+        options_menu.add_command(
+            label="Configure Hashes…", command=lambda: self.on_configure_hashes()
+        )
         options_menu.add_separator()
-        options_menu.add_command(label="Verify Stored Hash…",
-                                  command=lambda: self.on_verify_stored())
+        options_menu.add_command(
+            label="Verify Stored Hash…", command=lambda: self.on_verify_stored()
+        )
         options_menu.add_separator()
 
         # Max Concurrent submenu
@@ -144,12 +160,12 @@ class MainWindow(ttk.Frame):
                 label=str(n),
                 variable=self._max_concurrent_var,
                 value=n,
-                command=lambda v=n: self._config.set_max_concurrent(v),
+                command=lambda v=n: self._config.set_max_concurrent(v),  # type: ignore[misc]
             )
         options_menu.add_cascade(label="Max Concurrent", menu=conc_menu)
         options_menu.add_separator()
 
-        options_menu.add_command(label="Theme: Dark",  command=lambda: self._set_theme("darkly"))
+        options_menu.add_command(label="Theme: Dark", command=lambda: self._set_theme("darkly"))
         options_menu.add_command(label="Theme: Light", command=lambda: self._set_theme("flatly"))
         menubar.add_cascade(label="Options", menu=options_menu)
 
@@ -160,32 +176,39 @@ class MainWindow(ttk.Frame):
         self._root_win.configure(menu=menubar)
 
     def _build_image_bar(self):
-        frame = ttk.LabelFrame(self, text="Image File")
+        frame = ttk.LabelFrame(self, text="Image File")  # type: ignore[attr-defined]
         frame.grid(row=0, column=0, sticky=EW, pady=(0, 8))
         frame.columnconfigure(0, weight=1)
 
         ttk.Entry(frame, textvariable=self._image_var).grid(
-            row=0, column=0, sticky=EW, padx=6, pady=4)
-        ttk.Button(frame, text="Browse…", width=9,
-                   command=self._browse_image).grid(row=0, column=1, padx=(0, 6), pady=4)
-        ttk.Button(frame, text="Hash…", width=8,
-                   command=lambda: self.on_verify_image()).grid(row=0, column=2, padx=(0, 6), pady=4)
+            row=0, column=0, sticky=EW, padx=6, pady=4
+        )
+        ttk.Button(frame, text="Browse…", width=9, command=self._browse_image).grid(
+            row=0, column=1, padx=(0, 6), pady=4
+        )
+        ttk.Button(frame, text="Hash…", width=8, command=lambda: self.on_verify_image()).grid(
+            row=0, column=2, padx=(0, 6), pady=4
+        )
 
         self._img_size_var = ttk.StringVar(value="")
-        ttk.Label(frame, textvariable=self._img_size_var, width=10,
-                  bootstyle="secondary", anchor=W).grid(row=0, column=3, padx=(0, 6), pady=4)
+        ttk.Label(
+            frame, textvariable=self._img_size_var, width=10, bootstyle="secondary", anchor=W
+        ).grid(row=0, column=3, padx=(0, 6), pady=4)
         self._refresh_image_size()
 
     def _build_slots(self):
-        frame = ttk.LabelFrame(self, text="Drive Slots")
+        frame = ttk.LabelFrame(self, text="Drive Slots")  # type: ignore[attr-defined]
         frame.grid(row=1, column=0, sticky=EW, pady=(0, 8))
         frame.columnconfigure(0, weight=1)
         self._slots_frame = frame
 
         # Only Slot 1 (index 0) is visible at startup; more appear as drives arrive
-        sw = SlotWidget(frame, slot_index=0,
-                        on_start=lambda idx: self.on_start_slot(idx),
-                        on_stop=lambda idx: self.on_stop_slot(idx))
+        sw = SlotWidget(
+            frame,
+            slot_index=0,
+            on_start=lambda idx: self.on_start_slot(idx),
+            on_stop=lambda idx: self.on_stop_slot(idx),
+        )
         sw.grid(row=0, column=0, sticky=EW, padx=4, pady=2)
         self._slots.append(sw)
 
@@ -193,46 +216,60 @@ class MainWindow(ttk.Frame):
         frame = ttk.Frame(self)
         frame.grid(row=2, column=0, sticky=EW, pady=(0, 8))
 
-        ttk.Button(frame, text="Start All", bootstyle="success",
-                   command=lambda: self.on_start_all()).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(frame, text="Stop All", bootstyle="danger",
-                   command=lambda: self.on_stop_all()).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(frame, text="Clear Log", bootstyle="secondary-outline",
-                   command=self.clear_log).pack(side=RIGHT)
+        ttk.Button(
+            frame, text="Start All", bootstyle="success", command=lambda: self.on_start_all()
+        ).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(
+            frame, text="Stop All", bootstyle="danger", command=lambda: self.on_stop_all()
+        ).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(
+            frame, text="Clear Log", bootstyle="secondary-outline", command=self.clear_log
+        ).pack(side=RIGHT)
 
     def _build_settings(self):
-        frame = ttk.LabelFrame(self, text="Settings")
+        frame = ttk.LabelFrame(self, text="Settings")  # type: ignore[attr-defined]
         frame.grid(row=3, column=0, sticky=EW, pady=(0, 4))
 
         self._auto_clone_var = ttk.BooleanVar(value=self._config.get_auto_clone())
-        ttk.Checkbutton(frame, text="Auto-clone on device insertion",
-                        variable=self._auto_clone_var, bootstyle="round-toggle",
-                        command=lambda: self._config.set_auto_clone(
-                            bool(self._auto_clone_var.get()))).pack(
-            side=LEFT, padx=(8, 12), pady=6)
+        ttk.Checkbutton(
+            frame,
+            text="Auto-clone on device insertion",
+            variable=self._auto_clone_var,
+            bootstyle="round-toggle",
+            command=lambda: self._config.set_auto_clone(bool(self._auto_clone_var.get())),
+        ).pack(side=LEFT, padx=(8, 12), pady=6)
 
         self._verify_after_var = ttk.BooleanVar(value=self._config.get_verify_after_clone())
-        ttk.Checkbutton(frame, text="Verify target disk hash after clone",
-                        variable=self._verify_after_var, bootstyle="round-toggle",
-                        command=lambda: self._config.set_verify_after_clone(
-                            bool(self._verify_after_var.get()))).pack(
-            side=LEFT, padx=(0, 12), pady=6)
+        ttk.Checkbutton(
+            frame,
+            text="Verify target disk hash after clone",
+            variable=self._verify_after_var,
+            bootstyle="round-toggle",
+            command=lambda: self._config.set_verify_after_clone(bool(self._verify_after_var.get())),
+        ).pack(side=LEFT, padx=(0, 12), pady=6)
 
         self._stop_on_fail_var = ttk.BooleanVar(value=self._config.get_stop_on_verify_fail())
-        ttk.Checkbutton(frame, text="Stop all on verification failure",
-                        variable=self._stop_on_fail_var, bootstyle="round-toggle",
-                        command=lambda: self._config.set_stop_on_verify_fail(
-                            bool(self._stop_on_fail_var.get()))).pack(
-            side=LEFT, padx=(0, 12), pady=6)
+        ttk.Checkbutton(
+            frame,
+            text="Stop all on verification failure",
+            variable=self._stop_on_fail_var,
+            bootstyle="round-toggle",
+            command=lambda: self._config.set_stop_on_verify_fail(
+                bool(self._stop_on_fail_var.get())
+            ),
+        ).pack(side=LEFT, padx=(0, 12), pady=6)
 
         self._flash_widget_var = ttk.BooleanVar(value=self._config.get_show_flash_widget())
-        ttk.Checkbutton(frame, text="Show flash widget",
-                        variable=self._flash_widget_var, bootstyle="round-toggle",
-                        command=self._toggle_flash_widget).pack(
-            side=LEFT, padx=(0, 12), pady=6)
+        ttk.Checkbutton(
+            frame,
+            text="Show flash widget",
+            variable=self._flash_widget_var,
+            bootstyle="round-toggle",
+            command=self._toggle_flash_widget,
+        ).pack(side=LEFT, padx=(0, 12), pady=6)
 
     def _build_log(self):
-        frame = ttk.LabelFrame(self, text="Log")
+        frame = ttk.LabelFrame(self, text="Log")  # type: ignore[attr-defined]
         frame.grid(row=4, column=0, sticky=NSEW, pady=(0, 4))
         self.rowconfigure(4, weight=1)
         frame.rowconfigure(0, weight=1)
@@ -255,7 +292,8 @@ class MainWindow(ttk.Frame):
         ttk.Label(frame, text="ODINC.exe path:").grid(row=0, column=0, sticky=W, pady=(0, 4))
         path_var = ttk.StringVar(value=self._config.get_odinc_path())
         ttk.Entry(frame, textvariable=path_var, width=50).grid(
-            row=1, column=0, sticky=EW, padx=(0, 6))
+            row=1, column=0, sticky=EW, padx=(0, 6)
+        )
 
         def browse():
             p = filedialog.askopenfilename(

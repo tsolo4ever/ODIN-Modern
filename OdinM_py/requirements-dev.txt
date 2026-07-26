@@ -1,0 +1,23 @@
+# Shared dev tooling for all Python subprojects in this repo (agent-collab, Vibvoice MCP, etc.).
+# Runtime dependencies stay in each subproject's own pyproject.toml / requirements.txt.
+#
+# Development & analysis tools — install with: pip install -r requirements-dev.txt
+# These are not runtime dependencies; they support linting, testing, and code analysis.
+
+# Fast linter + formatter (replaces flake8/black/isort in one tool)
+ruff>=0.15
+
+# Secondary static analysis for correctness and maintainability checks
+pylint>=4.0
+
+# Dead code detection — unused functions, classes, variables, imports
+vulture>=2.11
+
+# Type checking
+mypy>=2.1
+
+# Test runner
+pytest>=7.0
+
+# Test coverage
+pytest-cov>=4.0

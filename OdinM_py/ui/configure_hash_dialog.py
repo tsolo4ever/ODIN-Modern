@@ -8,13 +8,12 @@ independent SHA-1 / SHA-256 expected values with enable / fail-on-mismatch flags
 
 import os
 from tkinter import filedialog
-from typing import Dict, List, Optional
 
 import ttkbootstrap as ttk
 
 from ttkbootstrap.constants import *
 
-from hash_config import HashConfig, NUM_PARTITIONS, blank_partition
+from hash_config import HashConfig
 from hash_worker import HashStatus, HashWorker
 from partition_reader import PartitionInfo, get_image_hash_region, read_mbr_partitions
 
@@ -31,20 +30,20 @@ class ConfigureHashDialog(ttk.Toplevel):
         self.resizable(False, False)
         self.grab_set()
 
-        self._parent     = parent
-        self._path       = image_path
-        self._hcfg       = HashConfig()
-        self._worker: Optional[HashWorker] = None
-        self._partition  = 0   # must match the initial combobox selection ("Partition 0")
+        self._parent = parent
+        self._path = image_path
+        self._hcfg = HashConfig()
+        self._worker: HashWorker | None = None
+        self._partition = 0  # must match the initial combobox selection ("Partition 0")
         # keyed by 1-based partition number
-        self._partitions: Dict[int, PartitionInfo] = {}
+        self._partitions: dict[int, PartitionInfo] = {}
 
         self._build()
         self._load_partition(0)
         self._auto_detect_partitions()
 
         self.update_idletasks()
-        px = parent.winfo_rootx() + (parent.winfo_width()  - self.winfo_width())  // 2
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
         py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
         self.geometry(f"+{px}+{py}")
 
@@ -59,13 +58,12 @@ class ConfigureHashDialog(ttk.Toplevel):
 
         # Image label
         ttk.Label(outer, text="Image:", anchor=W).grid(row=0, column=0, sticky=W, pady=(0, 4))
-        ttk.Label(outer, text=os.path.basename(self._path),
-                  bootstyle="info", anchor=W).grid(
-            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0))
+        ttk.Label(outer, text=os.path.basename(self._path), bootstyle="info", anchor=W).grid(
+            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0)
+        )
 
         # Partition selector
-        ttk.Label(outer, text="Partition:", anchor=W).grid(
-            row=1, column=0, sticky=W, pady=(6, 8))
+        ttk.Label(outer, text="Partition:", anchor=W).grid(row=1, column=0, sticky=W, pady=(6, 8))
         self._part_str_var = ttk.StringVar(value="Partition 0")
         self._part_cb = ttk.Combobox(
             outer,
@@ -78,45 +76,52 @@ class ConfigureHashDialog(ttk.Toplevel):
         self._part_cb.bind("<<ComboboxSelected>>", self._on_partition_change)
 
         # ── Expected Hash Values ──────────────────────────────────────────────
-        hf = ttk.LabelFrame(outer, text="Expected Hash Values")
+        hf = ttk.LabelFrame(outer, text="Expected Hash Values")  # type: ignore[attr-defined]
         hf.grid(row=2, column=0, columnspan=3, sticky=EW, pady=(0, 8))
         hf.columnconfigure(0, weight=1)
 
         # SHA-1
         ttk.Label(hf, text="SHA-1 (40 hex chars):", anchor=W).grid(
-            row=0, column=0, columnspan=3, sticky=W, padx=8, pady=(8, 2))
+            row=0, column=0, columnspan=3, sticky=W, padx=8, pady=(8, 2)
+        )
         self._sha1_var = ttk.StringVar()
         ttk.Entry(hf, textvariable=self._sha1_var).grid(
-            row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 4))
+            row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 4)
+        )
 
         self._sha1_enable_var = ttk.BooleanVar(value=False)
-        self._sha1_fail_var   = ttk.BooleanVar(value=False)
-        ttk.Checkbutton(hf, text="Enable", variable=self._sha1_enable_var,
-                        bootstyle="round-toggle").grid(row=2, column=0, sticky=W, padx=8)
-        ttk.Checkbutton(hf, text="Fail on mismatch", variable=self._sha1_fail_var,
-                        bootstyle="round-toggle").grid(row=2, column=1, sticky=W, padx=4)
-        self._sha1_status = ttk.Label(hf, text="Not configured",
-                                       bootstyle="secondary", anchor=W)
+        self._sha1_fail_var = ttk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            hf, text="Enable", variable=self._sha1_enable_var, bootstyle="round-toggle"
+        ).grid(row=2, column=0, sticky=W, padx=8)
+        ttk.Checkbutton(
+            hf, text="Fail on mismatch", variable=self._sha1_fail_var, bootstyle="round-toggle"
+        ).grid(row=2, column=1, sticky=W, padx=4)
+        self._sha1_status = ttk.Label(hf, text="Not configured", bootstyle="secondary", anchor=W)
         self._sha1_status.grid(row=2, column=2, sticky=W, padx=(12, 8), pady=(0, 4))
 
         ttk.Separator(hf, orient=HORIZONTAL).grid(
-            row=3, column=0, columnspan=3, sticky=EW, padx=8, pady=4)
+            row=3, column=0, columnspan=3, sticky=EW, padx=8, pady=4
+        )
 
         # SHA-256
         ttk.Label(hf, text="SHA-256 (64 hex chars):", anchor=W).grid(
-            row=4, column=0, columnspan=3, sticky=W, padx=8, pady=(4, 2))
+            row=4, column=0, columnspan=3, sticky=W, padx=8, pady=(4, 2)
+        )
         self._sha256_var = ttk.StringVar()
         ttk.Entry(hf, textvariable=self._sha256_var).grid(
-            row=5, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 4))
+            row=5, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 4)
+        )
 
         self._sha256_enable_var = ttk.BooleanVar(value=False)
-        self._sha256_fail_var   = ttk.BooleanVar(value=False)
-        ttk.Checkbutton(hf, text="Enable", variable=self._sha256_enable_var,
-                        bootstyle="round-toggle").grid(row=6, column=0, sticky=W, padx=8)
-        ttk.Checkbutton(hf, text="Fail on mismatch", variable=self._sha256_fail_var,
-                        bootstyle="round-toggle").grid(row=6, column=1, sticky=W, padx=4)
-        self._sha256_status = ttk.Label(hf, text="Not configured",
-                                         bootstyle="secondary", anchor=W)
+        self._sha256_fail_var = ttk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            hf, text="Enable", variable=self._sha256_enable_var, bootstyle="round-toggle"
+        ).grid(row=6, column=0, sticky=W, padx=8)
+        ttk.Checkbutton(
+            hf, text="Fail on mismatch", variable=self._sha256_fail_var, bootstyle="round-toggle"
+        ).grid(row=6, column=1, sticky=W, padx=4)
+        self._sha256_status = ttk.Label(hf, text="Not configured", bootstyle="secondary", anchor=W)
         self._sha256_status.grid(row=6, column=2, sticky=W, padx=(12, 8), pady=(0, 8))
 
         # Update status labels on any hash entry change
@@ -124,44 +129,56 @@ class ConfigureHashDialog(ttk.Toplevel):
         self._sha256_var.trace_add("write", lambda *_: self._refresh_status())
 
         # ── Calculate from Image ──────────────────────────────────────────────
-        cf = ttk.LabelFrame(outer, text="Calculate from Image")
+        cf = ttk.LabelFrame(outer, text="Calculate from Image")  # type: ignore[attr-defined]
         cf.grid(row=3, column=0, columnspan=3, sticky=EW, pady=(0, 12))
 
         # Partition detection row
         det_row = ttk.Frame(cf)
         det_row.pack(fill=X, padx=8, pady=(8, 2))
-        ttk.Button(det_row, text="Detect Partitions",
-                   bootstyle="secondary-outline",
-                   command=self._detect_partitions).pack(side=LEFT, padx=(0, 8))
+        ttk.Button(
+            det_row,
+            text="Detect Partitions",
+            bootstyle="secondary-outline",
+            command=self._detect_partitions,
+        ).pack(side=LEFT, padx=(0, 8))
         self._part_info_var = ttk.StringVar(value="")
-        ttk.Label(det_row, textvariable=self._part_info_var,
-                  bootstyle="secondary", anchor=W).pack(side=LEFT, fill=X, expand=YES)
+        ttk.Label(det_row, textvariable=self._part_info_var, bootstyle="secondary", anchor=W).pack(
+            side=LEFT, fill=X, expand=YES
+        )
 
         btn_row = ttk.Frame(cf)
         btn_row.pack(fill=X, padx=8, pady=(4, 8))
-        ttk.Button(btn_row, text="Calculate All",
-                   command=lambda: self._calculate("both")).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_row, text="SHA-1 Only",
-                   command=lambda: self._calculate("sha1")).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_row, text="SHA-256 Only",
-                   command=lambda: self._calculate("sha256")).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_row, text="Load from File",
-                   command=self._load_from_file).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(btn_row, text="Calculate All", command=lambda: self._calculate("both")).pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_row, text="SHA-1 Only", command=lambda: self._calculate("sha1")).pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_row, text="SHA-256 Only", command=lambda: self._calculate("sha256")).pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_row, text="Load from File", command=self._load_from_file).pack(
+            side=LEFT, padx=(0, 6)
+        )
 
         self._calc_pbar_var = ttk.IntVar(value=0)
-        ttk.Progressbar(cf, variable=self._calc_pbar_var, maximum=100,
-                        bootstyle="info-striped").pack(fill=X, padx=8, pady=(0, 4))
+        ttk.Progressbar(
+            cf, variable=self._calc_pbar_var, maximum=100, bootstyle="info-striped"
+        ).pack(fill=X, padx=8, pady=(0, 4))
         self._calc_status_var = ttk.StringVar(value="")
-        ttk.Label(cf, textvariable=self._calc_status_var,
-                  bootstyle="secondary").pack(anchor=W, padx=8, pady=(0, 6))
+        ttk.Label(cf, textvariable=self._calc_status_var, bootstyle="secondary").pack(
+            anchor=W, padx=8, pady=(0, 6)
+        )
 
         # ── Save / Cancel ─────────────────────────────────────────────────────
         btn_frame = ttk.Frame(outer)
         btn_frame.grid(row=4, column=0, columnspan=3, sticky=EW)
-        ttk.Button(btn_frame, text="Save", bootstyle="success",
-                   command=self._on_save).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Cancel", bootstyle="outline",
-                   command=self._on_cancel).pack(side=RIGHT)
+        ttk.Button(btn_frame, text="Save", bootstyle="success", command=self._on_save).pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_frame, text="Cancel", bootstyle="outline", command=self._on_cancel).pack(
+            side=RIGHT
+        )
 
     # ── partition switching ───────────────────────────────────────────────────
 
@@ -183,36 +200,36 @@ class ConfigureHashDialog(ttk.Toplevel):
 
     def _save_current_partition(self):
         cfg = {
-            "sha1_value":     self._sha1_var.get().strip().lower(),
-            "sha1_enabled":   bool(self._sha1_enable_var.get()),
-            "sha1_fail":      bool(self._sha1_fail_var.get()),
-            "sha256_value":   self._sha256_var.get().strip().lower(),
+            "sha1_value": self._sha1_var.get().strip().lower(),
+            "sha1_enabled": bool(self._sha1_enable_var.get()),
+            "sha1_fail": bool(self._sha1_fail_var.get()),
+            "sha256_value": self._sha256_var.get().strip().lower(),
             "sha256_enabled": bool(self._sha256_enable_var.get()),
-            "sha256_fail":    bool(self._sha256_fail_var.get()),
+            "sha256_fail": bool(self._sha256_fail_var.get()),
         }
         if not self._hcfg.save_partition(self._path, self._partition, cfg):
             self._calc_status_var.set("Save failed — check config file permissions.")
 
     def _refresh_status(self):
         sha1 = self._sha1_var.get().strip()
-        ok1  = len(sha1) == 40
+        ok1 = len(sha1) == 40
         self._sha1_status.configure(
             text="Configured" if ok1 else "Not configured",
-            bootstyle="success" if ok1 else "secondary")
+            bootstyle="success" if ok1 else "secondary",
+        )
 
         sha256 = self._sha256_var.get().strip()
-        ok256  = len(sha256) == 64
+        ok256 = len(sha256) == 64
         self._sha256_status.configure(
             text="Configured" if ok256 else "Not configured",
-            bootstyle="success" if ok256 else "secondary")
+            bootstyle="success" if ok256 else "secondary",
+        )
 
     # ── partition detection ───────────────────────────────────────────────────
 
     def _update_partition_dropdown(self):
         """Rebuild combobox to show only Partition 0 + detected partitions."""
-        values = ["Partition 0"] + [
-            f"Partition {n}" for n in sorted(self._partitions)
-        ]
+        values = ["Partition 0"] + [f"Partition {n}" for n in sorted(self._partitions)]
         self._part_cb.configure(values=values)
         if self._part_str_var.get() not in values:
             self._part_str_var.set("Partition 0")
@@ -233,10 +250,10 @@ class ConfigureHashDialog(ttk.Toplevel):
         if found:
             self._calc_status_var.set(
                 f"Found {len(found)} partition(s): "
-                + "  ".join(f"P{p.number}={p.size_str}" for p in found))
+                + "  ".join(f"P{p.number}={p.size_str}" for p in found)
+            )
         else:
-            self._calc_status_var.set(
-                "No MBR partition table found — will hash entire file.")
+            self._calc_status_var.set("No MBR partition table found — will hash entire file.")
         self._refresh_part_info()
 
     def _refresh_part_info(self):
@@ -246,13 +263,14 @@ class ConfigureHashDialog(ttk.Toplevel):
             self._part_info_var.set(
                 f"Partition {p.number}: {p.summary}  "
                 f"(offset {p.offset // (1 << 20):.1f} MB, "
-                f"will hash partition only)")
+                f"will hash partition only)"
+            )
         elif self._partition == 0:
             self._part_info_var.set(
-                "Disk-level hash — will hash the raw disk payload used for target verification")
+                "Disk-level hash — will hash the raw disk payload used for target verification"
+            )
         else:
-            self._part_info_var.set(
-                "Partition not detected — will hash entire file")
+            self._part_info_var.set("Partition not detected — will hash entire file")
 
     # ── calculate ─────────────────────────────────────────────────────────────
 
@@ -270,10 +288,10 @@ class ConfigureHashDialog(ttk.Toplevel):
             if not region.is_raw_supported:
                 self._calc_status_var.set(
                     f"Failed — compressed ODIN image verification is unsupported "
-                    f"(compression {region.compression_scheme})")
+                    f"(compression {region.compression_scheme})"
+                )
                 return
-            self._calc_status_var.set(
-                f"Computing disk-level hash ({region.size} bytes)…")
+            self._calc_status_var.set(f"Computing disk-level hash ({region.size} bytes)…")
             self._worker = HashWorker(
                 root=self._parent,
                 file_path=self._path,
@@ -283,8 +301,7 @@ class ConfigureHashDialog(ttk.Toplevel):
                 byte_count=region.size,
             )
         elif p:
-            self._calc_status_var.set(
-                f"Computing hash of partition {p.number} ({p.size_str})…")
+            self._calc_status_var.set(f"Computing hash of partition {p.number} ({p.size_str})…")
             self._worker = HashWorker(
                 root=self._parent,
                 file_path=self._path,
@@ -336,7 +353,7 @@ class ConfigureHashDialog(ttk.Toplevel):
             return
         loaded = []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith("#"):
@@ -351,7 +368,8 @@ class ConfigureHashDialog(ttk.Toplevel):
                         self._sha1_enable_var.set(True)
                         loaded.append("SHA-1")
             self._calc_status_var.set(
-                f"Loaded: {', '.join(loaded)}" if loaded else "No recognised hashes found in file")
+                f"Loaded: {', '.join(loaded)}" if loaded else "No recognised hashes found in file"
+            )
         except OSError as e:
             self._calc_status_var.set(f"Load failed: {e}")
 

@@ -346,7 +346,7 @@ void CCommandLineProcessor::Parse(CStlCmdLineArgsWin<wchar_t>& cmdLineParser) {
     fOperation.mode = CCommandLineProcessor::modeUsedBlocksAndSnapshot;
 
   // check for compression mode
-  fOperation.compression = compressionGZip;
+  fOperation.compression = noCompression;
   wstring comp;
   if (cmdLineParser[L"compression"])
     comp = cmdLineParser[L"compression"];

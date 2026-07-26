@@ -7,13 +7,11 @@ Modal dialog that computes and displays SHA-256 / SHA-1 of the selected image fi
 """
 
 import os
-import tkinter as tk
-from typing import Optional
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
-from hash_config import HashConfig, NUM_PARTITIONS
+from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
 
@@ -31,16 +29,16 @@ class HashDialog(ttk.Toplevel):
         self.grab_set()
 
         self._parent = parent
-        self._path   = image_path
-        self._log    = HashLog()
-        self._worker: Optional[HashWorker] = None
+        self._path = image_path
+        self._log = HashLog()
+        self._worker: HashWorker | None = None
 
         self._build()
         self._start_hash()
 
         # Centre over parent
         self.update_idletasks()
-        px = parent.winfo_rootx() + (parent.winfo_width()  - self.winfo_width())  // 2
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
         py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
         self.geometry(f"+{px}+{py}")
 
@@ -63,62 +61,78 @@ class HashDialog(ttk.Toplevel):
 
         ttk.Label(outer, text="File:", anchor=W).grid(row=0, column=0, sticky=W, pady=2)
         ttk.Label(outer, text=fname, bootstyle="info", anchor=W).grid(
-            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2)
+            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2
+        )
 
         ttk.Label(outer, text="Size:", anchor=W).grid(row=1, column=0, sticky=W, pady=2)
         ttk.Label(outer, text=sz_str, anchor=W).grid(
-            row=1, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2)
+            row=1, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2
+        )
 
         # Last verified age
         ttk.Label(outer, text="Last verified:", anchor=W).grid(row=2, column=0, sticky=W, pady=2)
-        self._age_lbl = ttk.Label(outer, text=self._age_text(), anchor=W,
-                                   bootstyle=self._age_style())
+        self._age_lbl = ttk.Label(
+            outer, text=self._age_text(), anchor=W, bootstyle=self._age_style()
+        )
         self._age_lbl.grid(row=2, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2)
 
         # Progress
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=3, column=0, columnspan=3, sticky=EW, pady=(8, 4))
+            row=3, column=0, columnspan=3, sticky=EW, pady=(8, 4)
+        )
 
         ttk.Label(outer, text="Progress:", anchor=W).grid(row=4, column=0, sticky=W, pady=2)
         self._progress_var = ttk.IntVar(value=0)
-        ttk.Progressbar(outer, variable=self._progress_var, maximum=100,
-                        length=360, bootstyle="info-striped").grid(
-            row=4, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=2)
+        ttk.Progressbar(
+            outer, variable=self._progress_var, maximum=100, length=360, bootstyle="info-striped"
+        ).grid(row=4, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=2)
 
         self._status_lbl = ttk.Label(outer, text="Computing…", bootstyle="secondary")
         self._status_lbl.grid(row=5, column=1, columnspan=2, sticky=W, padx=(8, 0))
 
         # Hash results
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=6, column=0, columnspan=3, sticky=EW, pady=(8, 4))
+            row=6, column=0, columnspan=3, sticky=EW, pady=(8, 4)
+        )
 
         ttk.Label(outer, text="SHA-256:", anchor=W).grid(row=7, column=0, sticky=W, pady=2)
         self._sha256_var = ttk.StringVar(value="—")
-        ttk.Entry(outer, textvariable=self._sha256_var,
-                  state=READONLY, bootstyle="secondary").grid(
-            row=7, column=1, sticky=EW, padx=(8, 4), pady=2)
-        ttk.Button(outer, text="Copy", width=5, bootstyle="secondary-outline",
-                   command=lambda: self._copy(self._sha256_var)).grid(
-            row=7, column=2, pady=2)
+        ttk.Entry(outer, textvariable=self._sha256_var, state=READONLY, bootstyle="secondary").grid(
+            row=7, column=1, sticky=EW, padx=(8, 4), pady=2
+        )
+        ttk.Button(
+            outer,
+            text="Copy",
+            width=5,
+            bootstyle="secondary-outline",
+            command=lambda: self._copy(self._sha256_var),
+        ).grid(row=7, column=2, pady=2)
 
         ttk.Label(outer, text="SHA-1:", anchor=W).grid(row=8, column=0, sticky=W, pady=2)
         self._sha1_var = ttk.StringVar(value="—")
-        ttk.Entry(outer, textvariable=self._sha1_var,
-                  state=READONLY, bootstyle="secondary").grid(
-            row=8, column=1, sticky=EW, padx=(8, 4), pady=2)
-        ttk.Button(outer, text="Copy", width=5, bootstyle="secondary-outline",
-                   command=lambda: self._copy(self._sha1_var)).grid(
-            row=8, column=2, pady=2)
+        ttk.Entry(outer, textvariable=self._sha1_var, state=READONLY, bootstyle="secondary").grid(
+            row=8, column=1, sticky=EW, padx=(8, 4), pady=2
+        )
+        ttk.Button(
+            outer,
+            text="Copy",
+            width=5,
+            bootstyle="secondary-outline",
+            command=lambda: self._copy(self._sha1_var),
+        ).grid(row=8, column=2, pady=2)
 
         # Expected hash comparison
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=9, column=0, columnspan=3, sticky=EW, pady=(8, 4))
+            row=9, column=0, columnspan=3, sticky=EW, pady=(8, 4)
+        )
 
         ttk.Label(outer, text="Expected\nhash:", anchor=W, justify=LEFT).grid(
-            row=10, column=0, sticky=W, pady=2)
+            row=10, column=0, sticky=W, pady=2
+        )
         self._expected_var = ttk.StringVar()
         ttk.Entry(outer, textvariable=self._expected_var).grid(
-            row=10, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=2)
+            row=10, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=2
+        )
 
         self._match_lbl = ttk.Label(outer, text="", anchor=W)
         self._match_lbl.grid(row=11, column=1, columnspan=2, sticky=W, padx=(8, 0))
@@ -127,10 +141,12 @@ class HashDialog(ttk.Toplevel):
         btn_frame = ttk.Frame(outer)
         btn_frame.grid(row=12, column=0, columnspan=3, sticky=EW, pady=(12, 0))
 
-        ttk.Button(btn_frame, text="Compare", command=self._compare,
-                   bootstyle="info-outline").pack(side=LEFT, padx=(0, 6))
-        ttk.Button(btn_frame, text="Close", command=self._on_close,
-                   bootstyle="outline").pack(side=RIGHT)
+        ttk.Button(btn_frame, text="Compare", command=self._compare, bootstyle="info-outline").pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(btn_frame, text="Close", command=self._on_close, bootstyle="outline").pack(
+            side=RIGHT
+        )
 
     # ── age helpers ───────────────────────────────────────────────────────────
 
@@ -187,7 +203,7 @@ class HashDialog(ttk.Toplevel):
             return
 
         sha256 = self._sha256_var.get().strip().lower()
-        sha1   = self._sha1_var.get().strip().lower()
+        sha1 = self._sha1_var.get().strip().lower()
         if sha256 in ("—", ""):
             self._match_lbl.configure(text="Hash not computed yet", bootstyle="warning")
             return
@@ -200,13 +216,16 @@ class HashDialog(ttk.Toplevel):
         else:
             self._match_lbl.configure(
                 text=f"Unrecognised hash length ({length} chars; expected 40 or 64)",
-                bootstyle="warning")
+                bootstyle="warning",
+            )
             return
 
         if expected == actual:
             self._match_lbl.configure(text=f"{algo}: Match — file is intact", bootstyle="success")
         else:
-            self._match_lbl.configure(text=f"{algo}: Mismatch — file may be corrupt!", bootstyle="danger")
+            self._match_lbl.configure(
+                text=f"{algo}: Mismatch — file may be corrupt!", bootstyle="danger"
+            )
 
     def _copy(self, var: ttk.StringVar):
         _copy(self, var)
@@ -218,6 +237,7 @@ class HashDialog(ttk.Toplevel):
 
 
 # ── StoredHashDialog ──────────────────────────────────────────────────────────
+
 
 class StoredHashDialog(ttk.Toplevel):
     """
@@ -232,15 +252,15 @@ class StoredHashDialog(ttk.Toplevel):
         self.resizable(False, False)
         self.grab_set()
 
-        self._path  = image_path
-        self._log   = HashLog()
-        self._hcfg  = HashConfig()
+        self._path = image_path
+        self._log = HashLog()
+        self._hcfg = HashConfig()
         self._entry = self._log.get_entry(image_path)
 
         self._build()
 
         self.update_idletasks()
-        px = parent.winfo_rootx() + (parent.winfo_width()  - self.winfo_width())  // 2
+        px = parent.winfo_rootx() + (parent.winfo_width() - self.winfo_width()) // 2
         py = parent.winfo_rooty() + (parent.winfo_height() - self.winfo_height()) // 2
         self.geometry(f"+{px}+{py}")
 
@@ -253,55 +273,74 @@ class StoredHashDialog(ttk.Toplevel):
         outer.columnconfigure(1, weight=1)
 
         fname = os.path.basename(self._path)
-        days  = self._log.days_since(self._path)
+        days = self._log.days_since(self._path)
 
         ttk.Label(outer, text="File:", anchor=W).grid(row=0, column=0, sticky=W, pady=2)
         ttk.Label(outer, text=fname, bootstyle="info", anchor=W).grid(
-            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2)
+            row=0, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2
+        )
 
         ttk.Label(outer, text="Last verified:", anchor=W).grid(row=1, column=0, sticky=W, pady=2)
         age_text, age_style = _age_info(days)
         ttk.Label(outer, text=age_text, bootstyle=age_style, anchor=W).grid(
-            row=1, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2)
+            row=1, column=1, columnspan=2, sticky=W, padx=(8, 0), pady=2
+        )
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=2, column=0, columnspan=3, sticky=EW, pady=(8, 4))
+            row=2, column=0, columnspan=3, sticky=EW, pady=(8, 4)
+        )
 
         if not self._entry or not self._entry.get("sha256"):
-            ttk.Label(outer,
-                      text="No stored hash found.\nUse the 'Hash' button to compute one first.",
-                      bootstyle="warning", justify=LEFT).grid(
-                row=3, column=0, columnspan=3, sticky=W, pady=8)
-            ttk.Button(outer, text="Close", command=self.destroy,
-                       bootstyle="outline").grid(row=4, column=2, sticky=E, pady=(8, 0))
+            ttk.Label(
+                outer,
+                text="No stored hash found.\nUse the 'Hash' button to compute one first.",
+                bootstyle="warning",
+                justify=LEFT,
+            ).grid(row=3, column=0, columnspan=3, sticky=W, pady=8)
+            ttk.Button(outer, text="Close", command=self.destroy, bootstyle="outline").grid(
+                row=4, column=2, sticky=E, pady=(8, 0)
+            )
             return
 
         sha256 = self._entry.get("sha256", "")
-        sha1   = self._entry.get("sha1", "")
+        sha1 = self._entry.get("sha1", "")
 
         # Stored hash display
         ttk.Label(outer, text="SHA-256:", anchor=W).grid(row=3, column=0, sticky=W, pady=2)
         sha256_var = ttk.StringVar(value=sha256)
-        ttk.Entry(outer, textvariable=sha256_var, state=READONLY,
-                  bootstyle="secondary").grid(row=3, column=1, sticky=EW, padx=(8, 4), pady=2)
-        ttk.Button(outer, text="Copy", width=5, bootstyle="secondary-outline",
-                   command=lambda: _copy(self, sha256_var)).grid(row=3, column=2, pady=2)
+        ttk.Entry(outer, textvariable=sha256_var, state=READONLY, bootstyle="secondary").grid(
+            row=3, column=1, sticky=EW, padx=(8, 4), pady=2
+        )
+        ttk.Button(
+            outer,
+            text="Copy",
+            width=5,
+            bootstyle="secondary-outline",
+            command=lambda: _copy(self, sha256_var),
+        ).grid(row=3, column=2, pady=2)
 
         ttk.Label(outer, text="SHA-1:", anchor=W).grid(row=4, column=0, sticky=W, pady=2)
         sha1_var = ttk.StringVar(value=sha1)
-        ttk.Entry(outer, textvariable=sha1_var, state=READONLY,
-                  bootstyle="secondary").grid(row=4, column=1, sticky=EW, padx=(8, 4), pady=2)
-        ttk.Button(outer, text="Copy", width=5, bootstyle="secondary-outline",
-                   command=lambda: _copy(self, sha1_var)).grid(row=4, column=2, pady=2)
+        ttk.Entry(outer, textvariable=sha1_var, state=READONLY, bootstyle="secondary").grid(
+            row=4, column=1, sticky=EW, padx=(8, 4), pady=2
+        )
+        ttk.Button(
+            outer,
+            text="Copy",
+            width=5,
+            bootstyle="secondary-outline",
+            command=lambda: _copy(self, sha1_var),
+        ).grid(row=4, column=2, pady=2)
 
         # Per-partition compliance check
         enabled = self._hcfg.get_enabled_partitions(self._path)
         if enabled:
             ttk.Separator(outer, orient=HORIZONTAL).grid(
-                row=5, column=0, columnspan=3, sticky=EW, pady=(8, 4))
-            ttk.Label(outer, text="Partition Compliance Check",
-                      bootstyle="secondary", anchor=W).grid(
-                row=6, column=0, columnspan=3, sticky=W, pady=(0, 4))
+                row=5, column=0, columnspan=3, sticky=EW, pady=(8, 4)
+            )
+            ttk.Label(
+                outer, text="Partition Compliance Check", bootstyle="secondary", anchor=W
+            ).grid(row=6, column=0, columnspan=3, sticky=W, pady=(0, 4))
 
             result_row = 7
             all_pass = True
@@ -333,44 +372,52 @@ class StoredHashDialog(ttk.Toplevel):
 
                 for algo, match, fail_flag in results:
                     if match:
-                        text  = f"{part_label} {algo}: Pass"
+                        text = f"{part_label} {algo}: Pass"
                         style = "success"
                     else:
-                        fail  = " [FAIL — stop flag set]" if fail_flag else " [mismatch]"
-                        text  = f"{part_label} {algo}: MISMATCH{fail}"
+                        fail = " [FAIL — stop flag set]" if fail_flag else " [mismatch]"
+                        text = f"{part_label} {algo}: MISMATCH{fail}"
                         style = "danger"
                     ttk.Label(outer, text=text, bootstyle=style, anchor=W).grid(
-                        row=result_row, column=0, columnspan=3, sticky=W, padx=(8, 0))
+                        row=result_row, column=0, columnspan=3, sticky=W, padx=(8, 0)
+                    )
                     result_row += 1
 
             summary_row = result_row
             if needs_rehash:
-                ttk.Label(outer, text="One or more partition checks require recomputing hashes.",
-                          bootstyle="warning", anchor=W).grid(
-                    row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
+                ttk.Label(
+                    outer,
+                    text="One or more partition checks require recomputing hashes.",
+                    bootstyle="warning",
+                    anchor=W,
+                ).grid(row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
             elif all_pass:
-                ttk.Label(outer, text="All configured checks passed.",
-                          bootstyle="success", anchor=W).grid(
-                    row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
+                ttk.Label(
+                    outer, text="All configured checks passed.", bootstyle="success", anchor=W
+                ).grid(row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
             else:
-                ttk.Label(outer, text="One or more checks FAILED.",
-                          bootstyle="danger", anchor=W).grid(
-                    row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
+                ttk.Label(
+                    outer, text="One or more checks FAILED.", bootstyle="danger", anchor=W
+                ).grid(row=summary_row, column=0, columnspan=3, sticky=W, pady=(4, 0))
             result_row = summary_row + 1
         else:
             result_row = 6
-            ttk.Label(outer,
-                      text="No partition hashes configured. Use Options → Configure Hashes.",
-                      bootstyle="secondary", anchor=W).grid(
-                row=5, column=0, columnspan=3, sticky=W, pady=(8, 0))
+            ttk.Label(
+                outer,
+                text="No partition hashes configured. Use Options → Configure Hashes.",
+                bootstyle="secondary",
+                anchor=W,
+            ).grid(row=5, column=0, columnspan=3, sticky=W, pady=(8, 0))
 
-        ttk.Button(outer, text="Close", command=self.destroy,
-                   bootstyle="outline").grid(row=result_row, column=2, sticky=E, pady=(12, 0))
+        ttk.Button(outer, text="Close", command=self.destroy, bootstyle="outline").grid(
+            row=result_row, column=2, sticky=E, pady=(12, 0)
+        )
 
 
 # ── shared helpers ────────────────────────────────────────────────────────────
 
-def _age_info(days: Optional[int]):
+
+def _age_info(days: int | None):
     if days is None:
         return "Never", "secondary"
     if days == 0:
@@ -390,6 +437,7 @@ def _copy(widget, var: ttk.StringVar):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _fmt_size(n: int) -> str:
     for unit, thresh in (("GB", 1 << 30), ("MB", 1 << 20), ("KB", 1 << 10)):

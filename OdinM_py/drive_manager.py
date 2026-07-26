@@ -8,25 +8,25 @@ appears as a single slot. The ODINC target is \\Device\\HarddiskN\\Partition0 (w
 import ctypes
 import struct
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
 
-DRIVE_REMOVABLE               = 2
-POLL_INTERVAL_MS              = 2000
-INVALID_HANDLE_VALUE          = ctypes.c_void_p(-1).value
-IOCTL_STORAGE_GET_DEVICE_NUM  = 0x2D1080  # DeviceIoControl code
-IOCTL_STORAGE_QUERY_PROPERTY  = 0x002D1400
-FILE_SHARE_READ_WRITE         = 0x1 | 0x2
-OPEN_EXISTING                 = 3
+DRIVE_REMOVABLE = 2
+POLL_INTERVAL_MS = 2000
+INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+IOCTL_STORAGE_GET_DEVICE_NUM = 0x2D1080  # DeviceIoControl code
+IOCTL_STORAGE_QUERY_PROPERTY = 0x002D1400
+FILE_SHARE_READ_WRITE = 0x1 | 0x2
+OPEN_EXISTING = 3
 
 
 @dataclass
 class DriveInfo:
-    disk_number: int          # physical disk index (e.g. 3)
-    first_letter: str         # first partition letter found, e.g. "E:"
-    all_letters: List[str]    # all partition letters on this disk
+    disk_number: int  # physical disk index (e.g. 3)
+    first_letter: str  # first partition letter found, e.g. "E:"
+    all_letters: list[str]  # all partition letters on this disk
     label: str = ""
     size_bytes: int = 0
-    hw_serial: str = ""       # device firmware serial — stable across repartitions
+    hw_serial: str = ""  # device firmware serial — stable across repartitions
 
     @property
     def target_path(self) -> str:
@@ -58,18 +58,17 @@ class DriveInfo:
 
 # ── Win32 helpers ──────────────────────────────────────────────────────────────
 
+
 def _get_volume_label(root: str) -> str:
     buf = ctypes.create_unicode_buffer(256)
     try:
-        ctypes.windll.kernel32.GetVolumeInformationW(
-            root, buf, 256, None, None, None, None, 0
-        )
+        ctypes.windll.kernel32.GetVolumeInformationW(root, buf, 256, None, None, None, None, 0)
         return buf.value
     except Exception:
         return ""
 
 
-GENERIC_READ = 0x80000000   # required for IOCTL_DISK_GET_LENGTH_INFO
+GENERIC_READ = 0x80000000  # required for IOCTL_DISK_GET_LENGTH_INFO
 
 
 def _get_physical_disk_size(disk_number: int) -> int:
@@ -81,7 +80,7 @@ def _get_physical_disk_size(disk_number: int) -> int:
     if h == INVALID_HANDLE_VALUE:
         return 0
     try:
-        buf      = ctypes.create_string_buffer(8)   # GET_LENGTH_INFORMATION = LARGE_INTEGER
+        buf = ctypes.create_string_buffer(8)  # GET_LENGTH_INFORMATION = LARGE_INTEGER
         returned = ctypes.c_ulong(0)
         ok = ctypes.windll.kernel32.DeviceIoControl(
             h, 0x7405C, None, 0, buf, 8, ctypes.byref(returned), None
@@ -115,8 +114,14 @@ def _get_device_serial(disk_number: int) -> str:
         buf = ctypes.create_string_buffer(1024)
         returned = ctypes.c_ulong(0)
         ok = ctypes.windll.kernel32.DeviceIoControl(
-            h, IOCTL_STORAGE_QUERY_PROPERTY,
-            query, 8, buf, 1024, ctypes.byref(returned), None,
+            h,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            query,
+            8,
+            buf,
+            1024,
+            ctypes.byref(returned),
+            None,
         )
         if not ok or returned.value < 28:
             return ""
@@ -139,7 +144,7 @@ def _get_physical_disk_number(drive_letter: str) -> int:
     Uses IOCTL_STORAGE_GET_DEVICE_NUMBER.
     Returns -1 on failure.
     """
-    path = f"\\\\.\\" + drive_letter.rstrip("\\")
+    path = "\\\\.\\" + drive_letter.rstrip("\\")
     h = ctypes.windll.kernel32.CreateFileW(
         path, 0, FILE_SHARE_READ_WRITE, None, OPEN_EXISTING, 0, None
     )
@@ -151,8 +156,7 @@ def _get_physical_disk_number(drive_letter: str) -> int:
         buf = ctypes.create_string_buffer(12)
         returned = ctypes.c_ulong(0)
         ok = ctypes.windll.kernel32.DeviceIoControl(
-            h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0,
-            buf, 12, ctypes.byref(returned), None
+            h, IOCTL_STORAGE_GET_DEVICE_NUM, None, 0, buf, 12, ctypes.byref(returned), None
         )
     except OSError:
         return -1
@@ -171,20 +175,20 @@ def is_removable(drive_letter: str) -> bool:
     return ctypes.windll.kernel32.GetDriveTypeW(root) == DRIVE_REMOVABLE
 
 
-def get_removable_drives() -> List[DriveInfo]:
+def get_removable_drives() -> list[DriveInfo]:
     """
     Return one DriveInfo per physical removable disk.
     Multiple partition letters on the same disk are merged into one entry.
     """
     bitmask = ctypes.windll.kernel32.GetLogicalDrives()
     # disk_number → DriveInfo
-    disks: Dict[int, DriveInfo] = {}
+    disks: dict[int, DriveInfo] = {}
 
     for i in range(26):
         if not (bitmask & (1 << i)):
             continue
         letter = chr(65 + i) + ":"
-        root   = letter + "\\"
+        root = letter + "\\"
         if ctypes.windll.kernel32.GetDriveTypeW(root) != DRIVE_REMOVABLE:
             continue
 
@@ -193,8 +197,8 @@ def get_removable_drives() -> List[DriveInfo]:
             continue  # couldn't determine disk — skip
 
         if disk_num not in disks:
-            label     = _get_volume_label(root)
-            size      = _get_physical_disk_size(disk_num)
+            label = _get_volume_label(root)
+            size = _get_physical_disk_size(disk_num)
             hw_serial = _get_device_serial(disk_num)
             disks[disk_num] = DriveInfo(
                 disk_number=disk_num,
@@ -212,6 +216,7 @@ def get_removable_drives() -> List[DriveInfo]:
 
 # ── Monitor ────────────────────────────────────────────────────────────────────
 
+
 class DriveMonitor:
     """
     Polls for removable drive changes and fires on_drives_changed
@@ -222,15 +227,15 @@ class DriveMonitor:
     that reuses the same Windows disk index is still detected as a new device.
     """
 
-    def __init__(self, root, on_drives_changed: Callable[[List[DriveInfo]], None]):
-        self._root       = root
+    def __init__(self, root, on_drives_changed: Callable[[list[DriveInfo]], None]):
+        self._root = root
         self._on_changed = on_drives_changed
         # Each entry is (disk_number, hw_serial) — hw_serial="" if unavailable
-        self._last: List[tuple] = []
+        self._last: list[tuple] = []
         # Last successfully read serial per disk_number.  Used to fill in ""
         # when the device is locked by an active write so we don't misread a
         # temporary read failure as a card swap.
-        self._known_serials: Dict[int, str] = {}
+        self._known_serials: dict[int, str] = {}
         self._running = False
 
     def start(self):
@@ -253,12 +258,11 @@ class DriveMonitor:
             # unreadable (locked by an active flash write), so a momentary ""
             # does not look like a card swap and trigger a spurious auto-clone.
             current_keys = [
-                (d.disk_number,
-                 d.hw_serial or self._known_serials.get(d.disk_number, ""))
+                (d.disk_number, d.hw_serial or self._known_serials.get(d.disk_number, ""))
                 for d in current
             ]
             if current_keys != self._last:
-                self._on_changed(current)   # update _last only after success
+                self._on_changed(current)  # update _last only after success
                 self._last = current_keys
         except Exception:
             pass  # swallow all errors — keeps polling alive even if callback throws

@@ -8,16 +8,16 @@ import hashlib
 import os
 import threading
 from enum import Enum, auto
-from typing import Callable, Optional
+from collections.abc import Callable
 
 CHUNK_SIZE = 4 << 20  # 4 MB — matches typical disk read granularity
 
 
 class HashStatus(Enum):
-    IDLE    = auto()
+    IDLE = auto()
     RUNNING = auto()
-    DONE    = auto()
-    FAILED  = auto()
+    DONE = auto()
+    FAILED = auto()
     STOPPED = auto()
 
 
@@ -37,15 +37,15 @@ class HashWorker:
         on_progress: Callable[[int], None],
         on_done: Callable,  # (HashStatus, sha256: str, sha1: str)
         offset: int = 0,
-        byte_count: int = -1,   # -1 = hash to end of file
+        byte_count: int = -1,  # -1 = hash to end of file
     ):
-        self._root        = root
-        self._path        = file_path
+        self._root = root
+        self._path = file_path
         self._on_progress = on_progress
-        self._on_done     = on_done
-        self._offset      = offset
-        self._byte_count  = byte_count
-        self._thread: Optional[threading.Thread] = None
+        self._on_done = on_done
+        self._offset = offset
+        self._byte_count = byte_count
+        self._thread: threading.Thread | None = None
         self.status = HashStatus.IDLE
 
     def start(self):
@@ -74,8 +74,8 @@ class HashWorker:
         total = max(0, total)
 
         sha256 = hashlib.sha256()
-        sha1   = hashlib.sha1()
-        done   = 0
+        sha1 = hashlib.sha1()
+        done = 0
         last_pct = -1
 
         try:
@@ -91,7 +91,7 @@ class HashWorker:
                         break
                     sha256.update(chunk)
                     sha1.update(chunk)
-                    done      += len(chunk)
+                    done += len(chunk)
                     remaining -= len(chunk)
                     if total > 0:
                         pct = min(int(done * 100 / total), 99)
