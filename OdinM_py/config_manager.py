@@ -14,7 +14,14 @@ DEFAULTS = {
     "stop_on_verify_fail": "false",
     "show_flash_widget": "true",
     "max_drive_gb": "8",
+    # Imaging/flashing engine: "odin" drives ODINC.exe, "pyimager" uses the
+    # built-in Python imager (scripts/pyimager.py).
+    "engine": "odin",
 }
+
+ENGINE_ODIN = "odin"
+ENGINE_PYIMAGER = "pyimager"
+ENGINES = (ENGINE_ODIN, ENGINE_PYIMAGER)
 
 
 def _config_path() -> str:
@@ -79,6 +86,14 @@ class ConfigManager:
             return int(self._cfg["settings"].get("max_drive_gb", "8"))
         except ValueError:
             return 8
+
+    def get_engine(self) -> str:
+        """Imaging engine: ENGINE_ODIN or ENGINE_PYIMAGER."""
+        val = self._cfg["settings"].get("engine", ENGINE_ODIN).strip().lower()
+        return val if val in ENGINES else ENGINE_ODIN
+
+    def use_pyimager(self) -> bool:
+        return self.get_engine() == ENGINE_PYIMAGER
 
     # ── setters ──────────────────────────────────────────────────────────────
 

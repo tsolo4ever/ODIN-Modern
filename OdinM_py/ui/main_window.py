@@ -339,14 +339,51 @@ class MainWindow(ttk.Frame):
         initial = self._image_var.get()
         initial_dir = os.path.dirname(initial) if initial else ""
         path = filedialog.askopenfilename(
-            title="Select ODIN image file",
+            title="Select image file",
             initialdir=initial_dir or None,
-            filetypes=[("ODIN image", "*.img *.odin *.bin"), ("All files", "*.*")],
+            filetypes=[
+                ("Disk image", "*.img *.odin *.bin *.img.gz *.gz"),
+                ("ODIN image", "*.img *.odin *.bin"),
+                ("Gzipped image", "*.img.gz *.gz"),
+                ("All files", "*.*"),
+            ],
         )
-        if path:
-            self._image_var.set(path)
-            self._config.set_last_image(path)
-            self._refresh_image_size()
+        if not path:
+            return
+        if not self._validate_image(path):
+            return
+        self._image_var.set(path)
+        self._config.set_last_image(path)
+        self._refresh_image_size()
+
+    def _validate_image(self, path: str) -> bool:
+        """Confirm the file really holds a disk image before accepting it.
+
+        A .gz is only useful if there is an actual image inside, and an ODIN
+        header whose capture was aborted looks fine by size alone - both are
+        worth catching here rather than at flash time.
+        """
+        try:
+            import sys
+            from pathlib import Path
+
+            scripts = Path(__file__).resolve().parent.parent / "scripts"
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            from pyimager import validate_image_file
+        except ImportError:
+            return True  # validator unavailable - don't block the user
+
+        result = validate_image_file(path)
+        if result["ok"]:
+            return True
+        return messagebox.askyesno(
+            "Image may not be usable",
+            f"{os.path.basename(path)}\n\n{result['reason']}\n\n"
+            "Use it anyway?",
+            parent=self._root_win,
+            icon="warning",
+        )
 
     def _refresh_image_size(self):
         path = self._image_var.get().strip()

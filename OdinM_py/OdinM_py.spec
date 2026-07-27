@@ -11,7 +11,10 @@ datas = collect_data_files('ttkbootstrap')
 
 a = Analysis(
     ['main.py'],
-    pathex=['.'],
+    # scripts/ holds pyimager, the built-in imaging engine. It must be on
+    # pathex or the frozen exe cannot import it (there is no scripts/ folder
+    # next to a one-file bundle for the sys.path fallback to find).
+    pathex=['.', 'scripts'],
     binaries=[],
     datas=datas,
     hiddenimports=[
@@ -36,6 +39,9 @@ a = Analysis(
         'ui.hash_dialog',
         'ui.image_options_dialog',
         'ui.make_image_dialog',
+        # built-in Python imaging engine (scripts/pyimager.py) and its worker
+        'pyimager',
+        'pyimager_worker',
     ],
     hookspath=[],
     hooksconfig={},

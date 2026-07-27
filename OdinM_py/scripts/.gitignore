@@ -1,0 +1,9 @@
+# Analysis output and card data - tools are tracked, data is not.
+manifests/
+extracted/
+*.img
+*.img.json
+*.img.sha256
+*.bin
+dot_offsets.txt
+__pycache__/

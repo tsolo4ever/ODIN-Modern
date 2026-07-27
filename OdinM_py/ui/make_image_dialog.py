@@ -21,6 +21,20 @@ from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
 from partition_reader import get_image_hash_region
+from pyimager_worker import PyImagerWorker
+
+ENGINE_ODINC = "ODINC.exe  (ODIN container image)"
+ENGINE_PY = "pyimager  (raw .img, built in)"
+ENGINE_PY_GZ = "pyimager  (gzip-compressed .img.gz)"
+ENGINE_LABELS = [ENGINE_ODINC, ENGINE_PY, ENGINE_PY_GZ]
+
+ENGINE_HINTS = {
+    ENGINE_ODINC: "ODIN container format. Options… sets backup flags.",
+    ENGINE_PY: "Plain dd-style image, no header. Real progress, per-sector "
+               "retry, SHA-256 while reading.",
+    ENGINE_PY_GZ: "Same as raw but gzip-compressed; hashes still describe the "
+                  "uncompressed disk bytes.",
+}
 
 
 class MakeImageDialog(ttk.Toplevel):
@@ -73,15 +87,31 @@ class MakeImageDialog(ttk.Toplevel):
         )
         self._drive_cb.grid(row=0, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=(0, 4))
 
+        # Imaging engine
+        ttk.Label(outer, text="Engine:", anchor=W).grid(row=1, column=0, sticky=W, pady=(0, 4))
+        self._engine_var = ttk.StringVar(value=ENGINE_LABELS[0])
+        self._engine_cb = ttk.Combobox(
+            outer,
+            textvariable=self._engine_var,
+            state="readonly",
+            values=ENGINE_LABELS,
+            width=46,
+        )
+        self._engine_cb.grid(row=1, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=(0, 4))
+        self._engine_cb.bind("<<ComboboxSelected>>", self._on_engine_change)
+
         # Output file
-        ttk.Label(outer, text="Output file:", anchor=W).grid(row=1, column=0, sticky=W, pady=(0, 4))
+        ttk.Label(outer, text="Output file:", anchor=W).grid(row=2, column=0, sticky=W, pady=(0, 4))
         self._output_var = ttk.StringVar()
         ttk.Entry(outer, textvariable=self._output_var).grid(
-            row=1, column=1, sticky=EW, padx=(8, 4), pady=(0, 4)
+            row=2, column=1, sticky=EW, padx=(8, 4), pady=(0, 4)
         )
         ttk.Button(outer, text="Browse…", width=9, command=self._browse_output).grid(
-            row=1, column=2, pady=(0, 4)
+            row=2, column=2, pady=(0, 4)
         )
+
+        self._engine_hint = ttk.Label(outer, text="", anchor=W, bootstyle="secondary")
+        self._engine_hint.grid(row=3, column=1, columnspan=2, sticky=W, padx=(8, 0))
 
         # Auto-workflow toggle
         self._auto_var = ttk.BooleanVar(value=True)
@@ -90,15 +120,15 @@ class MakeImageDialog(ttk.Toplevel):
             text="Auto hash & configure after backup",
             variable=self._auto_var,
             bootstyle="round-toggle",
-        ).grid(row=2, column=0, columnspan=3, sticky=W, pady=(4, 8))
+        ).grid(row=4, column=0, columnspan=3, sticky=W, pady=(4, 8))
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=3, column=0, columnspan=3, sticky=EW, pady=(0, 8)
+            row=5, column=0, columnspan=3, sticky=EW, pady=(0, 8)
         )
 
         # Step indicators
         step_frame = ttk.Frame(outer)
-        step_frame.grid(row=4, column=0, columnspan=3, sticky=EW, pady=(0, 6))
+        step_frame.grid(row=6, column=0, columnspan=3, sticky=EW, pady=(0, 6))
         step_frame.columnconfigure(0, weight=0)
         step_frame.columnconfigure(1, weight=1)
 
@@ -116,7 +146,7 @@ class MakeImageDialog(ttk.Toplevel):
             self._step_lbls.append((icon, lbl))
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
-            row=5, column=0, columnspan=3, sticky=EW, pady=(6, 8)
+            row=7, column=0, columnspan=3, sticky=EW, pady=(6, 8)
         )
 
         # Progress + status
@@ -124,14 +154,14 @@ class MakeImageDialog(ttk.Toplevel):
         self._pbar = ttk.Progressbar(
             outer, variable=self._progress_var, maximum=100, length=420, bootstyle="info-striped"
         )
-        self._pbar.grid(row=6, column=0, columnspan=3, sticky=EW, pady=(0, 4))
+        self._pbar.grid(row=8, column=0, columnspan=3, sticky=EW, pady=(0, 4))
 
         self._status_lbl = ttk.Label(outer, text="Ready", bootstyle="secondary")
-        self._status_lbl.grid(row=7, column=0, columnspan=3, sticky=W, pady=(0, 8))
+        self._status_lbl.grid(row=9, column=0, columnspan=3, sticky=W, pady=(0, 8))
 
         # Buttons
         btn_frame = ttk.Frame(outer)
-        btn_frame.grid(row=8, column=0, columnspan=3, sticky=EW)
+        btn_frame.grid(row=10, column=0, columnspan=3, sticky=EW)
 
         self._start_btn = ttk.Button(
             btn_frame, text="Start", bootstyle="success", command=self._start
@@ -141,12 +171,15 @@ class MakeImageDialog(ttk.Toplevel):
             btn_frame, text="Stop", bootstyle="danger-outline", command=self._stop, state=DISABLED
         )
         self._stop_btn.pack(side=LEFT, padx=(0, 6))
-        ttk.Button(
+        self._options_btn = ttk.Button(
             btn_frame, text="Options…", bootstyle="secondary-outline", command=self._open_options
-        ).pack(side=LEFT, padx=(0, 6))
+        )
+        self._options_btn.pack(side=LEFT, padx=(0, 6))
         ttk.Button(btn_frame, text="Close", bootstyle="outline", command=self._on_close).pack(
             side=RIGHT
         )
+
+        self._on_engine_change()
 
     # ── step indicator helpers ────────────────────────────────────────────────
 
@@ -167,15 +200,62 @@ class MakeImageDialog(ttk.Toplevel):
 
     # ── actions ───────────────────────────────────────────────────────────────
 
+    # ── engine ────────────────────────────────────────────────────────────────
+
+    @property
+    def _engine(self) -> str:
+        return self._engine_var.get()
+
+    @property
+    def _use_pyimager(self) -> bool:
+        return self._engine in (ENGINE_PY, ENGINE_PY_GZ)
+
+    def _on_engine_change(self, _event=None):
+        """Keep the hint, the Options button and the output extension in step."""
+        self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""))
+        # ODINC backup flags are meaningless for the built-in imager.
+        self._options_btn.configure(state=DISABLED if self._use_pyimager else NORMAL)
+
+        # Nudge the extension so the chosen engine and the filename agree.
+        path = self._output_var.get().strip()
+        if not path:
+            return
+        wants_gz = self._engine == ENGINE_PY_GZ
+        has_gz = path.lower().endswith(".gz")
+        if wants_gz and not has_gz:
+            self._output_var.set(path + ".gz")
+        elif not wants_gz and has_gz:
+            self._output_var.set(path[:-3])
+
     def _browse_output(self):
+        if self._engine == ENGINE_PY_GZ:
+            default_ext = ".img.gz"
+            types = [("Gzipped raw image", "*.img.gz *.gz"), ("All files", "*.*")]
+        elif self._engine == ENGINE_PY:
+            default_ext = ".img"
+            types = [("Raw disk image", "*.img *.bin"),
+                     ("Gzipped raw image", "*.img.gz *.gz"),
+                     ("All files", "*.*")]
+        else:
+            default_ext = ".img"
+            types = [("ODIN image", "*.img *.odin *.bin"),
+                     ("All files", "*.*")]
         path = filedialog.asksaveasfilename(
             title="Save image as",
-            defaultextension=".img",
-            filetypes=[("ODIN image", "*.img *.odin *.bin"), ("All files", "*.*")],
+            defaultextension=default_ext,
+            filetypes=types,
             parent=self,
         )
-        if path:
-            self._output_var.set(path)
+        if not path:
+            return
+        self._output_var.set(path)
+        # Picking a .gz by hand implies the compressing engine, and vice versa.
+        if path.lower().endswith(".gz") and self._engine == ENGINE_PY:
+            self._engine_var.set(ENGINE_PY_GZ)
+            self._on_engine_change()
+        elif not path.lower().endswith(".gz") and self._engine == ENGINE_PY_GZ:
+            self._engine_var.set(ENGINE_PY)
+            self._on_engine_change()
 
     def _open_options(self):
         from ui.image_options_dialog import ImageOptionsDialog
@@ -218,6 +298,22 @@ class MakeImageDialog(ttk.Toplevel):
             self._set_step(i, "pending")
         self._set_step(0, "running")
         self._status("Step 1/3: Backing up drive…", "info")
+
+        if self._use_pyimager:
+            # In-process imager: real byte-count progress, so no animated bar
+            # and no file-size poller needed.
+            self._pbar.configure(mode="determinate")
+            self._worker = PyImagerWorker(
+                root=self._parent,
+                disk_number=drive.disk_number,
+                image_path=output,
+                on_progress=self._on_backup_progress,
+                on_log=lambda line: self._status(line, "secondary"),
+                on_done=self._on_backup_done,
+                sha1=True,
+            )
+            self._worker.start()
+            return
 
         # ODINC rebinds stdout to a console window internally, so
         # percentage output never reaches our pipe — use animated bar.
@@ -264,12 +360,23 @@ class MakeImageDialog(ttk.Toplevel):
         self._pbar.configure(mode="determinate")
         if status == CloneStatus.DONE:
             self._set_step(0, "done")
-            if self._auto_var.get():
-                self._start_hash()
-            else:
+            if not self._auto_var.get():
                 self._progress_var.set(100)
                 self._status("Backup complete.", "success")
                 self._finish_buttons()
+                return
+            # pyimager hashed the disk bytes as it read them, so there is
+            # nothing to re-read. This is also the only correct source of a
+            # hash for a .gz, where the file bytes are compressed.
+            digests = getattr(self._worker, "result", None) or {}
+            digests = digests.get("digests") or {}
+            if self._use_pyimager and digests.get("sha256"):
+                self._progress_var.set(100)
+                self._set_step(1, "done")
+                self._status("Hash taken during read — no re-read needed.", "info")
+                self._save_config(digests["sha256"], digests.get("sha1", ""))
+            else:
+                self._start_hash()
         elif status == CloneStatus.STOPPED:
             self._progress_var.set(0)
             self._set_step(0, "failed")
