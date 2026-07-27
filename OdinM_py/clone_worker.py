@@ -11,10 +11,72 @@ import os
 import re
 import subprocess
 import threading
+import time
 from enum import Enum, auto
 from collections.abc import Callable
 
 from partition_reader import get_image_compression_flag
+from drive_manager import get_removable_drives
+
+FSCTL_LOCK_VOLUME = 0x00090018
+FSCTL_DISMOUNT_VOLUME = 0x00090020
+_VOLUME_GENERIC_RW = 0x80000000 | 0x40000000  # GENERIC_READ | GENERIC_WRITE
+
+
+def _lock_and_dismount_volume(letter: str, retries: int = 5, delay_s: float = 0.5):
+    """Open a volume by drive letter and lock it so Windows releases its
+    ownership of the filesystem before a raw sector write to the underlying
+    physical disk. Falls back to FSCTL_DISMOUNT_VOLUME + retry if the lock is
+    initially busy (e.g. Explorer/AV/indexer still has it open), mirroring
+    ODINC.exe's own CDiskImageStream::Open lock/dismount/retry dance in
+    ImageStream.cpp — this is required or Windows' direct-disk-write
+    protection (KB942448) denies the write partway through with
+    ERROR_ACCESS_DENIED once the partition table starts changing under a
+    still-mounted volume.
+    Returns the open, locked handle (caller must CloseHandle when done — that
+    also releases the lock), or None if it could not be locked.
+    """
+    k32 = ctypes.windll.kernel32
+    path = "\\\\.\\" + letter.rstrip("\\")
+    handle = k32.CreateFileW(path, _VOLUME_GENERIC_RW, 0x1 | 0x2, None, 3, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        return None
+
+    returned = ctypes.c_ulong(0)
+    for attempt in range(retries):
+        if k32.DeviceIoControl(handle, FSCTL_LOCK_VOLUME, None, 0, None, 0, ctypes.byref(returned), None):
+            return handle
+        # Lock busy — dismount to force other handles closed, then retry.
+        k32.DeviceIoControl(handle, FSCTL_DISMOUNT_VOLUME, None, 0, None, 0, ctypes.byref(returned), None)
+        if attempt < retries - 1:
+            time.sleep(delay_s)
+
+    k32.CloseHandle(handle)
+    return None
+
+
+def _lock_and_dismount_disk_volumes(disk_number: int) -> list:
+    """Lock every mounted volume (drive letter) living on the given physical
+    disk. Returns the list of successfully locked handles; any letter that
+    could not be locked is logged by the caller via the empty gaps in
+    coverage, not raised here — callers should treat a returned list shorter
+    than the disk's letter count as a soft warning, not a hard failure, since
+    a disk can legitimately have zero mounted letters (e.g. RAW/unformatted)."""
+    handles = []
+    for drive in get_removable_drives():
+        if drive.disk_number != disk_number:
+            continue
+        for letter in drive.all_letters:
+            handle = _lock_and_dismount_volume(letter)
+            if handle is not None:
+                handles.append(handle)
+    return handles
+
+
+def _unlock_volumes(handles: list) -> None:
+    k32 = ctypes.windll.kernel32
+    for handle in handles:
+        k32.CloseHandle(handle)  # closing the handle releases FSCTL_LOCK_VOLUME
 
 
 class CloneStatus(Enum):
@@ -262,6 +324,10 @@ class CloneWorker:
             return f"\\\\.\\PhysicalDrive{m.group(1)}"
         return self._drive
 
+    def _get_disk_number(self) -> int:
+        m = re.search(r"Harddisk(\d+)", self._drive, re.IGNORECASE)
+        return int(m.group(1)) if m else -1
+
     def _run_raw_flash(self, path: str, gz: bool) -> None:
         """Write raw disk image to the physical drive.
         gz=True: stream-decompress path on the fly (no temp file).
@@ -276,10 +342,27 @@ class CloneWorker:
         OPEN_EXISTING = 3
         INVALID_HANDLE = ctypes.c_void_p(-1).value
         CHUNK = 1 * 1024 * 1024  # 1 MB — always sector-aligned
+        WRITE_RETRIES = 3
+        WRITE_RETRY_DELAY_S = 0.5
+
+        # A raw sector write to \\.\PhysicalDriveN is denied partway through
+        # (ERROR_ACCESS_DENIED / err=5) by Windows' direct-disk-write
+        # protection (KB942448) if a volume on this disk is still mounted —
+        # the OS notices its own filesystem metadata changing out from under
+        # it. Lock (and dismount if needed) every mounted volume on this disk
+        # first, and hold those locks for the entire write.
+        disk_number = self._get_disk_number()
+        locked_volumes = _lock_and_dismount_disk_volumes(disk_number) if disk_number >= 0 else []
+        if disk_number >= 0 and not locked_volumes:
+            self._fire_log(
+                f"WARNING: could not lock any mounted volume on disk {disk_number}; "
+                "raw write may be denied partway through by Windows."
+            )
 
         handle = k32.CreateFileW(phys, GENERIC_WRITE, FILE_SHARE_RW, None, OPEN_EXISTING, 0, None)
         if handle == INVALID_HANDLE:
             self._fire_log(f"ERROR: Cannot open {phys} for writing (err={k32.GetLastError()})")
+            _unlock_volumes(locked_volumes)
             self._fire_done(CloneStatus.FAILED)
             return
 
@@ -301,15 +384,26 @@ class CloneWorker:
                     rem = len(chunk) % 512
                     if rem:
                         chunk += b"\x00" * (512 - rem)
-                    written = ctypes.c_ulong(0)
-                    ok = k32.WriteFile(handle, chunk, len(chunk), ctypes.byref(written), None)
-                    if not ok or written.value != len(chunk):
+
+                    write_ok = False
+                    last_err = 0
+                    for attempt in range(WRITE_RETRIES):
+                        written = ctypes.c_ulong(0)
+                        ok = k32.WriteFile(handle, chunk, len(chunk), ctypes.byref(written), None)
+                        if ok and written.value == len(chunk):
+                            write_ok = True
+                            break
+                        last_err = k32.GetLastError()
+                        if attempt < WRITE_RETRIES - 1:
+                            time.sleep(WRITE_RETRY_DELAY_S)
+                    if not write_ok:
                         self._fire_log(
                             f"ERROR: Write failed at"
                             f" {bytes_done // (1024 * 1024)} MB"
-                            f" (err={k32.GetLastError()})"
+                            f" (err={last_err}) after {WRITE_RETRIES} attempts"
                         )
                         break
+
                     bytes_done += written.value
                     if gz and gz_size:
                         pct = min(int(raw_f.tell() * 99 // gz_size), 99)
@@ -326,6 +420,7 @@ class CloneWorker:
                     raw_f.close()
         finally:
             k32.CloseHandle(handle)
+            _unlock_volumes(locked_volumes)
 
         if self.status == CloneStatus.STOPPED:
             self._fire_done(CloneStatus.STOPPED)
