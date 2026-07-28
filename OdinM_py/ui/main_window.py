@@ -56,6 +56,7 @@ class MainWindow(ttk.Frame):
     on_start_slot: Callable[[int], None]
     on_stop_slot: Callable[[int], None]
     on_confirm_slot: Callable[[int], None]
+    on_verify_slot: Callable[[int], None]
     on_start_all: Callable[[], None]
     on_stop_all: Callable[[], None]
     on_refresh_disks: Callable[[], None]
@@ -69,6 +70,7 @@ class MainWindow(ttk.Frame):
         self.on_start_slot = lambda idx: None
         self.on_stop_slot = lambda idx: None
         self.on_confirm_slot = lambda idx: None
+        self.on_verify_slot = lambda idx: None
         self.on_start_all = lambda: None
         self.on_stop_all = lambda: None
         self.on_refresh_disks = lambda: None
@@ -112,6 +114,7 @@ class MainWindow(ttk.Frame):
                 on_start=lambda i: self.on_start_slot(i),
                 on_stop=lambda i: self.on_stop_slot(i),
                 on_confirm=lambda i: self.on_confirm_slot(i),
+                on_verify=lambda i: self.on_verify_slot(i),
             )
             sw.grid(row=idx, column=0, sticky=EW, padx=4, pady=2)
             self._slots.append(sw)
@@ -139,8 +142,8 @@ class MainWindow(ttk.Frame):
     def set_slot_progress(self, idx: int, pct: int):
         self._slots[idx].set_progress(pct)
 
-    def set_slot_status(self, idx: int, status: CloneStatus):
-        self._slots[idx].set_status(status)
+    def set_slot_status(self, idx: int, status: CloneStatus, offer_verify: bool = False):
+        self._slots[idx].set_status(status, offer_verify=offer_verify)
 
     def set_slot_ready(self, idx: int, display: str):
         """Reset a slot to ready state (drive present, Start enabled)."""
@@ -267,6 +270,7 @@ class MainWindow(ttk.Frame):
             on_start=lambda idx: self.on_start_slot(idx),
             on_stop=lambda idx: self.on_stop_slot(idx),
             on_confirm=lambda idx: self.on_confirm_slot(idx),
+            on_verify=lambda idx: self.on_verify_slot(idx),
         )
         sw.grid(row=0, column=0, sticky=EW, padx=4, pady=2)
         self._slots.append(sw)

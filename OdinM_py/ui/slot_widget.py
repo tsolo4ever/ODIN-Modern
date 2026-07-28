@@ -30,14 +30,19 @@ class SlotWidget(ttk.Frame):
       on_confirm(slot_index)  — user clicked the "Confirm" status badge to
                                  lock this slot onto its currently-detected
                                  disk number
+      on_verify(slot_index)   — user clicked "Verify" (offered instead of
+                                 "Start" right after a flash completes with
+                                 verify-after-clone turned off)
     """
 
-    def __init__(self, parent, slot_index: int, on_start, on_stop, on_confirm, **kwargs):
+    def __init__(self, parent, slot_index: int, on_start, on_stop, on_confirm, on_verify,
+                **kwargs):
         super().__init__(parent, **kwargs)
         self._idx = slot_index
         self._on_start = on_start
         self._on_stop = on_stop
         self._on_confirm = on_confirm
+        self._on_verify = on_verify
         self._awaiting_confirm = False
         self._build()
         self.reset()
@@ -158,12 +163,14 @@ class SlotWidget(ttk.Frame):
     def set_eta(self, eta_str: str):
         self._eta_var.set(eta_str)
 
-    def set_status(self, status: CloneStatus):
+    def set_status(self, status: CloneStatus, offer_verify: bool = False):
         self._set_status(status)
         if status == CloneStatus.QUEUED:
             self._btn.configure(text="Cancel", state=NORMAL, bootstyle="warning-outline")
         elif status == CloneStatus.RUNNING:
             self._btn.configure(text="Stop", state=NORMAL, bootstyle="danger-outline")
+        elif status == CloneStatus.DONE and offer_verify:
+            self._btn.configure(text="Verify", state=NORMAL, bootstyle="info-outline")
         elif status in (CloneStatus.DONE, CloneStatus.FAILED, CloneStatus.STOPPED):
             self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
 
@@ -177,6 +184,8 @@ class SlotWidget(ttk.Frame):
         text = self._btn.cget("text")
         if text == "Start":
             self._on_start(self._idx)
+        elif text == "Verify":
+            self._on_verify(self._idx)
         else:
             self._on_stop(self._idx)
 

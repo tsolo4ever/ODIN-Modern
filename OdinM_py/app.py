@@ -125,6 +125,7 @@ class OdinMApp:
         self._window.on_start_slot = self._start_slot
         self._window.on_stop_slot = self._stop_slot
         self._window.on_confirm_slot = self._confirm_slot
+        self._window.on_verify_slot = self._verify_slot
         self._window.on_start_all = self._start_all
         self._window.on_stop_all = self._stop_all
         self._window.on_refresh_disks = self._refresh_disks
@@ -608,7 +609,9 @@ class OdinMApp:
         drive = self._drives[idx]
         if drive is not None and status == CloneStatus.DONE:
             self._finished_disk_nums.add(drive.disk_number)
-        self._window.set_slot_status(idx, status)
+        auto_verify = self._config.get_verify_after_clone()
+        offer_verify = status == CloneStatus.DONE and not auto_verify
+        self._window.set_slot_status(idx, status, offer_verify=offer_verify)
         self._flash_set_status(idx, status)
         label = {
             CloneStatus.DONE: "Complete",
@@ -619,12 +622,13 @@ class OdinMApp:
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
             self._flash_set_progress(idx, 100)
-            if self._config.get_verify_after_clone():
+            if auto_verify:
                 drain_now = not self._start_target_verify(idx)
             else:
-                # No hash comparison will run, so it's already safe to fix
-                # up the disk signature - see _fix_disk_signature().
-                self._fix_disk_signature(idx)
+                # Signature fix is deferred until a verify actually runs (see
+                # _fix_disk_signature()'s ordering warning) - the operator
+                # can trigger one on demand via the slot's "Verify" button
+                # (see _verify_slot()), or just pull the card and skip it.
                 drain_now = True
         else:
             drain_now = True
@@ -635,6 +639,24 @@ class OdinMApp:
         self._flash_set_eta(idx, "")
         if drain_now:
             self._drain_queue()
+
+    def _verify_slot(self, idx: int):
+        """Operator clicked "Verify" - offered instead of "Start" right
+        after a flash completes with verify-after-clone turned off, so a
+        card can still be checked on demand without enabling it globally.
+        Runs the exact same target-disk hash check the auto-verify path
+        uses (_start_target_verify -> _on_target_verify_done), including
+        fixing the disk signature afterward on success.
+
+        Flips the button back to "Start" immediately (matching how the
+        auto-verify path already looks throughout its own verify pass) so
+        a second click can't launch a duplicate verify against the same
+        drive.
+        """
+        if self._drives[idx] is None:
+            return
+        self._window.set_slot_status(idx, CloneStatus.DONE, offer_verify=False)
+        self._start_target_verify(idx)
 
     def _start_target_verify(self, idx: int) -> bool:
         image = self._window.image_path
