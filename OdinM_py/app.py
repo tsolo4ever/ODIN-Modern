@@ -12,13 +12,20 @@ from ttkbootstrap.constants import *
 
 from clone_worker import CloneStatus, CloneWorker
 from config_manager import ConfigManager
-from drive_manager import DriveInfo, DriveMonitor, is_removable
+from drive_manager import (
+    DriveInfo,
+    DriveMonitor,
+    debug_probe_disks,
+    get_removable_drives,
+    is_disk_removable,
+)
 from hash_worker import HashStatus, HashWorker
 from partition_reader import get_image_hash_region
+from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
 from ui.flash_status_window import FlashStatusWindow
 from ui.main_window import MainWindow, NUM_SLOTS
 
-APP_TITLE = "OdinM — Multi-Drive Clone Tool (Python)"
+APP_TITLE = "OdinM_py v2 — Multi-Drive Clone Tool"
 
 
 def _fmt_eta(seconds: float) -> str:
@@ -42,6 +49,17 @@ def _fmt_speed(bps: float) -> str:
 
 MIN_WIDTH = 780
 MIN_HEIGHT = 560
+
+# How long a newly-inserted drive must sit connected before auto-clone starts
+# writing to it - gives Windows/the reader a moment to settle after insertion
+# rather than writing the instant the card is first detected.
+AUTO_CLONE_DELAY_MS = 5000
+
+# How long a slot's confirmed lock survives after its disk is confirmed
+# removed. The same disk number reappearing within this window is still
+# treated as confirmed (no re-click needed, auto-clone can proceed) - only
+# after this long with it still gone does the lock actually expire.
+CONFIRM_LOCK_GRACE_MS = 15 * 60 * 1000
 
 
 class OdinMApp:
@@ -68,7 +86,7 @@ class OdinMApp:
 
         # Drive slots: letter → slot index mapping
         self._drives: list[DriveInfo | None] = [None] * NUM_SLOTS
-        self._workers: dict[int, CloneWorker] = {}
+        self._workers: dict[int, CloneWorker | PyImagerRestoreWorker] = {}
         self._queue: list[int] = []  # slot indices waiting to start
         # slot → deque of (timestamp, pct) samples for rolling speed window
         self._speed_samples: dict[int, deque] = {}
@@ -76,14 +94,29 @@ class OdinMApp:
         # disk numbers that just finished cloning — cleared when drive is removed
         # so the same physical card does not trigger a second auto-clone
         self._finished_disk_nums: set = set()
+        # slot index -> disk_number currently shown in the flash widget
+        # (None if empty) - see _mirror_drives_to_flash()
+        self._flash_displayed_disk_nums: dict[int, int | None] = {}
+        # disk_number -> pending after() job id for a delayed auto-clone
+        # start, so a newly-inserted card gets a moment to settle before
+        # auto-clone starts writing to it (see _on_drives_changed)
+        self._auto_clone_pending: dict[int, str] = {}
+        # slot index -> disk_number the operator has confirmed/locked in.
+        # Nothing may flash (manual Start or auto-clone) until a slot's
+        # current disk_number matches its entry here - see _confirm_slot().
+        self._locked_disk_nums: dict[int, int] = {}
+        # slot index -> pending after() job id for CONFIRM_LOCK_GRACE_MS,
+        # started when a locked slot's disk is confirmed removed. Cancelled
+        # if the same disk number comes back first.
+        self._lock_expiry_jobs: dict[int, str] = {}
         self._flash_widget: FlashStatusWindow | None = None
         if self._config.get_show_flash_widget():
             self._show_flash_widget()
 
         self._monitor = DriveMonitor(self._root, self._on_drives_changed)
+        self._monitor.refresh()  # populate the initial slot state on launch
 
     def run(self):
-        self._monitor.start()
         self._root.mainloop()
 
     # ── callback wiring ───────────────────────────────────────────────────────
@@ -91,8 +124,10 @@ class OdinMApp:
     def _wire_callbacks(self):
         self._window.on_start_slot = self._start_slot
         self._window.on_stop_slot = self._stop_slot
+        self._window.on_confirm_slot = self._confirm_slot
         self._window.on_start_all = self._start_all
         self._window.on_stop_all = self._stop_all
+        self._window.on_refresh_disks = self._refresh_disks
         self._window.on_verify_image = self._verify_image
         self._window.on_configure_hashes = self._configure_hashes
         self._window.on_verify_stored = self._verify_stored
@@ -102,77 +137,270 @@ class OdinMApp:
     # ── drive monitor callback ────────────────────────────────────────────────
 
     def _on_drives_changed(self, drives: list[DriveInfo]):
-        # Apply max drive size filter — keeps oversized drives (e.g. a dev USB stick)
-        # out of slots and auto-clone entirely. 0 = no limit.
+        """Called only from a manual refresh (DriveMonitor.refresh()) now -
+        never a continuous poll. Fills empty slots with newly-discovered
+        disks. A disk matching a slot's pending confirm-lock expiry
+        (reconnected within its 15-minute grace) reclaims that exact slot,
+        resumes being watched, and needs no fresh Confirm click. Already-
+        occupied slots are left completely alone - once confirmed, that
+        slot's own DriveMonitor.watch_slot() call is what notices a removal;
+        this function never touches an occupied slot's contents.
+        """
+        # Apply max drive size filter — keeps oversized drives (e.g. a dev
+        # USB stick) out of slots and auto-clone entirely. 0 = no limit.
         max_gb = self._config.get_max_drive_gb()
         max_bytes = max_gb * (1 << 30) if max_gb > 0 else 0
         drives = [
             d for d in drives if max_bytes == 0 or d.size_bytes == 0 or d.size_bytes <= max_bytes
         ]
 
-        # Build a lookup of previously seen drives by disk_number.
-        prev_by_disk: dict = {d.disk_number: d.hw_serial for d in self._drives if d is not None}
+        # Cap how many removable disks get considered at all - already-
+        # occupied slots' disks are never excluded by this (only new/
+        # unassigned candidates compete for the remaining budget), so an
+        # active slot can never be dropped just because more cards showed
+        # up elsewhere. Extras beyond the cap are excluded the same way an
+        # oversized drive already is above - never even reach slot
+        # assignment.
+        max_disks = self._config.get_max_disks()
+        if max_disks > 0 and len(drives) > max_disks:
+            already_occupied_nums = {d.disk_number for d in self._drives if d is not None}
+            kept = [d for d in drives if d.disk_number in already_occupied_nums]
+            candidates = sorted(
+                (d for d in drives if d.disk_number not in already_occupied_nums),
+                key=lambda d: d.disk_number,
+            )
+            room = max(0, max_disks - len(kept))
+            drives = kept + candidates[:room]
 
+        # Re-verify UNCONFIRMED occupied slots - these have no active watch
+        # yet (watch_slot only starts once a slot is confirmed), so a
+        # manual refresh is the only thing that can notice one of these
+        # disappeared before the operator got to Confirm it.
         current_disk_nums = {d.disk_number for d in drives}
-
-        # When a drive is physically removed, clear it from the finished set so
-        # the next insertion is treated as a new card and can auto-clone again.
-        self._finished_disk_nums -= self._finished_disk_nums - current_disk_nums
-
-        # Handle drives that were just removed.
-        for i, prev in enumerate(self._drives):
-            if prev is None or prev.disk_number in current_disk_nums:
+        for i in range(NUM_SLOTS):
+            prev = self._drives[i]
+            if prev is None:
                 continue
-            w = self._workers.get(i)
-            if w is not None and w.status == CloneStatus.RUNNING:
-                # Drive pulled mid-flash — stop the worker and report failed.
-                self._window.log(f"[Slot {i + 1}] Drive removed during flash — aborting.")
-                self._speed_samples.pop(i, None)
-                w.stop()
-            else:
-                # Idle or finished — just clear the slot UI.
-                self._window.set_slot_ready(i, "")
-                self._window.set_slot_status(i, CloneStatus.IDLE)
-                self._window.set_slot_progress(i, 0)
-                self._flash_set_status(i, CloneStatus.IDLE)
+            if self._locked_disk_nums.get(i) == prev.disk_number:
+                continue  # confirmed - its own watch_slot() owns this
+            if prev.disk_number in current_disk_nums:
+                continue  # still there
+            self._drives[i] = None
+            pending = self._auto_clone_pending.pop(prev.disk_number, None)
+            if pending is not None:
+                self._root.after_cancel(pending)
+            self._window.log(
+                f"[Slot {i + 1}] Disk no longer present — cleared (was awaiting confirm)."
+            )
 
-        # Rebuild slot→drive mapping
-        self._drives = [None] * NUM_SLOTS
-        for i, d in enumerate(drives[:NUM_SLOTS]):
-            self._drives[i] = d
+        occupied_disks = {d.disk_number for d in self._drives if d is not None}
+        free_slots = [i for i in range(NUM_SLOTS) if self._drives[i] is None]
+        newly_seen = sorted(
+            (d for d in drives if d.disk_number not in occupied_disks),
+            key=lambda d: d.disk_number,
+        )
 
-        # Drop queued slots whose drives were removed
+        still_unplaced = []
+        for d in newly_seen:
+            pending_slot = next(
+                (i for i in free_slots
+                 if i in self._lock_expiry_jobs
+                 and self._locked_disk_nums.get(i) == d.disk_number),
+                None,
+            )
+            if pending_slot is None:
+                still_unplaced.append(d)
+                continue
+            free_slots.remove(pending_slot)
+            self._reclaim_pending_slot(pending_slot, d)
+
+        for slot, d in zip(free_slots, still_unplaced):
+            self._drives[slot] = d
+            # Not confirmed yet - just settle-delay bookkeeping for auto-
+            # clone; _auto_clone_delayed() still waits on Confirm before
+            # ever actually starting anything.
+            if self._config.get_auto_clone() and d.disk_number not in self._auto_clone_pending:
+                self._window.log(
+                    f"[Auto] New drive in slot {slot + 1} — waiting "
+                    f"{AUTO_CLONE_DELAY_MS // 1000}s for it to settle"
+                )
+                self._auto_clone_pending[d.disk_number] = self._root.after(
+                    AUTO_CLONE_DELAY_MS,
+                    lambda idx=slot, dn=d.disk_number: self._auto_clone_delayed(idx, dn),
+                )
+
         self._queue = [i for i in self._queue if self._drives[i] is not None]
-
-        self._window.update_drives(drives[:NUM_SLOTS])
+        self._window.update_drives(self._drives, self._locked_disk_nums)
         self._window.log(f"[Drives] {len(drives)} removable drive(s) detected")
         self._mirror_drives_to_flash()
 
-        # Auto-clone newly inserted drives if the setting is enabled
-        if self._config.get_auto_clone():
-            image = self._window.image_path
-            if not image or not os.path.isfile(image):
+    def _on_slot_disk_missing(self, idx: int):
+        """Called by this slot's own DriveMonitor.watch_slot() once its
+        locked disk has been confirmed absent (2 consecutive per-disk
+        checks) - completely independent of every other slot, since the
+        watch only ever looks at this one disk number."""
+        drive = self._drives[idx]
+        disk_number = drive.disk_number if drive is not None else self._locked_disk_nums.get(idx)
+        self._drives[idx] = None
+        if disk_number is not None:
+            self._finished_disk_nums.discard(disk_number)
+            pending = self._auto_clone_pending.pop(disk_number, None)
+            if pending is not None:
+                self._root.after_cancel(pending)
+            if idx in self._locked_disk_nums and idx not in self._lock_expiry_jobs:
+                self._lock_expiry_jobs[idx] = self._root.after(
+                    CONFIRM_LOCK_GRACE_MS,
+                    lambda i=idx, dn=disk_number: self._expire_lock(i, dn),
+                )
+                # Keep looking for THIS slot's disk number specifically, so
+                # it reclaims automatically within the grace period instead
+                # of needing a manual "Refresh Disks" click.
+                self._monitor.watch_for_return(
+                    idx, disk_number,
+                    on_return=lambda i=idx, dn=disk_number: self._on_slot_disk_returned(i, dn),
+                )
+        w = self._workers.get(idx)
+        if w is not None and w.status == CloneStatus.RUNNING:
+            self._window.log(f"[Slot {idx + 1}] Drive removed during flash — aborting.")
+            self._speed_samples.pop(idx, None)
+            w.stop()
+        else:
+            self._window.set_slot_ready(idx, "")
+            self._window.set_slot_status(idx, CloneStatus.IDLE)
+            self._window.set_slot_progress(idx, 0)
+            self._flash_set_status(idx, CloneStatus.IDLE)
+        self._queue = [i for i in self._queue if self._drives[i] is not None]
+        self._window.update_drives(self._drives, self._locked_disk_nums)
+        self._window.log(f"[Slot {idx + 1}] Disk removed.")
+        self._mirror_drives_to_flash()
+
+    def _on_slot_disk_returned(self, idx: int, disk_number: int):
+        """This slot's own DriveMonitor.watch_for_return() found its locked
+        disk_number present again within the confirm grace period - reclaim
+        it immediately, without waiting for a manual Refresh Disks click."""
+        if self._locked_disk_nums.get(idx) != disk_number:
+            return  # lock already superseded or expired - nothing to do
+        if self._drives[idx] is not None:
+            return  # already reclaimed some other way (e.g. manual refresh)
+        for d in get_removable_drives():
+            if d.disk_number == disk_number:
+                self._reclaim_pending_slot(idx, d)
                 return
-            for i, drive in enumerate(self._drives):
-                if drive is None:
-                    continue
-                prev_serial = prev_by_disk.get(drive.disk_number)
-                if prev_serial is not None:
-                    # Same disk index seen before.
-                    # Only treat as a new physical device if BOTH serials are
-                    # known (non-empty) and differ — avoids false triggers when
-                    # the serial temporarily reads as "" while the device is
-                    # locked by an active write (ODINC flash in progress).
-                    if not (drive.hw_serial and prev_serial and drive.hw_serial != prev_serial):
-                        continue
-                # Don't re-clone a card that just finished — wait for it to be
-                # physically removed first (cleared from _finished_disk_nums).
-                if drive.disk_number in self._finished_disk_nums:
-                    continue
-                w = self._workers.get(i)
-                if w is None or w.status != CloneStatus.RUNNING:
-                    self._window.log(f"[Auto] New drive in slot {i + 1} — starting clone")
-                    self._start_slot(i)
+
+    def _reclaim_pending_slot(self, idx: int, d: DriveInfo):
+        """Slot `idx` was locked to d.disk_number and went missing within its
+        grace period; d has just been found present again - restore it
+        without requiring a fresh Confirm click. Shared by the manual-
+        refresh reclaim path in _on_drives_changed() and the automatic
+        watch_for_return() path above."""
+        self._drives[idx] = d
+        job = self._lock_expiry_jobs.pop(idx, None)
+        if job is not None:
+            self._root.after_cancel(job)
+        self._window.log(
+            f"[Slot {idx + 1}] Reconnected within its confirm "
+            "grace period — still locked, no re-confirm needed."
+        )
+        self._monitor.watch_slot(
+            idx, d.disk_number,
+            on_missing=lambda i=idx: self._on_slot_disk_missing(i),
+        )
+        self._window.update_drives(self._drives, self._locked_disk_nums)
+        self._try_auto_clone(idx)
+
+    def _try_auto_clone(self, idx: int):
+        """If auto-clone is on and this now-confirmed slot is otherwise
+        eligible, start it. Shared by _confirm_slot() and the grace-period
+        reclaim path in _on_drives_changed() - both represent a slot
+        becoming confirmed without going through the fresh-disk settle-
+        delay path that _auto_clone_delayed() handles."""
+        if not self._config.get_auto_clone():
+            return
+        drive = self._drives[idx]
+        if drive is None or drive.disk_number in self._finished_disk_nums:
+            return
+        w = self._workers.get(idx)
+        if w is not None and w.status == CloneStatus.RUNNING:
+            return
+        image = self._window.image_path
+        if not image or not os.path.isfile(image):
+            return
+        self._window.log(f"[Auto] Slot {idx + 1} confirmed — starting clone")
+        self._start_slot(idx)
+
+    def _auto_clone_delayed(self, idx: int, disk_number: int):
+        """Start an auto-clone that was scheduled AUTO_CLONE_DELAY_MS ago,
+        after re-checking everything is still valid - the card may have been
+        pulled, swapped, or auto-clone/the image may have changed during the
+        wait."""
+        self._auto_clone_pending.pop(disk_number, None)
+        if not self._config.get_auto_clone():
+            return
+        image = self._window.image_path
+        if not image or not os.path.isfile(image):
+            return
+        drive = self._drives[idx]
+        if drive is None or drive.disk_number != disk_number:
+            return  # card was pulled or swapped during the settle delay
+        if disk_number in self._finished_disk_nums:
+            return
+        w = self._workers.get(idx)
+        if w is not None and w.status == CloneStatus.RUNNING:
+            return
+        if self._locked_disk_nums.get(idx) != disk_number:
+            # Settled, but the operator hasn't clicked Confirm yet - whenever
+            # they do, _confirm_slot() sees this delay already elapsed and
+            # starts it then instead.
+            self._window.log(
+                f"[Auto] Slot {idx + 1} settled — waiting for Confirm before flashing"
+            )
+            return
+        self._window.log(f"[Auto] Slot {idx + 1} settled — starting clone")
+        self._start_slot(idx)
+
+    def _confirm_slot(self, idx: int):
+        """Operator clicked the "Confirm" status badge - lock this slot onto
+        its currently-detected disk number and start watching that specific
+        disk (independent of every other slot) for removal. Refuses
+        (silently) if the drive already vanished before the click was
+        processed."""
+        drive = self._drives[idx]
+        if drive is None:
+            return
+        self._locked_disk_nums[idx] = drive.disk_number
+        expiry = self._lock_expiry_jobs.pop(idx, None)
+        if expiry is not None:
+            self._root.after_cancel(expiry)
+        self._window.confirm_slot(idx)
+        self._window.log(f"[Slot {idx + 1}] Confirmed — locked to Disk {drive.disk_number}.")
+        self._monitor.watch_slot(
+            idx, drive.disk_number,
+            on_missing=lambda i=idx: self._on_slot_disk_missing(i),
+        )
+
+        if drive.disk_number in self._auto_clone_pending:
+            return  # still waiting on its own settle delay; that will start it
+        # Settle delay already elapsed while awaiting confirmation (or
+        # auto-clone wasn't on until just now) - this click is what
+        # finally triggers the auto-clone start, if eligible.
+        self._try_auto_clone(idx)
+
+    def _expire_lock(self, idx: int, disk_number: int):
+        """A locked slot's disk stayed gone for CONFIRM_LOCK_GRACE_MS -
+        release the lock so a fresh Confirm is required if something shows
+        up in this slot again."""
+        self._lock_expiry_jobs.pop(idx, None)
+        if self._locked_disk_nums.get(idx) != disk_number:
+            return  # superseded already - nothing to do
+        drive = self._drives[idx]
+        if drive is not None and drive.disk_number == disk_number:
+            return  # it came back after all
+        self._locked_disk_nums.pop(idx, None)
+        self._monitor.unwatch_slot(idx)  # stop polling for a disk we no longer own
+        self._window.log(
+            f"[Slot {idx + 1}] Confirmation expired after "
+            f"{CONFIRM_LOCK_GRACE_MS // 60000} min with no disk — re-confirm required."
+        )
 
     # ── start / stop ──────────────────────────────────────────────────────────
 
@@ -188,9 +416,14 @@ class OdinMApp:
         if drive is None:
             self._window.log(f"[Error] Slot {idx + 1} has no drive.")
             return
-        if not is_removable(drive.first_letter):
+        if not is_disk_removable(drive.disk_number):
             self._window.log(
-                f"[Error] Slot {idx + 1} ({drive.first_letter}) is not a removable drive — aborted."
+                f"[Error] Slot {idx + 1} (Disk {drive.disk_number}) is not a removable drive — aborted."
+            )
+            return
+        if self._locked_disk_nums.get(idx) != drive.disk_number:
+            self._window.log(
+                f"[Error] Slot {idx + 1} is not confirmed — click Confirm before starting."
             )
             return
 
@@ -212,7 +445,6 @@ class OdinMApp:
         if drive is None:
             return
         image = self._window.image_path
-        odinc = self._config.get_odinc_path()
         size_bytes = drive.size_bytes
         self._speed_samples[idx] = deque(maxlen=6)  # 6 points = 5 intervals
 
@@ -236,20 +468,39 @@ class OdinMApp:
                             self._flash_set_speed(i, spd)
                             self._flash_set_eta(i, eta)
 
-        worker = CloneWorker(
-            root=self._root,
-            odinc_path=odinc,
-            image_path=image,
-            drive_letter=drive.target_path,  # \Device\HarddiskN\Partition0 — whole disk
-            on_progress=_on_progress,
-            on_log=lambda line, i=idx: self._window.log(f"[Slot {i + 1}] {line}"),  # type: ignore[misc]
-            on_done=lambda status, i=idx: self._on_worker_done(i, status),  # type: ignore[misc]
-        )
+        def _on_log(line: str, i: int = idx):
+            self._window.log(f"[Slot {i + 1}] {line}")
+
+        def _on_done(status: CloneStatus, i: int = idx):
+            self._on_worker_done(i, status)
+
+        use_pyimager = self._config.use_pyimager()
+        if use_pyimager:
+            worker = PyImagerRestoreWorker(
+                root=self._root,
+                disk_number=drive.disk_number,
+                image_path=image,
+                on_progress=_on_progress,
+                on_log=_on_log,
+                on_done=_on_done,
+                volumes=[letter.rstrip(":") for letter in drive.all_letters],
+            )
+        else:
+            worker = CloneWorker(
+                root=self._root,
+                odinc_path=self._config.get_odinc_path(),
+                image_path=image,
+                drive_letter=drive.target_path,  # \Device\HarddiskN\Partition0 — whole disk
+                on_progress=_on_progress,
+                on_log=_on_log,
+                on_done=_on_done,
+            )
         self._workers[idx] = worker
         self._window.set_slot_status(idx, CloneStatus.RUNNING)
         self._flash_set_status(idx, CloneStatus.RUNNING)
+        engine = "pyimager" if use_pyimager else "ODINC"
         self._window.log(
-            f"[Slot {idx + 1}] Starting clone → {drive.target_path}  ({drive.display})"
+            f"[Slot {idx + 1}] Starting clone ({engine}) → {drive.target_path}  ({drive.display})"
         )
         worker.start()
 
@@ -301,6 +552,18 @@ class OdinMApp:
             if verifier.status == HashStatus.RUNNING:
                 verifier.stop()
 
+    def _refresh_disks(self):
+        """Force an immediate re-scan instead of waiting on the automatic
+        2-second poll - e.g. after bringing a disk online externally via
+        diskpart, or any other state change the poll hasn't caught yet.
+        Always logs the full per-disk probe (debug_probe_disks()) since
+        this is a manual, infrequent action - cheap to be verbose, and it's
+        exactly what's needed to diagnose a "0 removable drives" report."""
+        self._window.log("[Drives] Manual refresh requested.")
+        for line in debug_probe_disks():
+            self._window.log(f"[Drives]   {line}")
+        self._monitor.refresh()
+
     def _verify_image(self):
         image = self._window.image_path
         if not image:
@@ -336,7 +599,7 @@ class OdinMApp:
     def _make_image(self):
         from ui.make_image_dialog import MakeImageDialog
 
-        MakeImageDialog(self._root, self._config.get_odinc_path())
+        MakeImageDialog(self._root, self._config.get_odinc_path(), self._config)
 
     def _on_worker_done(self, idx: int, status: CloneStatus):
         # Mark disk as recently finished (only on success) so auto-clone doesn't
@@ -359,6 +622,9 @@ class OdinMApp:
             if self._config.get_verify_after_clone():
                 drain_now = not self._start_target_verify(idx)
             else:
+                # No hash comparison will run, so it's already safe to fix
+                # up the disk signature - see _fix_disk_signature().
+                self._fix_disk_signature(idx)
                 drain_now = True
         else:
             drain_now = True
@@ -460,7 +726,31 @@ class OdinMApp:
         else:
             self._window.log(f"[Slot {idx + 1}] Target verification passed — pull card now.")
             self._flash_set_status(idx, CloneStatus.DONE)
+            self._fix_disk_signature(idx)
         self._drain_queue()
+
+    def _fix_disk_signature(self, idx: int):
+        """Give the flashed disk a fresh MBR signature so Windows mounts it
+        instead of treating it as a duplicate of another card cloned from
+        the same master.
+
+        Must only be called after byte-for-byte verification has passed (or
+        was intentionally skipped) - see randomize_disk_signature()'s
+        docstring for why the ordering matters. Never called from a failure
+        path, so a real corruption is never masked by this.
+        """
+        drive = self._drives[idx]
+        if drive is None:
+            return
+        try:
+            randomize_disk_signature(
+                drive.disk_number,
+                volumes=[letter.rstrip(":") for letter in drive.all_letters],
+            )
+        except OSError as exc:
+            self._window.log(f"[Slot {idx + 1}] Could not fix disk signature: {exc}")
+            return
+        self._window.log(f"[Slot {idx + 1}] Disk signature randomized — card will mount normally.")
 
     def _verify_failed(self, idx: int, message: str):
         self._window.log(f"[Slot {idx + 1}] [Verify] {message}")
@@ -475,6 +765,10 @@ class OdinMApp:
             self._flash_widget = FlashStatusWindow(
                 self._root, self._mark_pulled, on_lock_change=self._mirror_drives_to_flash
             )
+            # Brand-new widget instance has no rows yet - force a full
+            # render regardless of what _mirror_drives_to_flash's diff
+            # cache remembers from a previous (now-destroyed) instance.
+            self._flash_displayed_disk_nums.clear()
             self._mirror_drives_to_flash()
         else:
             self._flash_widget.deiconify()
@@ -487,15 +781,27 @@ class OdinMApp:
             self._flash_widget.withdraw()
 
     def _mirror_drives_to_flash(self):
-        """Sync current drive/worker state to the flash widget."""
+        """Sync current drive/worker state to the flash widget.
+
+        set_drive()/reset() both reset status to IDLE and clear pct/speed/eta
+        - fine the first time a slot's disk appears, but calling either again
+        for a slot whose disk hasn't actually changed would wipe an active
+        flash's live progress every time ANY other slot's drive-list entry
+        refreshes. Only re-render a slot when its disk_number actually
+        changes; otherwise just let a running worker's real status show.
+        """
         if self._flash_widget is None or not self._flash_widget.winfo_exists():
             return
         for idx in range(NUM_SLOTS):
             drive = self._drives[idx]
-            if drive is None:
-                self._flash_widget.reset(idx)
-            else:
-                self._flash_widget.set_drive(idx, drive.display)
+            disk_num = drive.disk_number if drive is not None else None
+            if self._flash_displayed_disk_nums.get(idx) != disk_num:
+                self._flash_displayed_disk_nums[idx] = disk_num
+                if drive is None:
+                    self._flash_widget.reset(idx)
+                else:
+                    self._flash_widget.set_drive(idx, drive.display)
+            if drive is not None:
                 w = self._workers.get(idx)
                 if w is not None and w.status != CloneStatus.IDLE:
                     self._flash_widget.set_status(idx, w.status)

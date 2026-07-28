@@ -14,6 +14,10 @@ DEFAULTS = {
     "stop_on_verify_fail": "false",
     "show_flash_widget": "true",
     "max_drive_gb": "8",
+    # How many removable disks get considered for a slot at all, per
+    # refresh - beyond this, extras are excluded the same way an oversized
+    # drive already is. 0 = no cap (falls back to NUM_SLOTS naturally).
+    "max_disks": "5",
     # Imaging/flashing engine: "odin" drives ODINC.exe, "pyimager" uses the
     # built-in Python imager (scripts/pyimager.py).
     "engine": "odin",
@@ -87,6 +91,14 @@ class ConfigManager:
         except ValueError:
             return 8
 
+    def get_max_disks(self) -> int:
+        """How many removable disks get considered for a slot at all, per
+        refresh. 0 = no cap."""
+        try:
+            return int(self._cfg["settings"].get("max_disks", "5"))
+        except ValueError:
+            return 5
+
     def get_engine(self) -> str:
         """Imaging engine: ENGINE_ODIN or ENGINE_PYIMAGER."""
         val = self._cfg["settings"].get("engine", ENGINE_ODIN).strip().lower()
@@ -127,6 +139,16 @@ class ConfigManager:
 
     def set_show_flash_widget(self, v: bool):
         self._cfg["settings"]["show_flash_widget"] = "true" if v else "false"
+        self._save()
+
+    def set_engine(self, value: str):
+        if value not in ENGINES:
+            raise ValueError(f"unknown engine {value!r}; must be one of {ENGINES}")
+        self._cfg["settings"]["engine"] = value
+        self._save()
+
+    def set_max_disks(self, n: int):
+        self._cfg["settings"]["max_disks"] = str(n)
         self._save()
 
     def _save(self):

@@ -16,7 +16,8 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
 from clone_worker import CloneStatus, CloneWorker
-from drive_manager import DriveInfo, get_removable_drives, is_removable
+from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
+from drive_manager import DriveInfo, get_removable_drives, is_disk_removable
 from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
@@ -38,7 +39,7 @@ ENGINE_HINTS = {
 
 
 class MakeImageDialog(ttk.Toplevel):
-    def __init__(self, parent, odinc_path: str):
+    def __init__(self, parent, odinc_path: str, config):
         super().__init__(parent)
         self.title("Make Image")
         self.resizable(False, False)
@@ -46,6 +47,7 @@ class MakeImageDialog(ttk.Toplevel):
 
         self._parent = parent
         self._odinc = odinc_path
+        self._config = config
         self._drives = get_removable_drives()
         self._worker: CloneWorker | None = None
         self._hasher: HashWorker | None = None
@@ -87,9 +89,11 @@ class MakeImageDialog(ttk.Toplevel):
         )
         self._drive_cb.grid(row=0, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=(0, 4))
 
-        # Imaging engine
+        # Imaging engine — defaults from the app-wide engine setting so this
+        # dialog and the flash slots agree on which engine is "current".
+        default_engine = ENGINE_PY if self._config.use_pyimager() else ENGINE_ODINC
         ttk.Label(outer, text="Engine:", anchor=W).grid(row=1, column=0, sticky=W, pady=(0, 4))
-        self._engine_var = ttk.StringVar(value=ENGINE_LABELS[0])
+        self._engine_var = ttk.StringVar(value=default_engine)
         self._engine_cb = ttk.Combobox(
             outer,
             textvariable=self._engine_var,
@@ -215,6 +219,9 @@ class MakeImageDialog(ttk.Toplevel):
         self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""))
         # ODINC backup flags are meaningless for the built-in imager.
         self._options_btn.configure(state=DISABLED if self._use_pyimager else NORMAL)
+        # Raw vs gzip is a pyimager-only detail with no equivalent in the
+        # app-wide setting - both map back to the same "pyimager" engine.
+        self._config.set_engine(ENGINE_PYIMAGER if self._use_pyimager else ENGINE_ODIN)
 
         # Nudge the extension so the chosen engine and the filename agree.
         path = self._output_var.get().strip()
@@ -270,8 +277,8 @@ class MakeImageDialog(ttk.Toplevel):
             self._status("No drive selected.", "danger")
             return
         drive: DriveInfo = self._drives[idx]
-        if not is_removable(drive.first_letter):
-            self._status(f"{drive.first_letter} is not removable — aborted.", "danger")
+        if not is_disk_removable(drive.disk_number):
+            self._status(f"Disk {drive.disk_number} is not removable — aborted.", "danger")
             return
         output = self._output_var.get().strip()
         if not output:

@@ -12,6 +12,7 @@ Commands
     image  <disk#> <out.img>          read disk -> file, hash while reading
     verify <disk#> <img>              re-read disk and compare against the file
     restore <img> <disk#>             write file -> disk  (guarded, destructive)
+                                       (.gz input is decompressed on the fly)
 
 Examples
     python pyimager.py list
@@ -29,6 +30,7 @@ import ctypes
 import gzip
 import hashlib
 import json
+import os
 import struct
 import sys
 import time
@@ -224,6 +226,54 @@ def volumes_on_disk(disk_no: int):
         finally:
             v.close()
     return out
+
+
+def lock_and_dismount_volumes(letters, retries=5, delay_s=0.5, on_log=None):
+    """Lock and dismount every listed volume, so a raw disk write/read isn't
+    denied partway through by Windows' direct-disk-write protection
+    (KB942448) while a volume on the same disk is still mounted.
+
+    A lock attempt can transiently fail right after a flash completes, while
+    Windows still has handles open on the volume from the write that just
+    finished - one attempt alone isn't enough to reliably ride that out.
+    Retries with a forced dismount in between failed attempts (to push out
+    whatever's still holding the volume open), mirroring
+    clone_worker._lock_and_dismount_volume's retry dance for the exact same
+    reason.
+
+    Returns the list of successfully locked Win32Disk handles - caller must
+    call .unlock() and .close() on each when done. Raises OSError naming the
+    first letter that could not be locked after all retries; any volumes
+    already locked in this call are unlocked and closed before raising.
+    """
+    def log(msg):
+        if on_log:
+            on_log(msg)
+
+    locked = []
+    try:
+        for letter in letters:
+            v = Win32Disk(rf"\\.\{letter}:", write=True)
+            ok = False
+            for attempt in range(retries):
+                if v.lock() and v.dismount():
+                    ok = True
+                    break
+                v.dismount()  # force other handles closed, then retry
+                if attempt < retries - 1:
+                    time.sleep(delay_s)
+            if not ok:
+                v.close()
+                raise OSError(f"could not lock {letter}: - close anything "
+                              "using it")
+            locked.append(v)
+            log(f"locked and dismounted {letter}:")
+    except Exception:
+        for v in locked:
+            v.unlock()
+            v.close()
+        raise
+    return locked
 
 
 def human(n: float) -> str:
@@ -630,16 +680,24 @@ def cmd_verify(args):
     img = Path(args.image)
     if not img.exists():
         sys.exit(f"{img} not found")
+    gz = is_gz_path(img)
+    stored_size = img.stat().st_size
     meta_path = img.with_suffix(img.suffix + ".json")
     meta = json.loads(meta_path.read_text(encoding="utf-8")) \
         if meta_path.exists() else {}
     start = meta.get("region_offset", 0)
-    length = meta.get("region_length", img.stat().st_size)
-    if length != img.stat().st_size:
-        print(f"note: image is {img.stat().st_size} bytes but metadata says "
-              f"{length}; comparing {min(length, img.stat().st_size)}",
+    length = meta.get("region_length", stored_size)
+    if gz and "region_length" not in meta:
+        # A .gz's stored size is the compressed size, not the disk image
+        # length, and the gzip ISIZE trailer wraps past 4 GiB - without the
+        # sidecar there is no reliable way to know how much to compare.
+        sys.exit(f"{meta_path.name} not found - can't verify a .gz image "
+                 f"without its sidecar (the true length is unknown)")
+    if not gz and length != stored_size:
+        print(f"note: image is {stored_size} bytes but metadata says "
+              f"{length}; comparing {min(length, stored_size)}",
               file=sys.stderr)
-        length = min(length, img.stat().st_size)
+        length = min(length, stored_size)
 
     with Win32Disk(rf"\\.\PhysicalDrive{args.disk}") as d:
         sector = d.sector_size
@@ -649,7 +707,8 @@ def cmd_verify(args):
         h_disk, h_file = hashlib.sha256(), hashlib.sha256()
         mismatches = []
         done = 0
-        with img.open("rb") as fh:
+        with img.open("rb") as raw_fh:
+            fh = gzip.GzipFile(fileobj=raw_fh) if gz else raw_fh
             while done < length:
                 want = min(args.chunk, length - done)
                 d.seek(start + done)
@@ -687,69 +746,207 @@ def cmd_verify(args):
     return 1
 
 
-def cmd_restore(args):
-    img = Path(args.image)
-    if not img.exists():
-        sys.exit(f"{img} not found")
-    if args.confirm != args.disk:
-        sys.exit("refusing to write: pass --confirm <disk#> matching the "
-                 "target, e.g. --confirm " + str(args.disk))
+def restore_disk(disk_number, image, *, confirm, allow_fixed=False,
+                 chunk=8 << 20, on_progress=None, on_log=None,
+                 should_cancel=None, volumes=None):
+    """Write `image` to a physical disk. Library entry point for `restore`.
 
-    with Win32Disk(rf"\\.\PhysicalDrive{args.disk}") as probe:
+    Guarded exactly like the CLI: `confirm` must equal `disk_number` or this
+    raises ValueError without touching the disk - callers don't get to skip
+    that check by construction.
+
+    `image` ending in .gz is decompressed on the fly (`gzip.GzipFile`); the
+    true (uncompressed) length isn't knowable up front past 4 GiB (the gzip
+    ISIZE trailer wraps), so `on_progress(done, total)` reports the
+    compressed file's read position against its stored size in that case,
+    same proxy already proven by clone_worker's ODIN gz-flash path
+    (`CloneWorker._run_raw_flash`). For a raw source `done`/`total` are plain
+    disk bytes written.
+
+    `volumes`, if given, is the list of bare drive letters (no colon) already
+    known to live on this disk - pass it whenever the caller already knows
+    (e.g. app.py's DriveInfo.all_letters), so this never has to fall back to
+    volumes_on_disk()'s full A-Z scan. That scan opens a brief handle on
+    EVERY letter including ones that belong to other disks - harmless when
+    only one disk is ever touched at a time, but with multiple slots
+    flashing concurrently (each restore_disk() call on its own thread) one
+    slot's scan can transiently hold a sibling slot's volume open right as
+    it tries to lock it, or as it's mid-write - surfacing as either "could
+    not lock <letter>:" or a write suddenly failing with Access Denied even
+    after a clean lock+dismount (confirmed on real hardware, two-slot
+    concurrent pyimager flash). Passing the already-known letters means this
+    call only ever touches its own disk's volumes.
+
+    Returns a metadata dict, cancelled=True if `should_cancel()` returned
+    True mid-write. Raises FileNotFoundError/ValueError for guard failures
+    (bad confirm, non-removable target, oversize image) and OSError for
+    hardware I/O failures, including a volume that could not be locked
+    after retrying.
+    """
+    img = Path(image)
+    if not img.exists():
+        raise FileNotFoundError(f"{img} not found")
+    if confirm != disk_number:
+        raise ValueError("confirm must equal disk_number, e.g. confirm="
+                         f"{disk_number}")
+
+    def log(msg):
+        if on_log:
+            on_log(msg)
+
+    with Win32Disk(rf"\\.\PhysicalDrive{disk_number}") as probe:
         size, sector = probe.size, probe.sector_size
         info = probe.device_info()
         removable = info.get("removable") or probe.removable
-    vols = volumes_on_disk(args.disk)
+    vols = (list(volumes) if volumes is not None
+            else volumes_on_disk(disk_number))
 
-    print(f"TARGET     : PhysicalDrive{args.disk}  "
-          f"{info.get('vendor', '')} {info.get('product', '')}".rstrip(),
-          file=sys.stderr)
-    print(f"size       : {size} bytes ({human(size)})", file=sys.stderr)
-    print(f"mounted as : {', '.join(v + ':' for v in vols) or 'none'}",
-          file=sys.stderr)
-    print(f"source     : {img} ({human(img.stat().st_size)})", file=sys.stderr)
-    if not removable and not args.allow_fixed:
-        sys.exit("target is not removable media - pass --allow-fixed if you "
-                 "are certain")
-    if img.stat().st_size > size:
-        sys.exit(f"image ({img.stat().st_size}) is larger than the disk ({size})")
+    gz = is_gz_path(img)
+    stored_size = img.stat().st_size
 
+    name = " ".join(x for x in (info.get("vendor"), info.get("product"))
+                    if x) or "?"
+    log(f"target: PhysicalDrive{disk_number} {name}")
+    log(f"disk size: {size} bytes ({human(size)})")
+    log(f"mounted as: {', '.join(v + ':' for v in vols) or 'none'}")
+    log(f"source: {img} ({human(stored_size)}"
+        f"{' compressed' if gz else ''})")
+
+    if not removable and not allow_fixed:
+        raise ValueError("target is not removable media - pass "
+                         "allow_fixed=True if you are certain")
+    # A .gz's stored size is the compressed size, not the disk image it
+    # holds, so this check only means anything for a raw source - the
+    # decompressed length isn't known until the write loop below.
+    if not gz and stored_size > size:
+        raise ValueError(f"image ({stored_size}) is larger than the disk "
+                         f"({size})")
+
+    cancelled = False
+    done = 0
+    t0 = datetime.now(timezone.utc)
     locked = []
     try:
-        for letter in vols:
-            v = Win32Disk(rf"\\.\{letter}:", write=True)
-            if v.lock() and v.dismount():
-                locked.append(v)
-                print(f"locked and dismounted {letter}:", file=sys.stderr)
-            else:
-                v.close()
-                sys.exit(f"could not lock {letter}: - close anything using it")
+        locked = lock_and_dismount_volumes(vols, on_log=log)
 
-        length = img.stat().st_size
-        prog = Progress(length, args.quiet)
         h = hashlib.sha256()
-        with Win32Disk(rf"\\.\PhysicalDrive{args.disk}", write=True) as d, \
-                img.open("rb") as fh:
+        with Win32Disk(rf"\\.\PhysicalDrive{disk_number}", write=True) as d, \
+                img.open("rb") as raw_fh:
+            fh = gzip.GzipFile(fileobj=raw_fh) if gz else raw_fh
             d.seek(0)
-            done = 0
-            while done < length:
-                buf = fh.read(args.chunk)
+            while True:
+                if should_cancel is not None and should_cancel():
+                    cancelled = True
+                    break
+                buf = fh.read(chunk)
                 if not buf:
                     break
                 if len(buf) % sector:
                     buf += bytes(sector - len(buf) % sector)
                 h.update(buf)
                 done += d.write(buf)
-                prog.update(min(done, length))
-            prog.done(min(done, length))
-            d.update_properties()
-        print(f"\nwrote {done} bytes; source sha256 {h.hexdigest()}",
-              file=sys.stderr)
+                if done > size:
+                    raise ValueError(
+                        f"decompressed image exceeds the disk ({size} "
+                        f"bytes) - stopped after writing {done} bytes")
+                if on_progress:
+                    on_progress(min(raw_fh.tell() if gz else done,
+                                    stored_size), stored_size)
+            if not cancelled:
+                d.update_properties()
     finally:
         for v in locked:
             v.unlock()
             v.close()
-    print("restore complete - run `verify` to confirm", file=sys.stderr)
+    t1 = datetime.now(timezone.utc)
+
+    digest = h.hexdigest()
+    log(f"wrote {done} bytes; source sha256 {digest}"
+        f"{' (of decompressed bytes)' if gz else ''}")
+    if not cancelled:
+        log("restore complete - run `verify` to confirm")
+    return {
+        "tool": "pyimager", "source": str(img),
+        "target": f"PhysicalDrive{disk_number}", "gz": gz,
+        "bytes_written": done, "stored_size": stored_size,
+        "cancelled": cancelled,
+        "started_utc": t0.isoformat(), "finished_utc": t1.isoformat(),
+        "duration_s": round((t1 - t0).total_seconds(), 1),
+        "digests": {"sha256": digest},
+    }
+
+
+def cmd_restore(args):
+    prog = Progress(0, args.quiet)
+
+    def on_progress(done, total):
+        if prog.total != total:
+            prog.total = total
+        prog.update(done)
+
+    try:
+        meta = restore_disk(
+            args.disk, args.image, confirm=args.confirm,
+            allow_fixed=args.allow_fixed, chunk=args.chunk,
+            on_progress=on_progress,
+            on_log=lambda m: print(m, file=sys.stderr))
+    except (FileNotFoundError, ValueError, OSError) as e:
+        sys.exit(str(e))
+    prog.done(meta["stored_size"] if meta["gz"]
+             else min(meta["bytes_written"], meta["stored_size"]))
+
+
+_MBR_SIGNATURE_OFFSET = 0x1B8  # 4-byte NT disk signature within sector 0
+
+
+def randomize_disk_signature(disk_number: int, volumes=None) -> bytes:
+    """Overwrite a disk's 4-byte MBR signature with a fresh random value and
+    tell Windows to re-read its partition table.
+
+    Byte-identical clones of the same master share an identical disk
+    signature, and Windows' Mount Manager refuses to assign a drive letter to
+    a disk whose signature it already has on record from another connected
+    disk - this is why a second (or third...) card flashed from the same
+    image can fail to mount even though it was written correctly.
+
+    Call this ONLY after a byte-for-byte verification of the flashed disk has
+    already passed (or was intentionally skipped) - it deliberately changes 4
+    bytes that a hash comparison starting at disk offset 0 would otherwise
+    still be checking, so running it first would make a real corruption
+    indistinguishable from this deliberate change.
+
+    `volumes`, if given, is the bare drive letters (no colon) already known
+    to live on this disk - see restore_disk()'s docstring for why passing
+    this instead of falling back to volumes_on_disk()'s full A-Z scan
+    matters when other slots may still be flashing concurrently.
+
+    Returns the new 4-byte signature. Raises OSError on I/O failure.
+    """
+    vols = (list(volumes) if volumes is not None
+            else volumes_on_disk(disk_number))
+    locked = []
+    try:
+        locked = lock_and_dismount_volumes(vols)
+
+        with Win32Disk(rf"\\.\PhysicalDrive{disk_number}", write=True) as d:
+            d.seek(0)
+            sector = d.read(SECTOR)
+            if len(sector) != SECTOR:
+                raise OSError(f"short read of sector 0 ({len(sector)}/"
+                              f"{SECTOR})")
+            sig = os.urandom(4)
+            while sig == b"\x00\x00\x00\x00":  # 0 means "no signature" to Windows
+                sig = os.urandom(4)
+            patched = (sector[:_MBR_SIGNATURE_OFFSET] + sig
+                      + sector[_MBR_SIGNATURE_OFFSET + 4:])
+            d.seek(0)
+            d.write(patched)
+            d.update_properties()
+        return sig
+    finally:
+        for v in locked:
+            v.unlock()
+            v.close()
 
 
 def main():

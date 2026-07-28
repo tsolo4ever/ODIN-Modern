@@ -25,15 +25,20 @@ class SlotWidget(ttk.Frame):
     A single drive-slot row.
 
     Callbacks:
-      on_start(slot_index)  — user clicked Start
-      on_stop(slot_index)   — user clicked Stop
+      on_start(slot_index)    — user clicked Start
+      on_stop(slot_index)     — user clicked Stop
+      on_confirm(slot_index)  — user clicked the "Confirm" status badge to
+                                 lock this slot onto its currently-detected
+                                 disk number
     """
 
-    def __init__(self, parent, slot_index: int, on_start, on_stop, **kwargs):
+    def __init__(self, parent, slot_index: int, on_start, on_stop, on_confirm, **kwargs):
         super().__init__(parent, **kwargs)
         self._idx = slot_index
         self._on_start = on_start
         self._on_stop = on_stop
+        self._on_confirm = on_confirm
+        self._awaiting_confirm = False
         self._build()
         self.reset()
 
@@ -47,11 +52,13 @@ class SlotWidget(ttk.Frame):
             row=0, column=0, padx=(0, 6), pady=4, sticky=W
         )
 
-        # Status badge
+        # Status badge - doubles as the "Confirm" button while a detected
+        # disk is awaiting lock-in (see set_awaiting_confirm()).
         self._status_lbl = ttk.Label(
             self, text="Empty", width=9, bootstyle="secondary-inverse", anchor=CENTER
         )
         self._status_lbl.grid(row=0, column=1, padx=(0, 8), pady=4)
+        self._status_lbl.bind("<Button-1>", self._on_status_click)
 
         # Drive info (letter + label + size)
         self._info_var = ttk.StringVar(value="—")
@@ -94,8 +101,10 @@ class SlotWidget(ttk.Frame):
 
     def reset(self):
         """Clear slot — no drive present."""
+        self._awaiting_confirm = False
         self._info_var.set("—")
         self._set_status(CloneStatus.IDLE)
+        self._status_lbl.configure(cursor="")
         self._progress_var.set(0)
         self._pct_var.set("")
         self._speed_var.set("")
@@ -103,13 +112,40 @@ class SlotWidget(ttk.Frame):
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
 
     def set_drive(self, display: str):
-        """Drive detected — show info, enable Start."""
+        """Drive detected AND already confirmed/locked — show info, enable
+        Start. Use set_awaiting_confirm() instead for a newly-seen disk that
+        still needs the operator to lock it in."""
+        self._awaiting_confirm = False
         self._info_var.set(display)
         self._set_status(CloneStatus.IDLE)
+        self._status_lbl.configure(cursor="")
         self._progress_var.set(0)
         self._pct_var.set("0%")
         self._speed_var.set("")
         self._eta_var.set("")
+        self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
+
+    def set_awaiting_confirm(self, display: str):
+        """Drive detected but NOT yet confirmed - show info, but Start stays
+        disabled until the operator clicks the status badge (now reading
+        "Confirm") to lock this slot onto this specific disk number."""
+        self._awaiting_confirm = True
+        self._info_var.set(display)
+        self._status_lbl.configure(text="Confirm", bootstyle="warning-inverse", cursor="hand2")
+        self._progress_var.set(0)
+        self._pct_var.set("")
+        self._speed_var.set("")
+        self._eta_var.set("")
+        self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
+
+    def confirm(self):
+        """Operator confirmed - drop into the normal ready state (Start
+        enabled). Called directly by app.py once the lock is recorded; does
+        not go through set_drive()'s display argument since the drive info
+        is already showing correctly from set_awaiting_confirm()."""
+        self._awaiting_confirm = False
+        self._set_status(CloneStatus.IDLE)
+        self._status_lbl.configure(cursor="")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
 
     def set_progress(self, pct: int):
@@ -143,3 +179,7 @@ class SlotWidget(ttk.Frame):
             self._on_start(self._idx)
         else:
             self._on_stop(self._idx)
+
+    def _on_status_click(self, event=None):
+        if self._awaiting_confirm:
+            self._on_confirm(self._idx)

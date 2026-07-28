@@ -23,6 +23,18 @@ if str(_SCRIPTS) not in sys.path:
 import pyimager  # noqa: E402
 
 
+def randomize_disk_signature(disk_number: int, volumes=None) -> bytes:
+    """Re-exported from pyimager - see its docstring. Lets app.py fix up a
+    freshly-cloned disk's Windows mountability without reaching into
+    scripts/ directly, regardless of which engine (ODIN or pyimager) did
+    the actual flash.
+
+    Pass `volumes` (the disk's already-known bare drive letters, e.g. from
+    DriveInfo.all_letters) whenever other slots might still be flashing
+    concurrently - see pyimager.restore_disk()'s docstring for why."""
+    return pyimager.randomize_disk_signature(disk_number, volumes=volumes)
+
+
 class PyImagerWorker:
     """Image a physical disk to a file using the built-in Python imager.
 
@@ -123,6 +135,125 @@ class PyImagerWorker:
         self._fire_log(
             f"Imaged {meta['bytes_written']} bytes in {meta['duration_s']}s"
             f"{extra}  sha256 {digest[:16]}…")
+        self._finish(CloneStatus.DONE)
+
+    # ── callbacks (marshalled onto the Tk thread) ────────────────────────────
+
+    def _progress(self, done: int, total: int):
+        pct = int(done * 100 / total) if total else 0
+        if pct != self._last_pct:
+            self._last_pct = pct
+            self._call(self._on_progress, pct)
+
+    def _fire_log(self, line: str):
+        self._call(self._on_log, line)
+
+    def _finish(self, status: CloneStatus):
+        self.status = status
+        self._call(self._on_done, status)
+
+    def _call(self, fn, *args):
+        try:
+            self._root.after(0, fn, *args)
+        except Exception:
+            pass  # window torn down mid-run
+
+
+class PyImagerRestoreWorker:
+    """Flash a disk image to a physical disk using the built-in Python imager.
+
+    Mirrors CloneWorker's callback interface for the restore/flash direction
+    (not the capture direction PyImagerWorker above handles), so app.py can
+    swap engines per slot by choosing which class to construct.
+
+        on_progress(pct: int)          0-100
+        on_log(line: str)              human-readable progress/status text
+        on_done(status: CloneStatus)
+
+    `image_path` ending in .gz is decompressed on the fly - see
+    pyimager.restore_disk(). `confirm` is the disk number itself: the
+    caller already gated this on a validated, removable drive slot (the
+    same point CloneWorker's ODIN restore path is gated), so there is no
+    separate confirmation step here.
+
+    Pass `volumes` (e.g. DriveInfo.all_letters, bare letters without the
+    colon) whenever the caller already knows which drive letters live on
+    this disk - restore_disk() then never falls back to scanning all 26
+    letters, which is what let one slot's flash transiently interfere with
+    a sibling slot's lock/write when multiple slots ran concurrently
+    (confirmed on real hardware: "could not lock <letter>:" on one slot,
+    "Access is denied" mid-write on another, both from the same run).
+    """
+
+    def __init__(
+        self,
+        root,
+        disk_number: int,
+        image_path: str,
+        on_progress: Callable[[int], None],
+        on_log: Callable[[str], None],
+        on_done: Callable[[CloneStatus], None],
+        allow_fixed: bool = False,
+        volumes=None,
+    ):
+        self._root = root
+        self._disk = disk_number
+        self._image = image_path
+        self._allow_fixed = allow_fixed
+        self._volumes = volumes
+        self._on_progress = on_progress
+        self._on_log = on_log
+        self._on_done = on_done
+
+        self._thread: threading.Thread | None = None
+        self._cancel = threading.Event()
+        self._last_pct = -1
+        self.status = CloneStatus.IDLE
+        self.result: dict | None = None
+
+    # ── public ───────────────────────────────────────────────────────────────
+
+    def start(self):
+        if self.status == CloneStatus.RUNNING:
+            return
+        self.status = CloneStatus.RUNNING
+        self._cancel.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        """Ask the write to stop; it aborts at the next chunk boundary."""
+        self._cancel.set()
+
+    # ── thread body ──────────────────────────────────────────────────────────
+
+    def _run(self):
+        try:
+            meta = pyimager.restore_disk(
+                self._disk,
+                self._image,
+                confirm=self._disk,
+                allow_fixed=self._allow_fixed,
+                on_progress=self._progress,
+                on_log=self._fire_log,
+                should_cancel=self._cancel.is_set,
+                volumes=self._volumes,
+            )
+        except Exception as exc:  # noqa: BLE001 - surfaced to the UI
+            self._fire_log(f"pyimager restore failed: {type(exc).__name__}: {exc}")
+            self._finish(CloneStatus.FAILED)
+            return
+
+        self.result = meta
+        if meta.get("cancelled"):
+            self._fire_log("Stopped by user - partial write left on disk.")
+            self._finish(CloneStatus.STOPPED)
+            return
+
+        digest = meta["digests"].get("sha256", "")
+        self._fire_log(
+            f"Flashed {meta['bytes_written']} bytes in {meta['duration_s']}s "
+            f"sha256 {digest[:16]}…")
         self._finish(CloneStatus.DONE)
 
     # ── callbacks (marshalled onto the Tk thread) ────────────────────────────

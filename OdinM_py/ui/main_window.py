@@ -17,10 +17,14 @@ from ttkbootstrap.constants import *
 from tkinter.scrolledtext import ScrolledText
 
 from clone_worker import CloneStatus
+from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
 from drive_manager import DriveInfo
 from ui.slot_widget import SlotWidget
 
 NUM_SLOTS = 5
+
+_ENGINE_DISPLAY = {ENGINE_ODIN: "ODIN (ODINC.exe)", ENGINE_PYIMAGER: "pyimager (built-in)"}
+_ENGINE_FROM_DISPLAY = {v: k for k, v in _ENGINE_DISPLAY.items()}
 
 
 class MainWindow(ttk.Frame):
@@ -38,6 +42,11 @@ class MainWindow(ttk.Frame):
         self._config = config
         self._root_win = parent  # root ttk.Window — needed for the menu bar
         self._slots: list[SlotWidget] = []
+        # slot index -> disk_number currently shown there (None if empty).
+        # Lets update_drives() skip slots whose occupant hasn't actually
+        # changed, so a blip in an UNRELATED slot doesn't wipe this one's
+        # live progress/speed/eta (SlotWidget.set_drive() resets all of that).
+        self._displayed_disk_nums: dict[int, int | None] = {}
         self._image_var = ttk.StringVar(value=config.get_last_image())
         self._init_callbacks()
         self._build()
@@ -46,8 +55,10 @@ class MainWindow(ttk.Frame):
 
     on_start_slot: Callable[[int], None]
     on_stop_slot: Callable[[int], None]
+    on_confirm_slot: Callable[[int], None]
     on_start_all: Callable[[], None]
     on_stop_all: Callable[[], None]
+    on_refresh_disks: Callable[[], None]
     on_verify_image: Callable[[], None]
     on_configure_hashes: Callable[[], None]
     on_verify_stored: Callable[[], None]
@@ -57,8 +68,10 @@ class MainWindow(ttk.Frame):
     def _init_callbacks(self):
         self.on_start_slot = lambda idx: None
         self.on_stop_slot = lambda idx: None
+        self.on_confirm_slot = lambda idx: None
         self.on_start_all = lambda: None
         self.on_stop_all = lambda: None
+        self.on_refresh_disks = lambda: None
         self.on_verify_image = lambda: None
         self.on_configure_hashes = lambda: None
         self.on_verify_stored = lambda: None
@@ -71,10 +84,26 @@ class MainWindow(ttk.Frame):
     def image_path(self) -> str:
         return self._image_var.get().strip()
 
-    def update_drives(self, drives: list[DriveInfo]):
-        """Called by DriveMonitor when the drive list changes."""
-        # Keep one empty slot visible beyond occupied slots (min 1, max NUM_SLOTS)
-        target = max(1, min(NUM_SLOTS, len(drives) + 1))
+    def update_drives(self, drives: list, locked: dict):
+        """Called by app.py whenever its slot->drive mapping changes.
+
+        `drives` is indexed BY SLOT (length NUM_SLOTS, None for an empty
+        slot) - the same sticky mapping app.py uses for launching/verifying,
+        never a repacked list of only currently-present drives. A slot's
+        widget is only touched (set_drive/reset/set_awaiting_confirm) when
+        its disk_number actually changes since the last call - otherwise a
+        blip affecting some OTHER slot would re-render this one and wipe its
+        live progress/speed/eta for no reason.
+
+        `locked` is app.py's slot_index -> confirmed disk_number map. A
+        newly-appearing disk that matches its slot's locked entry (a
+        persisted confirmation within the 15-minute grace after removal)
+        goes straight to the normal ready state; otherwise it shows the
+        "Confirm" prompt and waits for the operator.
+        """
+        occupied = max((i for i, d in enumerate(drives) if d is not None), default=-1)
+        # Keep one empty slot visible beyond the highest occupied one (min 1, max NUM_SLOTS)
+        target = max(1, min(NUM_SLOTS, occupied + 2))
         while len(self._slots) < target:
             idx = len(self._slots)
             sw = SlotWidget(
@@ -82,15 +111,30 @@ class MainWindow(ttk.Frame):
                 slot_index=idx,
                 on_start=lambda i: self.on_start_slot(i),
                 on_stop=lambda i: self.on_stop_slot(i),
+                on_confirm=lambda i: self.on_confirm_slot(i),
             )
             sw.grid(row=idx, column=0, sticky=EW, padx=4, pady=2)
             self._slots.append(sw)
 
         for i, slot in enumerate(self._slots):
-            if i < len(drives):
-                slot.set_drive(drives[i].display)
-            else:
+            d = drives[i] if i < len(drives) else None
+            disk_num = d.disk_number if d is not None else None
+            if self._displayed_disk_nums.get(i) == disk_num:
+                continue  # unchanged - don't disturb live progress/speed/eta
+            self._displayed_disk_nums[i] = disk_num
+            if d is None:
                 slot.reset()
+            elif locked.get(i) == disk_num:
+                slot.set_drive(d.display)
+            else:
+                slot.set_awaiting_confirm(d.display)
+
+    def confirm_slot(self, idx: int):
+        """Called directly by app.py once a Confirm click is validated and
+        the lock recorded - an explicit one-off transition, not something
+        update_drives()'s disk_number diff would ever trigger on its own
+        since the slot's occupant doesn't change when it gets confirmed."""
+        self._slots[idx].confirm()
 
     def set_slot_progress(self, idx: int, pct: int):
         self._slots[idx].set_progress(pct)
@@ -163,6 +207,20 @@ class MainWindow(ttk.Frame):
                 command=lambda v=n: self._config.set_max_concurrent(v),  # type: ignore[misc]
             )
         options_menu.add_cascade(label="Max Concurrent", menu=conc_menu)
+
+        # Max Disks submenu - how many removable disks get considered per
+        # refresh at all (separate from Max Concurrent, which caps active
+        # flashes). 0 = no cap.
+        self._max_disks_var = tk.IntVar(value=self._config.get_max_disks())
+        disks_menu = tk.Menu(options_menu, tearoff=0)
+        for n in [0, 1, 2, 3, 4, 5, 6, 8, 10]:
+            disks_menu.add_radiobutton(
+                label="No Cap" if n == 0 else str(n),
+                variable=self._max_disks_var,
+                value=n,
+                command=lambda v=n: self._config.set_max_disks(v),  # type: ignore[misc]
+            )
+        options_menu.add_cascade(label="Max Disks", menu=disks_menu)
         options_menu.add_separator()
 
         options_menu.add_command(label="Theme: Dark", command=lambda: self._set_theme("darkly"))
@@ -208,6 +266,7 @@ class MainWindow(ttk.Frame):
             slot_index=0,
             on_start=lambda idx: self.on_start_slot(idx),
             on_stop=lambda idx: self.on_stop_slot(idx),
+            on_confirm=lambda idx: self.on_confirm_slot(idx),
         )
         sw.grid(row=0, column=0, sticky=EW, padx=4, pady=2)
         self._slots.append(sw)
@@ -222,6 +281,25 @@ class MainWindow(ttk.Frame):
         ttk.Button(
             frame, text="Stop All", bootstyle="danger", command=lambda: self.on_stop_all()
         ).pack(side=LEFT, padx=(0, 6))
+        ttk.Button(
+            frame, text="Refresh Disks", bootstyle="warning-outline",
+            command=lambda: self.on_refresh_disks(),
+        ).pack(side=LEFT, padx=(0, 6))
+
+        ttk.Separator(frame, orient=VERTICAL).pack(side=LEFT, fill=Y, padx=(0, 12), pady=2)
+
+        ttk.Label(frame, text="Flash engine:").pack(side=LEFT, padx=(0, 6))
+        self._engine_var = ttk.StringVar(value=_ENGINE_DISPLAY[self._config.get_engine()])
+        engine_cb = ttk.Combobox(
+            frame,
+            textvariable=self._engine_var,
+            state="readonly",
+            values=list(_ENGINE_DISPLAY.values()),
+            width=20,
+        )
+        engine_cb.pack(side=LEFT, padx=(0, 6))
+        engine_cb.bind("<<ComboboxSelected>>", self._on_engine_change)
+
         ttk.Button(
             frame, text="Clear Log", bootstyle="secondary-outline", command=self.clear_log
         ).pack(side=RIGHT)
@@ -321,6 +399,10 @@ class MainWindow(ttk.Frame):
         self._config.set_show_flash_widget(enabled)
         self.on_flash_widget_toggle(enabled)
 
+    def _on_engine_change(self, _event=None):
+        value = _ENGINE_FROM_DISPLAY.get(self._engine_var.get(), ENGINE_ODIN)
+        self._config.set_engine(value)
+
     def _set_theme(self, theme: str):
         self._config.set_theme(theme)
         try:
@@ -331,7 +413,8 @@ class MainWindow(ttk.Frame):
     def _show_about(self):
         messagebox.showinfo(
             "About OdinM_py",
-            "OdinM_py\nPython UI for ODINC multi-drive cloning.\n\nBuilt with ttkbootstrap.",
+            "OdinM_py v2\nPython UI for multi-drive cloning (ODIN or the "
+            "built-in pyimager engine).\n\nBuilt with ttkbootstrap.",
             parent=self._root_win,
         )
 
