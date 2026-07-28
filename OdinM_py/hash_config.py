@@ -44,14 +44,27 @@ class HashConfig:
         return dict(partitions.get(str(partition), blank_partition()))
 
     def save_partition(self, filepath: str, partition: int, cfg: dict) -> bool:
-        """Persist config for a specific partition."""
+        """Persist config and keep whole-disk/partition checks exclusive."""
         key = os.path.normcase(filepath)
         if key not in self._data:
             self._data[key] = {
                 "filename": os.path.basename(filepath),
                 "partitions": {},
             }
-        self._data[key]["partitions"][str(partition)] = dict(cfg)
+        partitions = self._data[key]["partitions"]
+        partitions[str(partition)] = dict(cfg)
+
+        if cfg.get("sha1_enabled") or cfg.get("sha256_enabled"):
+            if partition == 0:
+                conflicting = (
+                    other_cfg for part_num, other_cfg in partitions.items() if int(part_num) > 0
+                )
+            else:
+                disk_cfg = partitions.get("0")
+                conflicting = (disk_cfg,) if disk_cfg is not None else ()
+            for other_cfg in conflicting:
+                other_cfg["sha1_enabled"] = False
+                other_cfg["sha256_enabled"] = False
         return self._save()
 
     def get_enabled_partitions(self, filepath: str) -> dict[int, dict]:

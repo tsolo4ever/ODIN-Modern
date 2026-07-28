@@ -20,7 +20,7 @@ from drive_manager import (
     is_disk_removable,
 )
 from hash_worker import HashStatus, HashWorker
-from partition_reader import get_image_hash_region
+from partition_reader import get_image_hash_region, read_mbr_partitions
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
 from ui.flash_status_window import FlashStatusWindow
 from ui.main_window import MainWindow, NUM_SLOTS
@@ -561,7 +561,7 @@ class OdinMApp:
         this is a manual, infrequent action - cheap to be verbose, and it's
         exactly what's needed to diagnose a "0 removable drives" report."""
         self._window.log("[Drives] Manual refresh requested.")
-        for line in debug_probe_disks():
+        for line in debug_probe_disks(removable_limit=self._config.get_max_disks()):
             self._window.log(f"[Drives]   {line}")
         self._monitor.refresh()
 
@@ -671,30 +671,88 @@ class OdinMApp:
 
         from hash_config import HashConfig
 
-        cfg = HashConfig().get_partition(image, 0)
-        if not (
-            (cfg.get("sha1_enabled") and cfg.get("sha1_value"))
-            or (cfg.get("sha256_enabled") and cfg.get("sha256_value"))
-        ):
-            self._verify_failed(idx, "No disk-level hash is configured for this image.")
+        hash_config = HashConfig()
+        enabled = hash_config.get_enabled_partitions(image)
+        partition_configs = [
+            (part_num, cfg) for part_num, cfg in sorted(enabled.items()) if part_num > 0
+        ]
+        disk_cfg = enabled.get(0)
+        checks: list[tuple[int, dict, int, int]] = []
+
+        if disk_cfg is not None and partition_configs:
+            self._verify_failed(
+                idx,
+                "Whole-disk and partition-specific hashes are both enabled. "
+                "Configure only one verification scope.",
+            )
+            return False
+        if partition_configs:
+            target_partitions = {
+                part.number: part for part in read_mbr_partitions(drive.raw_device_path)
+            }
+            if not target_partitions:
+                self._verify_failed(idx, "Target disk partition table is not readable.")
+                return False
+
+            for part_num, cfg in partition_configs:
+                if not (
+                    (cfg.get("sha1_enabled") and cfg.get("sha1_value"))
+                    or (cfg.get("sha256_enabled") and cfg.get("sha256_value"))
+                ):
+                    self._verify_failed(
+                        idx, f"No enabled hash values were found for partition {part_num}."
+                    )
+                    return False
+                target_partition = target_partitions.get(part_num)
+                if target_partition is None:
+                    self._verify_failed(
+                        idx, f"Partition {part_num} was not found on the target disk."
+                    )
+                    return False
+                checks.append((part_num, cfg, target_partition.offset, target_partition.size))
+        elif disk_cfg is not None:
+            cfg = disk_cfg
+            if not (
+                (cfg.get("sha1_enabled") and cfg.get("sha1_value"))
+                or (cfg.get("sha256_enabled") and cfg.get("sha256_value"))
+            ):
+                self._verify_failed(idx, "No disk-level hash is configured for this image.")
+                return False
+
+            region = get_image_hash_region(image)
+            if region is None:
+                self._verify_failed(idx, "Image header is not readable.")
+                return False
+            if not region.is_disk_verifiable:
+                if region.compression_scheme != 0:
+                    msg = f"Compressed ODIN image (scheme {region.compression_scheme}) — target disk verify not supported."
+                else:
+                    msg = (
+                        "Used-blocks image — target disk verify not supported "
+                        "(image stores packed clusters, not raw sectors)."
+                    )
+                self._verify_failed(idx, msg)
+                return False
+            checks.append((0, cfg, 0, region.size))
+        else:
+            self._verify_failed(
+                idx, "No hashes are enabled for this image. Configure hash verification first."
+            )
             return False
 
-        region = get_image_hash_region(image)
-        if region is None:
-            self._verify_failed(idx, "Image header is not readable.")
-            return False
-        if not region.is_disk_verifiable:
-            if region.compression_scheme != 0:
-                msg = f"Compressed ODIN image (scheme {region.compression_scheme}) — target disk verify not supported."
-            else:
-                msg = (
-                    "Used-blocks image — target disk verify not supported "
-                    "(image stores packed clusters, not raw sectors)."
-                )
-            self._verify_failed(idx, msg)
+        return self._start_target_verify_check(idx, checks, 0)
+
+    def _start_target_verify_check(
+        self, idx: int, checks: list[tuple[int, dict, int, int]], check_index: int
+    ) -> bool:
+        drive = self._drives[idx]
+        if drive is None:
+            self._verify_failed(idx, "Drive was removed before verification completed.")
             return False
 
-        self._window.log(f"[Slot {idx + 1}] Verifying flashed disk hash ({region.size} bytes)…")
+        part_num, cfg, offset, size = checks[check_index]
+        target_label = "flashed disk" if part_num == 0 else f"target partition {part_num}"
+        self._window.log(f"[Slot {idx + 1}] Verifying {target_label} hash ({size} bytes)…")
 
         def _on_verify_progress(pct: int, i: int = idx) -> None:
             self._window.set_slot_progress(i, pct)
@@ -704,22 +762,30 @@ class OdinMApp:
             root=self._root,
             file_path=drive.raw_device_path,
             on_progress=_on_verify_progress,
-            on_done=lambda status, sha256, sha1, i=idx, c=cfg: self._on_target_verify_done(
-                i, c, status, sha256, sha1
+            on_done=lambda status, sha256, sha1, i=idx, c=checks, n=check_index: (
+                self._on_target_verify_done(i, c, n, status, sha256, sha1)
             ),
-            offset=0,
-            byte_count=region.size,
+            offset=offset,
+            byte_count=size,
         )
         self._verify_workers[idx] = worker
         worker.start()
         return True
 
     def _on_target_verify_done(
-        self, idx: int, cfg: dict, status: HashStatus, sha256: str, sha1: str
+        self,
+        idx: int,
+        checks: list[tuple[int, dict, int, int]],
+        check_index: int,
+        status: HashStatus,
+        sha256: str,
+        sha1: str,
     ):
         self._verify_workers.pop(idx, None)
+        part_num, cfg, _offset, _size = checks[check_index]
+        target_label = "Target" if part_num == 0 else f"Target partition {part_num}"
         if status != HashStatus.DONE:
-            self._verify_failed(idx, "Target disk hash failed or was cancelled.")
+            self._verify_failed(idx, f"{target_label} hash failed or was cancelled.")
             self._drain_queue()
             return
 
@@ -728,23 +794,29 @@ class OdinMApp:
         if cfg.get("sha1_enabled") and cfg.get("sha1_value"):
             checked = True
             if sha1 == cfg["sha1_value"].lower():
-                self._window.log(f"[Slot {idx + 1}] Target SHA-1: pass.")
+                self._window.log(f"[Slot {idx + 1}] {target_label} SHA-1: pass.")
             else:
-                self._window.log(f"[Slot {idx + 1}] Target SHA-1: MISMATCH.")
+                self._window.log(f"[Slot {idx + 1}] {target_label} SHA-1: MISMATCH.")
                 failed = True
 
         if cfg.get("sha256_enabled") and cfg.get("sha256_value"):
             checked = True
             if sha256 == cfg["sha256_value"].lower():
-                self._window.log(f"[Slot {idx + 1}] Target SHA-256: pass.")
+                self._window.log(f"[Slot {idx + 1}] {target_label} SHA-256: pass.")
             else:
-                self._window.log(f"[Slot {idx + 1}] Target SHA-256: MISMATCH.")
+                self._window.log(f"[Slot {idx + 1}] {target_label} SHA-256: MISMATCH.")
                 failed = True
 
         if not checked:
-            self._verify_failed(idx, "No enabled disk-level hash values were found.")
+            self._verify_failed(
+                idx, f"No enabled hash values were found for {target_label.lower()}."
+            )
         elif failed:
-            self._verify_failed(idx, "Target hash mismatch.")
+            self._verify_failed(idx, f"{target_label} hash mismatch.")
+        elif check_index + 1 < len(checks):
+            if not self._start_target_verify_check(idx, checks, check_index + 1):
+                self._drain_queue()
+            return
         else:
             self._window.log(f"[Slot {idx + 1}] Target verification passed — pull card now.")
             self._flash_set_status(idx, CloneStatus.DONE)

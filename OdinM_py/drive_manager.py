@@ -259,11 +259,17 @@ def is_disk_removable(disk_number: int) -> bool:
         _k32.CloseHandle(h)
 
 
-def debug_probe_disks(max_disks: int = MAX_PHYSICAL_DISKS) -> list[str]:
+def debug_probe_disks(
+    max_disks: int = MAX_PHYSICAL_DISKS, removable_limit: int = 0
+) -> list[str]:
     r"""One human-readable diagnostic line per \\.\PhysicalDriveN, showing
     exactly why get_removable_drives() did or didn't include it: whether
     the disk could even be opened (with the GetLastError detail if not),
     its removable-media result, and its size.
+
+    If removable_limit is positive, stop after that many removable disks
+    have been found. Errors encountered before reaching the limit remain
+    visible. A zero limit scans the full configured physical-disk range.
 
     For manually troubleshooting a "0 removable drive(s) detected" report
     when Explorer clearly shows a card connected - opening a physical disk
@@ -272,6 +278,7 @@ def debug_probe_disks(max_disks: int = MAX_PHYSICAL_DISKS) -> list[str]:
     DENIED (5) here almost always means the app itself isn't elevated.
     """
     lines = []
+    removable_found = 0
     for n in range(max_disks):
         path = f"\\\\.\\PhysicalDrive{n}"
         h = _k32.CreateFileW(path, GENERIC_READ, FILE_SHARE_READ_WRITE,
@@ -286,6 +293,10 @@ def debug_probe_disks(max_disks: int = MAX_PHYSICAL_DISKS) -> list[str]:
         size = _get_physical_disk_size(n)
         lines.append(f"disk {n}: open OK — removable={removable}, "
                     f"size={size} bytes")
+        if removable:
+            removable_found += 1
+            if removable_limit > 0 and removable_found >= removable_limit:
+                break
     return lines
 
 
