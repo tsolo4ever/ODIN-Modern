@@ -776,6 +776,7 @@ class OdinMApp:
 
     def _verify_failed(self, idx: int, message: str):
         self._window.log(f"[Slot {idx + 1}] [Verify] {message}")
+        self._window.set_slot_status(idx, CloneStatus.FAILED)
         self._flash_set_status(idx, CloneStatus.FAILED)
         if self._config.get_stop_on_verify_fail():
             self._window.log("[Verify] Stop-on-fail: halting queued/running clone work.")
