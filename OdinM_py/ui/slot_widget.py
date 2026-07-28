@@ -122,7 +122,7 @@ class SlotWidget(ttk.Frame):
         still needs the operator to lock it in."""
         self._awaiting_confirm = False
         self._info_var.set(display)
-        self._set_status(CloneStatus.IDLE)
+        self._set_ready_badge()
         self._status_lbl.configure(cursor="")
         self._progress_var.set(0)
         self._pct_var.set("0%")
@@ -149,7 +149,7 @@ class SlotWidget(ttk.Frame):
         not go through set_drive()'s display argument since the drive info
         is already showing correctly from set_awaiting_confirm()."""
         self._awaiting_confirm = False
-        self._set_status(CloneStatus.IDLE)
+        self._set_ready_badge()
         self._status_lbl.configure(cursor="")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
 
@@ -179,6 +179,12 @@ class SlotWidget(ttk.Frame):
     def _set_status(self, status: CloneStatus):
         style, text = STATUS_STYLE.get(status, ("secondary", "—"))
         self._status_lbl.configure(text=text, bootstyle=f"{style}-inverse")
+
+    def _set_ready_badge(self):
+        """A drive is confirmed and ready to flash - distinct from the true
+        "Empty" (no drive at all) idle state, even though both are
+        CloneStatus.IDLE under the hood."""
+        self._status_lbl.configure(text="Ready", bootstyle="success-inverse")
 
     def _on_btn_click(self):
         text = self._btn.cget("text")
