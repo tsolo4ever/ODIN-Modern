@@ -102,3 +102,9 @@ signature in a whole-disk comparison.
 - Existing `test_manual_verify_button.py`: still blocked before execution
   because the available Python installation cannot locate Tcl's `init.tcl`;
   the repository venv also lacks `ttkbootstrap`.
+
+## Remaining Cosmetic Follow-up
+
+- Live testing still shows the full `PhysicalDrive0..15` diagnostic list during
+  manual refresh even when Max Disks is capped. The removable-drive cap itself
+  remains functional; only the displayed probe output needs another look.
