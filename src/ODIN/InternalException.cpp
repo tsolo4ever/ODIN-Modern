@@ -52,6 +52,7 @@ LPCWSTR EInternalException::sMessages[] = {
   L"Input/output error during read or write operation", // inputError
   L"LZ4 frame compression/decompression error", // lz4CompressError
   L"Zstandard (ZSTD) compression/decompression error", // zstdCompressError
+  L"Timed out waiting for the target disk and all restored partitions to become available", // driveRefreshTimeout
 };
 
 

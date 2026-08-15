@@ -1,6 +1,7 @@
 """Headless regression checks for partition-aware target verification."""
 
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +12,12 @@ import app as app_module  # noqa: E402
 import hash_config as hash_config_module  # noqa: E402
 from clone_worker import CloneStatus  # noqa: E402
 from hash_worker import HashStatus  # noqa: E402
-from partition_reader import ImageHashRegion, PartitionInfo  # noqa: E402
+from partition_reader import (  # noqa: E402
+    ImageHashRegion,
+    PartitionInfo,
+    PartitionReadError,
+    read_mbr_partitions_strict,
+)
 
 _REAL_HASH_CONFIG = hash_config_module.HashConfig
 
@@ -40,6 +46,7 @@ class _FakeWindow:
         self.image_path = r"E:\working.img"
         self.logs: list[str] = []
         self.slot_statuses: list[CloneStatus] = []
+        self.verifying: list[int] = []
         self.progress: list[int] = []
 
     def log(self, message: str):
@@ -50,6 +57,9 @@ class _FakeWindow:
 
     def set_slot_progress(self, _idx: int, pct: int):
         self.progress.append(pct)
+
+    def set_slot_verifying(self, idx: int):
+        self.verifying.append(idx)
 
 
 class _FakeWorker:
@@ -81,20 +91,42 @@ class _FakeWorker:
         self.on_done(status, sha256, sha1)
 
 
+_WAIT_PARTITIONS: list[PartitionInfo] = []
+
+
+class _FakeWaiter:
+    def __init__(self, *, root, disk_path, on_ready, on_failed, **_kwargs):
+        self.on_ready = on_ready
+        self.on_failed = on_failed
+        self.stopped = False
+
+    def start(self):
+        if _WAIT_PARTITIONS:
+            self.on_ready(_WAIT_PARTITIONS)
+        else:
+            self.on_failed("test partition table was not ready")
+
+    def stop(self):
+        self.stopped = True
+
+
 class _FakeConfig:
     def get_stop_on_verify_fail(self) -> bool:
         return False
 
 
 app_module.HashWorker = _FakeWorker
+app_module.PartitionTableWaiter = _FakeWaiter
 
 
 def _make_app():
     app = object.__new__(app_module.OdinMApp)
     app._root = SimpleNamespace()
     app._window = _FakeWindow()
-    app._drives = [SimpleNamespace(raw_device_path=r"\\.\PhysicalDrive2")]
+    app._drives = [SimpleNamespace(disk_number=2, raw_device_path=r"\\.\PhysicalDrive2")]
     app._verify_workers = {}
+    app._partition_waiters = {}
+    app._finished_disk_nums = set()
     app._config = _FakeConfig()
     app._flash_statuses = []
     app._flash_progress = []
@@ -112,11 +144,12 @@ def _use_hash_config(config: _FakeHashConfig):
 
 
 def test_multiple_partition_checks_run_in_order():
+    global _WAIT_PARTITIONS
     part1_cfg = _cfg(sha256="a" * 64)
     part2_cfg = _cfg(sha1="b" * 40)
     config = _FakeHashConfig({1: part1_cfg, 2: part2_cfg})
     _use_hash_config(config)
-    app_module.read_mbr_partitions = lambda _path: [
+    _WAIT_PARTITIONS = [
         PartitionInfo(1, 0x0B, 1_048_576, 4_096, True),
         PartitionInfo(2, 0x83, 5_242_880, 8_192, False),
     ]
@@ -139,6 +172,7 @@ def test_multiple_partition_checks_run_in_order():
 
     second.finish(sha1="b" * 40)
     assert app._signature_fixes == [0]
+    assert app._finished_disk_nums == {2}
     assert app._drains == [True]
     assert any("Target partition 1 SHA-256: pass." in line for line in app._window.logs)
     assert any("Target partition 2 SHA-1: pass." in line for line in app._window.logs)
@@ -177,22 +211,24 @@ def test_no_enabled_hashes_requires_configuration():
 
 
 def test_missing_target_partition_fails_without_hashing():
+    global _WAIT_PARTITIONS
     config = _FakeHashConfig({1: _cfg(sha256="a" * 64)})
     _use_hash_config(config)
-    app_module.read_mbr_partitions = lambda _path: [PartitionInfo(2, 0x83, 1_048_576, 4_096, False)]
+    _WAIT_PARTITIONS = [PartitionInfo(2, 0x83, 1_048_576, 4_096, False)]
     _FakeWorker.instances.clear()
     app = _make_app()
 
-    assert not app._start_target_verify(0)
+    assert app._start_target_verify(0)
     assert _FakeWorker.instances == []
     assert app._window.slot_statuses == [CloneStatus.FAILED]
     assert any("Partition 1 was not found" in line for line in app._window.logs)
 
 
 def test_partition_mismatch_never_randomizes_signature():
+    global _WAIT_PARTITIONS
     config = _FakeHashConfig({1: _cfg(sha256="a" * 64)})
     _use_hash_config(config)
-    app_module.read_mbr_partitions = lambda _path: [PartitionInfo(1, 0x0B, 1_048_576, 4_096, True)]
+    _WAIT_PARTITIONS = [PartitionInfo(1, 0x0B, 1_048_576, 4_096, True)]
     _FakeWorker.instances.clear()
     app = _make_app()
 
@@ -250,6 +286,17 @@ def test_saving_hash_scopes_keeps_whole_disk_and_partitions_exclusive():
     assert sorted(config.get_enabled_partitions(image)) == [1, 2]
 
 
+def test_strict_partition_reader_preserves_invalid_mbr_reason():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        image = Path(temp_dir) / "invalid.img"
+        image.write_bytes(b"\x00" * 512)
+        try:
+            read_mbr_partitions_strict(str(image))
+        except PartitionReadError as exc:
+            assert "MBR signature" in str(exc)
+        else:
+            raise AssertionError("invalid MBR should raise PartitionReadError")
+
 if __name__ == "__main__":
     tests = [
         test_multiple_partition_checks_run_in_order,
@@ -259,6 +306,7 @@ if __name__ == "__main__":
         test_partition_mismatch_never_randomizes_signature,
         test_explicit_disk_level_verification_is_preserved,
         test_saving_hash_scopes_keeps_whole_disk_and_partitions_exclusive,
+        test_strict_partition_reader_preserves_invalid_mbr_reason,
     ]
     for test in tests:
         test()

@@ -38,7 +38,7 @@ class EInternalException : public Exception
     threadSyncTimeout, inputTypeNotSet, outputTypeNotSet, getChunkError, writeChunkError, wrongReadSize,
     wrongWriteSize, internalStringTableOverflow, chunkSizeTooSmall, maxPartitionNumberExceeded,
     unsupportedPartitionFormat, invalidBootSector, integerOverflow, threadSyncError, emptyBufferQueue, inputError,
-    lz4CompressError, zstdCompressError,
+    lz4CompressError, zstdCompressError, driveRefreshTimeout,
   };
   
   EInternalException(int errCode) : 

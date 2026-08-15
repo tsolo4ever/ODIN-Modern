@@ -20,7 +20,8 @@ from drive_manager import (
     is_disk_removable,
 )
 from hash_worker import HashStatus, HashWorker
-from partition_reader import get_image_hash_region, read_mbr_partitions
+from partition_reader import get_image_hash_region
+from partition_waiter import PartitionTableWaiter
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
 from ui.flash_status_window import FlashStatusWindow
 from ui.main_window import MainWindow, NUM_SLOTS
@@ -91,6 +92,7 @@ class OdinMApp:
         # slot → deque of (timestamp, pct) samples for rolling speed window
         self._speed_samples: dict[int, deque] = {}
         self._verify_workers: dict[int, HashWorker] = {}
+        self._partition_waiters: dict[int, PartitionTableWaiter] = {}
         # disk numbers that just finished cloning — cleared when drive is removed
         # so the same physical card does not trigger a second auto-clone
         self._finished_disk_nums: set = set()
@@ -215,7 +217,7 @@ class OdinMApp:
             free_slots.remove(pending_slot)
             self._reclaim_pending_slot(pending_slot, d)
 
-        for slot, d in zip(free_slots, still_unplaced):
+        for slot, d in zip(free_slots, still_unplaced, strict=False):
             self._drives[slot] = d
             # Not confirmed yet - just settle-delay bookkeeping for auto-
             # clone; _auto_clone_delayed() still waits on Confirm before
@@ -261,6 +263,14 @@ class OdinMApp:
                     on_return=lambda i=idx, dn=disk_number: self._on_slot_disk_returned(i, dn),
                 )
         w = self._workers.get(idx)
+        verifier = self._verify_workers.get(idx)
+        if verifier is not None and verifier.status == HashStatus.RUNNING:
+            self._window.log(f"[Slot {idx + 1}] Drive removed during verification — aborting.")
+            verifier.stop()
+        waiter = self._partition_waiters.pop(idx, None)
+        if waiter is not None:
+            waiter.stop()
+            self._drain_queue()
         if w is not None and w.status == CloneStatus.RUNNING:
             self._window.log(f"[Slot {idx + 1}] Drive removed during flash — aborting.")
             self._speed_samples.pop(idx, None)
@@ -427,6 +437,10 @@ class OdinMApp:
                 f"[Error] Slot {idx + 1} is not confirmed — click Confirm before starting."
             )
             return
+        verifier = self._verify_workers.get(idx)
+        if verifier is not None and verifier.status == HashStatus.RUNNING:
+            self._window.log(f"[Error] Slot {idx + 1} is currently being verified.")
+            return
 
         max_conc = self._config.get_max_concurrent()
         if self._running_count() >= max_conc:
@@ -527,12 +541,21 @@ class OdinMApp:
                 self._flash_set_drive(idx, drive.display)
             return
         worker = self._workers.get(idx)
-        if worker:
+        stopped = False
+        if worker is not None and worker.status == CloneStatus.RUNNING:
             self._speed_samples.pop(idx, None)
             worker.stop()
-            verifier = self._verify_workers.get(idx)
-            if verifier:
-                verifier.stop()
+            stopped = True
+        verifier = self._verify_workers.get(idx)
+        if verifier is not None and verifier.status == HashStatus.RUNNING:
+            verifier.stop()
+            stopped = True
+        waiter = self._partition_waiters.pop(idx, None)
+        if waiter is not None:
+            waiter.stop()
+            stopped = True
+            self._drain_queue()
+        if stopped:
             self._window.log(f"[Slot {idx + 1}] Stop requested.")
 
     def _start_all(self):
@@ -552,6 +575,9 @@ class OdinMApp:
         for verifier in self._verify_workers.values():
             if verifier.status == HashStatus.RUNNING:
                 verifier.stop()
+        for waiter in self._partition_waiters.values():
+            waiter.stop()
+        self._partition_waiters.clear()
 
     def _refresh_disks(self):
         """Force an immediate re-scan instead of waiting on the automatic
@@ -641,21 +667,34 @@ class OdinMApp:
             self._drain_queue()
 
     def _verify_slot(self, idx: int):
-        """Operator clicked "Verify" - offered instead of "Start" right
-        after a flash completes with verify-after-clone turned off, so a
-        card can still be checked on demand without enabling it globally.
-        Runs the exact same target-disk hash check the auto-verify path
-        uses (_start_target_verify -> _on_target_verify_done), including
-        fixing the disk signature afterward on success.
-
-        Flips the button back to "Start" immediately (matching how the
-        auto-verify path already looks throughout its own verify pass) so
-        a second click can't launch a duplicate verify against the same
-        drive.
-        """
-        if self._drives[idx] is None:
+        """Run the normal target verification on a confirmed idle disk."""
+        drive = self._drives[idx]
+        if drive is None:
+            self._window.log(f"[Verify] Slot {idx + 1} has no drive.")
             return
-        self._window.set_slot_status(idx, CloneStatus.DONE, offer_verify=False)
+        if self._locked_disk_nums.get(idx) != drive.disk_number:
+            self._window.log(
+                f"[Verify] Slot {idx + 1} is not confirmed — click Confirm first."
+            )
+            return
+        worker = self._workers.get(idx)
+        if idx in self._queue or (
+            worker is not None and worker.status == CloneStatus.RUNNING
+        ):
+            self._window.log(f"[Verify] Slot {idx + 1} is cloning or queued.")
+            return
+        verifier = self._verify_workers.get(idx)
+        if verifier is not None and verifier.status == HashStatus.RUNNING:
+            self._window.log(f"[Verify] Slot {idx + 1} is already being verified.")
+            return
+        if idx in self._partition_waiters:
+            self._window.log(f"[Verify] Slot {idx + 1} is waiting for its partition table.")
+            return
+        if not is_disk_removable(drive.disk_number):
+            self._window.log(
+                f"[Verify] Slot {idx + 1} (Disk {drive.disk_number}) is not removable — aborted."
+            )
+            return
         self._start_target_verify(idx)
 
     def _start_target_verify(self, idx: int) -> bool:
@@ -687,13 +726,6 @@ class OdinMApp:
             )
             return False
         if partition_configs:
-            target_partitions = {
-                part.number: part for part in read_mbr_partitions(drive.raw_device_path)
-            }
-            if not target_partitions:
-                self._verify_failed(idx, "Target disk partition table is not readable.")
-                return False
-
             for part_num, cfg in partition_configs:
                 if not (
                     (cfg.get("sha1_enabled") and cfg.get("sha1_value"))
@@ -703,13 +735,22 @@ class OdinMApp:
                         idx, f"No enabled hash values were found for partition {part_num}."
                     )
                     return False
-                target_partition = target_partitions.get(part_num)
-                if target_partition is None:
-                    self._verify_failed(
-                        idx, f"Partition {part_num} was not found on the target disk."
-                    )
-                    return False
-                checks.append((part_num, cfg, target_partition.offset, target_partition.size))
+            self._window.set_slot_verifying(idx)
+            self._window.log(
+                f"[Slot {idx + 1}] Waiting up to 10 seconds for the physical-disk "
+                "partition table before verification."
+            )
+            waiter = PartitionTableWaiter(
+                root=self._root,
+                disk_path=drive.raw_device_path,
+                on_ready=lambda partitions, i=idx, c=partition_configs: (
+                    self._on_target_partitions_ready(i, c, partitions)
+                ),
+                on_failed=lambda reason, i=idx: self._on_target_partitions_failed(i, reason),
+            )
+            self._partition_waiters[idx] = waiter
+            waiter.start()
+            return True
         elif disk_cfg is not None:
             cfg = disk_cfg
             if not (
@@ -742,6 +783,27 @@ class OdinMApp:
 
         return self._start_target_verify_check(idx, checks, 0)
 
+    def _on_target_partitions_ready(self, idx: int, configs, partitions) -> None:
+        self._partition_waiters.pop(idx, None)
+        target_partitions = {part.number: part for part in partitions}
+        checks = []
+        for part_num, cfg in configs:
+            target = target_partitions.get(part_num)
+            if target is None:
+                self._verify_failed(idx, f"Partition {part_num} was not found on the target disk.")
+                self._drain_queue()
+                return
+            checks.append((part_num, cfg, target.offset, target.size))
+        if not self._start_target_verify_check(idx, checks, 0):
+            self._drain_queue()
+
+    def _on_target_partitions_failed(self, idx: int, reason: str) -> None:
+        self._partition_waiters.pop(idx, None)
+        self._verify_failed(
+            idx, f"Target disk partition table did not become ready: {reason}"
+        )
+        self._drain_queue()
+
     def _start_target_verify_check(
         self, idx: int, checks: list[tuple[int, dict, int, int]], check_index: int
     ) -> bool:
@@ -752,6 +814,8 @@ class OdinMApp:
 
         part_num, cfg, offset, size = checks[check_index]
         target_label = "flashed disk" if part_num == 0 else f"target partition {part_num}"
+        if check_index == 0:
+            self._window.set_slot_verifying(idx)
         self._window.log(f"[Slot {idx + 1}] Verifying {target_label} hash ({size} bytes)…")
 
         def _on_verify_progress(pct: int, i: int = idx) -> None:
@@ -819,6 +883,10 @@ class OdinMApp:
             return
         else:
             self._window.log(f"[Slot {idx + 1}] Target verification passed — pull card now.")
+            drive = self._drives[idx]
+            if drive is not None:
+                self._finished_disk_nums.add(drive.disk_number)
+            self._window.set_slot_status(idx, CloneStatus.DONE)
             self._flash_set_status(idx, CloneStatus.DONE)
             self._fix_disk_signature(idx)
         self._drain_queue()
@@ -848,7 +916,8 @@ class OdinMApp:
 
     def _verify_failed(self, idx: int, message: str):
         self._window.log(f"[Slot {idx + 1}] [Verify] {message}")
-        self._window.set_slot_status(idx, CloneStatus.FAILED)
+        if self._drives[idx] is not None:
+            self._window.set_slot_status(idx, CloneStatus.FAILED)
         self._flash_set_status(idx, CloneStatus.FAILED)
         if self._config.get_stop_on_verify_fail():
             self._window.log("[Verify] Stop-on-fail: halting queued/running clone work.")

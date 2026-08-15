@@ -11,6 +11,8 @@ import os
 import struct
 from dataclasses import dataclass
 
+from raw_disk import open_binary_reader
+
 SECTOR_SIZE = 512
 MBR_SIG_OFFSET = 510
 MBR_PART_OFFSET = 446  # start of 4 x 16-byte partition entries
@@ -238,27 +240,38 @@ def get_image_compression_flag(image_path: str) -> str:
         return "none"
 
 
-def read_mbr_partitions(image_path: str) -> list[PartitionInfo]:
+class PartitionReadError(OSError):
+    """The disk was opened, but a usable partition table was not available."""
+
+
+def read_mbr_partitions_strict(image_path: str) -> list[PartitionInfo]:
     """
     Parse the primary MBR partition table from image_path.
     Handles ODIN .img files (binary header) and raw disk images.
     Returns non-empty entries only (up to 4 primary partitions).
-    Returns [] if the file is not accessible or has no valid MBR signature.
+    Raises PartitionReadError with the actual readiness/read failure.
     PartitionInfo.offset is always a file-absolute byte offset ready for
     use directly in HashWorker(offset=...).
     """
     data_offset = _odin_data_offset(image_path)
     entries: list[PartitionInfo] = []
     try:
-        with open(image_path, "rb") as f:
+        with open_binary_reader(image_path) as f:
             f.seek(data_offset + MBR_SIG_OFFSET)
-            if f.read(2) != b"\x55\xaa":
-                return []
+            signature = f.read(2)
+            if len(signature) != 2:
+                raise PartitionReadError(
+                    f"Short read while reading the MBR signature from {image_path}."
+                )
+            if signature != b"\x55\xaa":
+                raise PartitionReadError(f"The MBR signature on {image_path} is not valid.")
             f.seek(data_offset + MBR_PART_OFFSET)
             for i in range(4):
                 raw = f.read(16)
                 if len(raw) < 16:
-                    break
+                    raise PartitionReadError(
+                        f"Short read in MBR partition entry {i + 1} on {image_path}."
+                    )
                 status = raw[0]
                 part_type = raw[4]
                 lba_start = struct.unpack_from("<I", raw, 8)[0]
@@ -280,6 +293,18 @@ def read_mbr_partitions(image_path: str) -> list[PartitionInfo]:
                         active=status == 0x80,
                     )
                 )
-    except OSError:
-        return []
+    except PartitionReadError:
+        raise
+    except OSError as exc:
+        raise PartitionReadError(str(exc)) from exc
+    if not entries:
+        raise PartitionReadError(f"No partitions were found in the MBR on {image_path}.")
     return entries
+
+
+def read_mbr_partitions(image_path: str) -> list[PartitionInfo]:
+    """Backward-compatible best-effort wrapper used by image-inspection UI."""
+    try:
+        return read_mbr_partitions_strict(image_path)
+    except PartitionReadError:
+        return []

@@ -1,7 +1,8 @@
 """
 slot_widget.py
 One row representing a single drive slot (up to 5 slots total).
-Shows: slot number, drive letter, label/size, status badge, progress bar, start/stop button.
+Shows: slot number, drive letter, label/size, status badge, progress bar,
+start/stop button, and an independent disk-verification button.
 """
 
 import ttkbootstrap as ttk
@@ -30,9 +31,7 @@ class SlotWidget(ttk.Frame):
       on_confirm(slot_index)  — user clicked the "Confirm" status badge to
                                  lock this slot onto its currently-detected
                                  disk number
-      on_verify(slot_index)   — user clicked "Verify" (offered instead of
-                                 "Start" right after a flash completes with
-                                 verify-after-clone turned off)
+      on_verify(slot_index)   — user clicked the inline "Verify Disk" button
     """
 
     def __init__(self, parent, slot_index: int, on_start, on_stop, on_confirm, on_verify,
@@ -100,7 +99,16 @@ class SlotWidget(ttk.Frame):
         self._btn = ttk.Button(
             self, text="Start", width=7, bootstyle="outline", command=self._on_btn_click
         )
-        self._btn.grid(row=0, column=7, pady=4)
+        self._btn.grid(row=0, column=7, padx=(0, 6), pady=4)
+
+        self._verify_btn = ttk.Button(
+            self,
+            text="Verify Disk",
+            width=11,
+            bootstyle="info-outline",
+            command=self._on_verify_btn_click,
+        )
+        self._verify_btn.grid(row=0, column=8, pady=4)
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -115,6 +123,7 @@ class SlotWidget(ttk.Frame):
         self._speed_var.set("")
         self._eta_var.set("")
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
+        self._verify_btn.configure(text="Verify Disk", state=DISABLED, bootstyle="outline")
 
     def set_drive(self, display: str):
         """Drive detected AND already confirmed/locked — show info, enable
@@ -129,6 +138,9 @@ class SlotWidget(ttk.Frame):
         self._speed_var.set("")
         self._eta_var.set("")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
+        self._verify_btn.configure(
+            text="Verify Disk", state=NORMAL, bootstyle="info-outline"
+        )
 
     def set_awaiting_confirm(self, display: str):
         """Drive detected but NOT yet confirmed - show info, but Start stays
@@ -142,6 +154,7 @@ class SlotWidget(ttk.Frame):
         self._speed_var.set("")
         self._eta_var.set("")
         self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
+        self._verify_btn.configure(text="Verify Disk", state=DISABLED, bootstyle="outline")
 
     def confirm(self):
         """Operator confirmed - drop into the normal ready state (Start
@@ -152,6 +165,9 @@ class SlotWidget(ttk.Frame):
         self._set_ready_badge()
         self._status_lbl.configure(cursor="")
         self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
+        self._verify_btn.configure(
+            text="Verify Disk", state=NORMAL, bootstyle="info-outline"
+        )
 
     def set_progress(self, pct: int):
         self._progress_var.set(pct)
@@ -167,12 +183,20 @@ class SlotWidget(ttk.Frame):
         self._set_status(status)
         if status == CloneStatus.QUEUED:
             self._btn.configure(text="Cancel", state=NORMAL, bootstyle="warning-outline")
+            self._verify_btn.configure(text="Verify Disk", state=DISABLED, bootstyle="outline")
         elif status == CloneStatus.RUNNING:
             self._btn.configure(text="Stop", state=NORMAL, bootstyle="danger-outline")
-        elif status == CloneStatus.DONE and offer_verify:
-            self._btn.configure(text="Verify", state=NORMAL, bootstyle="info-outline")
+            self._verify_btn.configure(text="Verify Disk", state=DISABLED, bootstyle="outline")
         elif status in (CloneStatus.DONE, CloneStatus.FAILED, CloneStatus.STOPPED):
             self._btn.configure(text="Start", state=NORMAL, bootstyle="success-outline")
+            self._verify_btn.configure(
+                text="Verify Disk", state=NORMAL, bootstyle="info-outline"
+            )
+
+    def set_verifying(self):
+        self._status_lbl.configure(text="Verifying", bootstyle="info-inverse")
+        self._btn.configure(text="Start", state=DISABLED, bootstyle="outline")
+        self._verify_btn.configure(text="Stop", state=NORMAL, bootstyle="danger-outline")
 
     # ── private ───────────────────────────────────────────────────────────────
 
@@ -190,10 +214,14 @@ class SlotWidget(ttk.Frame):
         text = self._btn.cget("text")
         if text == "Start":
             self._on_start(self._idx)
-        elif text == "Verify":
-            self._on_verify(self._idx)
         else:
             self._on_stop(self._idx)
+
+    def _on_verify_btn_click(self):
+        if self._verify_btn.cget("text") == "Stop":
+            self._on_stop(self._idx)
+        else:
+            self._on_verify(self._idx)
 
     def _on_status_click(self, event=None):
         if self._awaiting_confirm:

@@ -10,6 +10,8 @@ import threading
 from enum import Enum, auto
 from collections.abc import Callable
 
+from raw_disk import open_binary_reader
+
 CHUNK_SIZE = 4 << 20  # 4 MB — matches typical disk read granularity
 
 
@@ -79,7 +81,7 @@ class HashWorker:
         last_pct = -1
 
         try:
-            with open(self._path, "rb") as f:
+            with open_binary_reader(self._path) as f:
                 f.seek(offset)
                 remaining = total
                 while remaining > 0:

@@ -1,150 +1,164 @@
-"""Regression test for the manual "Verify" button.
-
-Real-world finding: with verify-after-clone OFF, a completed flash's log
-said "restore complete - run `verify` to confirm" but the slot's button
-just went back to "Start" - no way to actually trigger that verify from the
-UI. Fixed by offering "Verify" instead of "Start" on a DONE slot whenever
-auto-verify is off; clicking it runs the same target-hash check the
-auto-verify path uses (_start_target_verify -> _on_target_verify_done),
-including fixing the disk signature afterward on success - deferred until
-then rather than done immediately, since randomize_disk_signature()
-scrambles bytes a hash check would otherwise still be comparing.
-"""
+"""Headless regression checks for the inline per-slot Verify Disk action."""
 
 import sys
-import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from clone_worker import CloneStatus  # noqa: E402
-from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER  # noqa: E402
-from drive_manager import DriveInfo  # noqa: E402
-
 import app as app_module  # noqa: E402
+from clone_worker import CloneStatus  # noqa: E402
+from hash_worker import HashStatus  # noqa: E402
+from ui.slot_widget import SlotWidget  # noqa: E402
 
 
-class _FakeConfig:
+class _FakeControl:
+    def __init__(self, **values):
+        self.values = values
+
+    def configure(self, **values):
+        self.values.update(values)
+
+    def cget(self, name):
+        return self.values.get(name, "")
+
+
+class _FakeVar:
     def __init__(self):
-        self._engine = ENGINE_ODIN
-        self._verify_after_clone = False
+        self.value = None
 
-    def get_last_image(self):
-        return ""
-
-    def get_theme(self):
-        return "darkly"
-
-    def get_max_concurrent(self):
-        return 5
-
-    def get_max_drive_gb(self):
-        return 0
-
-    def get_max_disks(self):
-        return 0
-
-    def get_auto_clone(self):
-        return False
-
-    def get_verify_after_clone(self):
-        return self._verify_after_clone
-
-    def get_stop_on_verify_fail(self):
-        return False
-
-    def get_show_flash_widget(self):
-        return False
-
-    def get_engine(self):
-        return self._engine
-
-    def use_pyimager(self):
-        return self._engine == ENGINE_PYIMAGER
-
-    def set_engine(self, v):
-        self._engine = v
-
-    def get_odinc_path(self):
-        return ""
-
-    def set_odinc_path(self, v):
-        pass
+    def set(self, value):
+        self.value = value
 
 
-checks = []
+def _make_slot():
+    starts = []
+    stops = []
+    verifies = []
+    slot = object.__new__(SlotWidget)
+    slot._idx = 0
+    slot._on_start = starts.append
+    slot._on_stop = stops.append
+    slot._on_verify = verifies.append
+    slot._awaiting_confirm = False
+    slot._info_var = _FakeVar()
+    slot._status_lbl = _FakeControl()
+    slot._progress_var = _FakeVar()
+    slot._pct_var = _FakeVar()
+    slot._speed_var = _FakeVar()
+    slot._eta_var = _FakeVar()
+    slot._btn = _FakeControl()
+    slot._verify_btn = _FakeControl()
+    return slot, starts, stops, verifies
 
 
-def check(name, got, want):
-    ok = got == want
-    checks.append(ok)
-    print(f"  [{'ok ' if ok else 'FAIL'}] {name}: {got!r}"
-          + ("" if ok else f"  (expected {want!r})"))
+def test_verify_disk_button_is_independent_and_retryable():
+    slot, starts, stops, verifies = _make_slot()
+
+    slot.set_drive("[Disk 2]")
+    assert slot._btn.cget("text") == "Start"
+    assert slot._btn.cget("state") == "normal"
+    assert slot._verify_btn.cget("text") == "Verify Disk"
+    assert slot._verify_btn.cget("state") == "normal"
+
+    slot._on_verify_btn_click()
+    assert verifies == [0]
+    assert starts == []
+
+    slot.set_verifying()
+    assert slot._btn.cget("state") == "disabled"
+    assert slot._verify_btn.cget("text") == "Stop"
+    slot._on_verify_btn_click()
+    assert stops == [0]
+
+    slot.set_status(CloneStatus.FAILED)
+    assert slot._btn.cget("text") == "Start"
+    assert slot._verify_btn.cget("text") == "Verify Disk"
+    assert slot._verify_btn.cget("state") == "normal"
 
 
-app_module.OdinMApp._show_flash_widget = lambda self: None
-app = app_module.OdinMApp(_FakeConfig())
-app._root.withdraw()
+def test_clone_states_disable_disk_verification():
+    slot, _starts, _stops, _verifies = _make_slot()
+    slot.set_drive("[Disk 2]")
 
-tmp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".img")
-tmp_img.write(b"x" * 1024)
-tmp_img.close()
-app._window._image_var.set(tmp_img.name)
+    slot.set_status(CloneStatus.QUEUED)
+    assert slot._verify_btn.cget("state") == "disabled"
 
-app._drives[0] = DriveInfo(
-    disk_number=2, first_letter="E:", all_letters=["E:"],
-    label="PT-FIRMWARE", size_bytes=7969177600, hw_serial="000000000819",
-)
-app._locked_disk_nums[0] = 2
+    slot.set_status(CloneStatus.RUNNING)
+    assert slot._verify_btn.cget("state") == "disabled"
 
-fix_sig_calls = []
-app._fix_disk_signature = lambda idx: fix_sig_calls.append(idx)
+    slot.set_status(CloneStatus.DONE)
+    assert slot._verify_btn.cget("state") == "normal"
 
-verify_calls = []
-app._start_target_verify = lambda idx: verify_calls.append(idx) or True
 
-print("flash completes, verify-after-clone is OFF")
-app._on_worker_done(0, CloneStatus.DONE)
-check("button offers Verify instead of Start",
-      app._window._slots[0]._btn.cget("text"), "Verify")
-check("signature fix is NOT run immediately (would break a later verify)",
-      fix_sig_calls, [])
-check("verify was NOT auto-started", verify_calls, [])
+class _FakeWindow:
+    def __init__(self):
+        self.logs = []
 
-print("\noperator clicks Verify")
-app._window._slots[0]._on_verify(0)
-check("button flips back to Start (no double-click race)",
-      app._window._slots[0]._btn.cget("text"), "Start")
-check("target verify was triggered", verify_calls, [0])
+    def log(self, message):
+        self.logs.append(message)
 
-print("\nsame scenario, but verify-after-clone is ON - no Verify button offered")
-app2_drives_reset_idx = 0
-app._locked_disk_nums[0] = 2
-app._drives[0] = DriveInfo(
-    disk_number=2, first_letter="E:", all_letters=["E:"],
-    label="PT-FIRMWARE", size_bytes=7969177600, hw_serial="000000000819",
-)
-app._config._verify_after_clone = True
-verify_calls.clear()
-app._on_worker_done(0, CloneStatus.DONE)
-check("button is plain Start when auto-verify already covers it",
-      app._window._slots[0]._btn.cget("text"), "Start")
-check("verify WAS auto-started this time", verify_calls, [0])
 
-print("\na FAILED flash never offers Verify (nothing valid to check)")
-app._config._verify_after_clone = False
-app._drives[0] = DriveInfo(
-    disk_number=2, first_letter="E:", all_letters=["E:"],
-    label="PT-FIRMWARE", size_bytes=7969177600, hw_serial="000000000819",
-)
-app._on_worker_done(0, CloneStatus.FAILED)
-check("failed flash keeps the plain Start button",
-      app._window._slots[0]._btn.cget("text"), "Start")
+def _make_app():
+    app = object.__new__(app_module.OdinMApp)
+    app._window = _FakeWindow()
+    app._drives = [SimpleNamespace(disk_number=2)]
+    app._locked_disk_nums = {0: 2}
+    app._workers = {}
+    app._verify_workers = {}
+    app._partition_waiters = {}
+    app._queue = []
+    app._speed_samples = {}
+    app._verify_calls = []
+    app._start_target_verify = lambda idx: app._verify_calls.append(idx) or True
+    return app
 
-app._root.destroy()
-import os
-os.remove(tmp_img.name)
 
-print(f"\n{sum(checks)}/{len(checks)} checks passed")
-sys.exit(0 if all(checks) else 1)
+def test_verify_disk_uses_normal_target_verifier():
+    app_module.is_disk_removable = lambda _disk_number: True
+    app = _make_app()
+
+    app._verify_slot(0)
+    assert app._verify_calls == [0]
+
+
+def test_verify_disk_refuses_active_clone_or_duplicate_verify():
+    app_module.is_disk_removable = lambda _disk_number: True
+    app = _make_app()
+    app._workers[0] = SimpleNamespace(status=CloneStatus.RUNNING)
+
+    app._verify_slot(0)
+    assert app._verify_calls == []
+    assert any("cloning or queued" in line for line in app._window.logs)
+
+    app._workers.clear()
+    app._verify_workers[0] = SimpleNamespace(status=HashStatus.RUNNING)
+    app._verify_slot(0)
+    assert app._verify_calls == []
+    assert any("already being verified" in line for line in app._window.logs)
+
+
+def test_stop_button_stops_standalone_verifier():
+    app = _make_app()
+    verifier = SimpleNamespace(status=HashStatus.RUNNING, stopped=False)
+    verifier.stop = lambda: setattr(verifier, "stopped", True)
+    app._verify_workers[0] = verifier
+
+    app._stop_slot(0)
+    assert verifier.stopped
+    assert any("Stop requested" in line for line in app._window.logs)
+
+
+if __name__ == "__main__":
+    tests = [
+        test_verify_disk_button_is_independent_and_retryable,
+        test_clone_states_disable_disk_verification,
+        test_verify_disk_uses_normal_target_verifier,
+        test_verify_disk_refuses_active_clone_or_duplicate_verify,
+        test_stop_button_stops_standalone_verifier,
+    ]
+    for test in tests:
+        test()
+        print(f"[ok] {test.__name__}")
+    print(f"\n{len(tests)}/{len(tests)} checks passed")

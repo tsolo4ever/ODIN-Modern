@@ -429,7 +429,7 @@ void CCommandLineProcessor::ProcessCommandLine() {
   // Apply parsed command-line options to OdinManager, overriding INI-file defaults.
   // Without these calls the parsed flags (-allBlocks, -compression=, -split=, -makeSnapshot)
   // are stored in fOperation but never reach the manager, so the INI values silently win.
-  fOdinManager->SetSaveOnlyUsedBlocksOption(fOperation.mode == modeOnlyUsedBlocks);
+  fOdinManager->SetSaveOnlyUsedBlocksOption(fOperation.mode != modeAllBlocks);
   fOdinManager->SetCompressionMode((TCompressionFormat)fOperation.compression);
   fOdinManager->SetSplitSize(fOperation.splitSizeMB > 0
     ? (unsigned __int64)fOperation.splitSizeMB * 1024 * 1024

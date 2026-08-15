@@ -9,8 +9,8 @@ from ttkbootstrap.constants import *
 
 _DISK_MODES = [
     ("All blocks", "-allBlocks"),
-    ("Used blocks only", "-usedBlocks"),
-    ("VSS snapshot (used blocks via shadow copy)", "-makeSnapshot"),
+    ("Used blocks (repair/archive only)", "-usedBlocks"),
+    ("VSS snapshot (repair/archive only)", "-makeSnapshot"),
 ]
 
 _COMPRESSIONS = [
@@ -79,6 +79,15 @@ class ImageOptionsDialog(ttk.Toplevel):
                 variable=self._disk_var,
                 value=value,
             ).pack(anchor=W, pady=1)
+        ttk.Label(
+            dm_frame,
+            text=(
+                "Used-block modes create an MBR plus partition-image set. "
+                "Do not use them for approved gaming firmware."
+            ),
+            bootstyle="warning",
+            wraplength=420,
+        ).pack(anchor=W, pady=(6, 2))
 
         # Compression
         comp_frame = ttk.LabelFrame(outer, text="Compression")  # type: ignore[attr-defined]

@@ -32,7 +32,9 @@
 
 #include "stdafx.h"
 #include <string>
+#include <vector>
 #include "MultiPartitionHandler.h"
+#include "InternalException.h"
 #include "OdinManager.h"
 #include "SplitManagerCallback.h"
 #include "DriveList.h"
@@ -51,18 +53,18 @@ void CMultiPartitionHandler::BackupPartitionOrDisk(int index, LPCWSTR fileName, 
   BOOL ok = TRUE;
   CDriveInfo* pDriveInfo = odinMgr.GetDriveList()->GetItem(index);
   bool isHardDisk = pDriveInfo->IsCompleteHardDisk();
-  CDriveInfo **pContainedVolumes = NULL;
   wstring volumeFileName;
   CParamChecker checker(feedback, odinMgr);
 
   if (isHardDisk && odinMgr.GetSaveOnlyUsedBlocksOption()) {
     int subPartitions = pDriveInfo->GetContainedVolumes();
-    pContainedVolumes = new CDriveInfo* [subPartitions];
-    int res = odinMgr.GetDriveList()->GetVolumes(pDriveInfo, pContainedVolumes, subPartitions);
+    vector<CDriveInfo*> containedVolumes(subPartitions);
+    int res = odinMgr.GetDriveList()->GetVolumes(pDriveInfo, containedVolumes.data(), subPartitions);
+    containedVolumes.resize(res);
 
     // check  if there are file names in conflict with files created during backup
-    for (int i=0; i<subPartitions; i++) {
-      CFileNameUtil::GenerateFileNameForEntireDiskBackup(volumeFileName, fileName, pContainedVolumes[i]->GetDeviceName());
+    for (CDriveInfo* volume : containedVolumes) {
+      CFileNameUtil::GenerateFileNameForEntireDiskBackup(volumeFileName, fileName, volume->GetDeviceName());
       ok = checker.CheckForExistingConflictingFilesEntireDisk(volumeFileName.c_str(), fileName);
       if (!ok)
         break;
@@ -80,17 +82,17 @@ void CMultiPartitionHandler::BackupPartitionOrDisk(int index, LPCWSTR fileName, 
       if (odinMgr.GetTakeSnapshotOption())
         odinMgr.MakeSnapshot(index, wcb);
 
-      for (int i=0; i<subPartitions && !odinMgr.WasCancelled(); i++) {
-        CFileNameUtil::GenerateFileNameForEntireDiskBackup(volumeFileName, fileName, pContainedVolumes[i]->GetDeviceName());
-        wcb->OnPartitionChange(i, subPartitions);
-        odinMgr.SetMultiVolumeIndex(i);
-        odinMgr.SavePartition(odinMgr.GetDriveList()->GetIndexOfDeviceName(pContainedVolumes[i]->GetDeviceName()),
+      for (size_t i=0; i<containedVolumes.size() && !odinMgr.WasCancelled(); i++) {
+        CDriveInfo* volume = containedVolumes[i];
+        CFileNameUtil::GenerateFileNameForEntireDiskBackup(volumeFileName, fileName, volume->GetDeviceName());
+        wcb->OnPartitionChange(static_cast<int>(i), static_cast<int>(containedVolumes.size()));
+        odinMgr.SetMultiVolumeIndex(static_cast<unsigned>(i));
+        odinMgr.SavePartition(odinMgr.GetDriveList()->GetIndexOfDeviceName(volume->GetDeviceName()),
           volumeFileName.c_str(), odinMgr.GetSplitSize() ? cb : NULL, wcb);
-        ATLTRACE(L"Found sub-partition: %s\n", pContainedVolumes[i]->GetDisplayName().c_str());
+        ATLTRACE(L"Found sub-partition: %s\n", volume->GetDisplayName().c_str());
         odinMgr.WaitToCompleteOperation(wcb);
       }
 
-      delete pContainedVolumes;
       odinMgr.SetMultiVolumeIndex(0);
       if (odinMgr.GetTakeSnapshotOption())
         odinMgr.ReleaseSnapshot(false);
@@ -147,7 +149,8 @@ void CMultiPartitionHandler::RestorePartitionOrDisk(int index, LPCWSTR fileName,
     // now get drive info again, because the index might have changed:
     
     unsigned subPartitions = partInfoMgr.GetPartitionCount();
-    WaitForDriveReady(odinMgr, index, subPartitions, targetDiskDeviceName);
+    if (!WaitForDriveReady(odinMgr, subPartitions, targetDiskDeviceName))
+      THROW_INT_EXC(EInternalException::driveRefreshTimeout);
   
     CDiskImageStream diskLock(subPartitions);
     diskLock.Open(targetDiskDeviceName.c_str(), IImageStream::forReading);
@@ -180,36 +183,34 @@ void CMultiPartitionHandler::RestorePartitionOrDisk(int index, LPCWSTR fileName,
   odinMgr.Uncancel();
 }
 
-void CMultiPartitionHandler::WaitForDriveReady(COdinManager &odinMgr, int index, unsigned partitionCount, const wstring& targetDiskDeviceName) {
-    int retries = 0;
-    DWORD waitTime = 50;
-    bool allPartitionsFound = false;
-    wstring volumeDeviceName;
-    while ((index < 0 || !allPartitionsFound ) && retries++ < 5) {
-      Sleep(waitTime); // wait a moment, may cause crash because list is not yet up to date
-      // waitTime += 100;
-      allPartitionsFound = true;
-      odinMgr.RefreshDriveList();
-      CDriveInfo* pDriveInfo = odinMgr.GetDriveList()->GetItem(index);
-      index = odinMgr.GetDriveList()->GetIndexOfDeviceName(targetDiskDeviceName);
-      unsigned diskNo = pDriveInfo->GetDiskNumber();
+bool CMultiPartitionHandler::WaitForDriveReady(COdinManager &odinMgr, unsigned partitionCount, const wstring& targetDiskDeviceName) {
+  const int maxRetries = 40;
+  const DWORD waitTime = 250;
+  wstring volumeDeviceName;
 
-      if (index >= 0) {
-        for (unsigned i=0; i<partitionCount && !odinMgr.WasCancelled(); i++) {
-          CFileNameUtil::GenerateDeviceNameForVolume(volumeDeviceName, diskNo, i+1);
-          int volumeIndex = odinMgr.GetDriveList()->GetIndexOfDeviceName(volumeDeviceName);
-          if (volumeIndex < 0) {
-            allPartitionsFound = false;
-            ATLTRACE(L"Error: Device %s not available!!!\n", volumeDeviceName.c_str());
-            break;
-          }
-        }
+  for (int retry = 0; retry < maxRetries && !odinMgr.WasCancelled(); retry++) {
+    Sleep(waitTime);
+    odinMgr.RefreshDriveList();
+    int index = odinMgr.GetDriveList()->GetIndexOfDeviceName(targetDiskDeviceName);
+    if (index < 0)
+      continue;
+
+    CDriveInfo* pDriveInfo = odinMgr.GetDriveList()->GetItem(index);
+    unsigned diskNo = pDriveInfo->GetDiskNumber();
+    bool allPartitionsFound = true;
+    for (unsigned i=0; i<partitionCount; i++) {
+      CFileNameUtil::GenerateDeviceNameForVolume(volumeDeviceName, diskNo, i+1);
+      if (odinMgr.GetDriveList()->GetIndexOfDeviceName(volumeDeviceName) < 0) {
+        allPartitionsFound = false;
+        break;
       }
     }
+    if (allPartitionsFound)
+      return true;
+  }
 
-    if (index < 0)
-      ATLTRACE(L"Error: Device %s not available!!!\n", targetDiskDeviceName.c_str());
-
+  ATLTRACE(L"Error: Device %s or one of its partitions is not available.\n", targetDiskDeviceName.c_str());
+  return false;
 }
 
 bool CMultiPartitionHandler::VerifyPartitionOrDisk(LPCWSTR fileName, COdinManager &odinMgr, 

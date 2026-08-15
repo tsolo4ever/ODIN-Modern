@@ -18,7 +18,6 @@ from tkinter.scrolledtext import ScrolledText
 
 from clone_worker import CloneStatus
 from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
-from drive_manager import DriveInfo
 from ui.slot_widget import SlotWidget
 
 NUM_SLOTS = 5
@@ -144,6 +143,9 @@ class MainWindow(ttk.Frame):
 
     def set_slot_status(self, idx: int, status: CloneStatus, offer_verify: bool = False):
         self._slots[idx].set_status(status, offer_verify=offer_verify)
+
+    def set_slot_verifying(self, idx: int):
+        self._slots[idx].set_verifying()
 
     def set_slot_ready(self, idx: int, display: str):
         """Reset a slot to ready state (drive present, Start enabled)."""

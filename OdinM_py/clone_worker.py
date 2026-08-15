@@ -20,7 +20,12 @@ from drive_manager import get_removable_drives
 
 FSCTL_LOCK_VOLUME = 0x00090018
 FSCTL_DISMOUNT_VOLUME = 0x00090020
+IOCTL_DISK_UPDATE_PROPERTIES = 0x00070140
 _VOLUME_GENERIC_RW = 0x80000000 | 0x40000000  # GENERIC_READ | GENERIC_WRITE
+
+_k32 = ctypes.windll.kernel32
+_k32.FlushFileBuffers.argtypes = [ctypes.wintypes.HANDLE]
+_k32.FlushFileBuffers.restype = ctypes.wintypes.BOOL
 
 
 def _lock_and_dismount_volume(letter: str, retries: int = 5, delay_s: float = 0.5):
@@ -379,6 +384,29 @@ class CloneWorker:
                         break
                     chunk = f_in.read(CHUNK)
                     if not chunk:
+                        if not k32.FlushFileBuffers(handle):
+                            self._fire_log(
+                                "ERROR: Raw disk flush failed "
+                                f"(err={k32.GetLastError()}); verification was not started."
+                            )
+                            break
+                        returned = ctypes.c_ulong(0)
+                        if not k32.DeviceIoControl(
+                            handle,
+                            IOCTL_DISK_UPDATE_PROPERTIES,
+                            None,
+                            0,
+                            None,
+                            0,
+                            ctypes.byref(returned),
+                            None,
+                        ):
+                            self._fire_log(
+                                "ERROR: Windows disk-property refresh failed "
+                                f"(err={k32.GetLastError()}); verification was not started."
+                            )
+                            break
+                        self._fire_log("Raw disk buffers flushed; Windows disk properties refreshed.")
                         success = True
                         break
                     rem = len(chunk) % 512
