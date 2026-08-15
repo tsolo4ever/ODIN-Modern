@@ -8,12 +8,19 @@ than parsed console dots, and the output is a plain dd-style image with no
 container header (optionally gzip-compressed).
 """
 
+import os
 import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
 from clone_worker import CloneStatus
+from compact_image import (
+    build_manifest,
+    compact_manifest_path,
+    parse_mbr_layout,
+    write_manifest,
+)
 
 # pyimager lives in scripts/ alongside the other card tooling.
 _SCRIPTS = Path(__file__).resolve().parent / "scripts"
@@ -56,6 +63,9 @@ class PyImagerWorker:
         partition: int | None = None,
         sha1: bool = True,
         gzip_level: int | None = None,
+        compact: bool = False,
+        expected_size: int = 0,
+        expected_serial: str = "",
     ):
         self._root = root
         self._disk = disk_number
@@ -63,6 +73,9 @@ class PyImagerWorker:
         self._partition = partition
         self._sha1 = sha1
         self._gzip_level = gzip_level
+        self._compact = compact
+        self._expected_size = expected_size
+        self._expected_serial = expected_serial.strip()
         self._on_progress = on_progress
         self._on_log = on_log
         self._on_done = on_done
@@ -91,17 +104,7 @@ class PyImagerWorker:
 
     def _run(self):
         try:
-            meta = pyimager.image_disk(
-                self._disk,
-                self._image,
-                partition=self._partition,
-                sha1=self._sha1,
-                gzip_level=self._gzip_level,
-                force=True,  # dialog already confirmed any overwrite
-                on_progress=self._progress,
-                on_log=self._fire_log,
-                should_cancel=self._cancel.is_set,
-            )
+            meta = self._capture_compact() if self._compact else self._capture_raw()
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             self._fire_log(f"pyimager failed: {type(exc).__name__}: {exc}")
             self._finish(CloneStatus.FAILED)
@@ -109,7 +112,10 @@ class PyImagerWorker:
 
         self.result = meta
         if meta.get("cancelled"):
-            self._fire_log("Stopped by user - partial image left on disk.")
+            if self._compact:
+                self._fire_log("Stopped by user - temporary compact-image files removed.")
+            else:
+                self._fire_log("Stopped by user - partial image left on disk.")
             self._finish(CloneStatus.STOPPED)
             return
 
@@ -136,6 +142,98 @@ class PyImagerWorker:
             f"Imaged {meta['bytes_written']} bytes in {meta['duration_s']}s"
             f"{extra}  sha256 {digest[:16]}…")
         self._finish(CloneStatus.DONE)
+
+    def _capture_raw(self) -> dict:
+        return pyimager.image_disk(
+            self._disk,
+            self._image,
+            partition=self._partition,
+            sha1=self._sha1,
+            gzip_level=self._gzip_level,
+            force=True,
+            on_progress=self._progress,
+            on_log=self._fire_log,
+            should_cancel=self._cancel.is_set,
+        )
+
+    def _capture_compact(self) -> dict:
+        output = Path(self._image)
+        manifest_path = compact_manifest_path(output)
+        temp_image = output.with_name(output.name + ".partial")
+        temp_manifest = manifest_path.with_name(manifest_path.name + ".partial")
+        for path in (temp_image, temp_manifest):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+        try:
+            with pyimager.Win32Disk(rf"\\.\PhysicalDrive{self._disk}") as disk:
+                info = disk.device_info()
+                current_serial = (info.get("serial") or "").strip()
+                if self._expected_size and disk.size != self._expected_size:
+                    raise OSError(
+                        f"PhysicalDrive{self._disk} changed size before capture: "
+                        f"expected {self._expected_size}, found {disk.size}."
+                    )
+                if (
+                    self._expected_serial
+                    and current_serial
+                    and current_serial.casefold() != self._expected_serial.casefold()
+                ):
+                    raise OSError(
+                        f"PhysicalDrive{self._disk} identity changed before capture."
+                    )
+                layout = parse_mbr_layout(disk, disk.size, disk.sector_size)
+
+            saved_gib = layout.saved_bytes / (1 << 30)
+            capture_gib = layout.capture_bytes / (1 << 30)
+            self._fire_log(
+                f"Bounded MBR capture: {capture_gib:.2f} GiB; "
+                f"skipping {saved_gib:.2f} GiB of trailing unallocated space."
+            )
+            meta = pyimager.image_disk(
+                self._disk,
+                str(temp_image),
+                offset=0,
+                length=layout.capture_bytes,
+                sha1=self._sha1,
+                force=True,
+                on_progress=self._progress,
+                on_log=self._fire_log,
+                should_cancel=self._cancel.is_set,
+                write_sidecars=False,
+            )
+            if meta.get("cancelled"):
+                return meta
+            if meta.get("bytes_written") != layout.capture_bytes:
+                raise OSError(
+                    f"Compact image is short: wrote {meta.get('bytes_written', 0)} of "
+                    f"{layout.capture_bytes} bytes."
+                )
+            captured_serial = ((meta.get("device") or {}).get("serial") or "").strip()
+            if (
+                self._expected_serial
+                and captured_serial
+                and captured_serial.casefold() != self._expected_serial.casefold()
+            ):
+                raise OSError(f"PhysicalDrive{self._disk} changed during capture.")
+            manifest = build_manifest(layout, meta)
+            write_manifest(temp_manifest, manifest)
+            os.replace(temp_image, output)
+            os.replace(temp_manifest, manifest_path)
+            meta["format"] = "bounded_raw"
+            meta["manifest"] = str(manifest_path)
+            meta["disk_size"] = layout.disk_size
+            meta["region_length"] = layout.capture_bytes
+            meta["saved_trailing_bytes"] = layout.saved_bytes
+            return meta
+        finally:
+            for path in (temp_image, temp_manifest):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
     # ── callbacks (marshalled onto the Tk thread) ────────────────────────────
 

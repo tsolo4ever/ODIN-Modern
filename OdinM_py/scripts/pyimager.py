@@ -47,6 +47,7 @@ FILE_FLAG_SEQUENTIAL_SCAN = 0x08000000
 INVALID_HANDLE = ctypes.c_void_p(-1).value
 FILE_BEGIN = 0
 SECTOR = 512
+RECOVERY_SCAN_BYTES = 64 << 10
 
 IOCTL_DISK_GET_LENGTH_INFO = 0x0007405C
 IOCTL_DISK_GET_DRIVE_GEOMETRY_EX = 0x000700A0
@@ -331,17 +332,112 @@ class Progress:
         sys.stderr.flush()
 
 
+def _recover_chunk(disk, offset, size, sector, retries, should_cancel, on_log):
+    """Read one failed chunk by splitting only the ranges that still fail."""
+    buf = bytearray(size)
+    bad = []
+    resolved = 0
+    next_log = time.monotonic() + 2.0
+    scan_size = max(sector, RECOVERY_SCAN_BYTES)
+
+    def split_range(relative, span):
+        left = (span // 2 // sector) * sector
+        if left <= 0:
+            left = sector
+        if left >= span:
+            left = span - sector
+        return (relative, left), (relative + left, span - left)
+
+    def report_progress():
+        nonlocal next_log
+        now = time.monotonic()
+        if on_log is not None and now >= next_log and resolved < size:
+            on_log(
+                f"read recovery at byte {offset}: "
+                f"{human(resolved)} of {human(size)} resolved"
+            )
+            next_log = now + 2.0
+
+    if size > sector:
+        left, right = split_range(0, size)
+        pending = [right, left]
+    else:
+        pending = [(0, size)]
+
+    while pending:
+        if should_cancel is not None and should_cancel():
+            return None, [], True
+
+        relative, span = pending.pop()
+        request_size = sector if span < sector else span
+        attempts = retries + 1 if span <= sector else 1
+        data = None
+        for _ in range(attempts):
+            if should_cancel is not None and should_cancel():
+                return None, [], True
+            try:
+                disk.seek(offset + relative)
+                candidate = disk.read(request_size)
+                if len(candidate) == request_size:
+                    data = candidate[:span]
+                    break
+            except OSError:
+                pass
+
+        if data is not None:
+            buf[relative:relative + span] = data
+            resolved += span
+        elif span > scan_size:
+            left, right = split_range(relative, span)
+            pending.append(right)
+            pending.append(left)
+        elif span > sector:
+            end = relative + span
+            for leaf in range(relative, end, sector):
+                if should_cancel is not None and should_cancel():
+                    return None, [], True
+                leaf_span = min(sector, end - leaf)
+                leaf_data = None
+                for _ in range(retries + 1):
+                    if should_cancel is not None and should_cancel():
+                        return None, [], True
+                    try:
+                        disk.seek(offset + leaf)
+                        candidate = disk.read(sector)
+                        if len(candidate) == sector:
+                            leaf_data = candidate[:leaf_span]
+                            break
+                    except OSError:
+                        pass
+                if leaf_data is None:
+                    bad.append((offset + leaf) // sector)
+                else:
+                    buf[leaf:leaf + leaf_span] = leaf_data
+                resolved += leaf_span
+                report_progress()
+        else:
+            bad.append((offset + relative) // sector)
+            resolved += span
+
+        report_progress()
+
+    if should_cancel is not None and should_cancel():
+        return None, [], True
+    return bytes(buf), bad, False
+
+
 def copy_stream(disk, out_fh, start, length, sector, chunk, hashers,
-                on_progress=None, should_cancel=None, retries=2):
+                on_progress=None, should_cancel=None, retries=2, on_log=None):
     """Copy `length` bytes from disk@start to out_fh, hashing as we go.
 
-    On a read error the chunk is retried, then split to sector granularity so a
-    single bad sector costs one sector, not one chunk. Unreadable sectors are
-    written as zeros and reported - never silently skipped, because skipping
-    would shift every following byte.
+    On a read error, only failing sector-aligned ranges are split until the
+    readable portions succeed. Unreadable sectors are written as zeros and
+    reported - never silently skipped, because skipping would shift every
+    following byte.
 
-    `on_progress(done, length)` is called after each chunk; `should_cancel()`
-    aborts the copy between chunks. Returns (bytes_copied, bad_sectors,
+    `on_progress(done, length)` is called after each committed chunk.
+    `should_cancel()` aborts between chunks or during recovery without
+    committing the unfinished chunk. Returns (bytes_copied, bad_sectors,
     cancelled).
     """
     done = 0
@@ -356,29 +452,32 @@ def copy_stream(disk, out_fh, start, length, sector, chunk, hashers,
         want -= want % sector or 0
         if want == 0:
             want = min(sector, length - done)
+        recovered_bad = []
         try:
             disk.seek(start + done)
             buf = disk.read(want)
             if len(buf) < want:
                 raise OSError(f"short read {len(buf)}/{want}")
-        except OSError:
-            buf = b""
-            for off in range(0, want, sector):
-                sec = None
-                for _ in range(retries + 1):
-                    try:
-                        disk.seek(start + done + off)
-                        sec = disk.read(sector)
-                        if len(sec) == sector:
-                            break
-                        sec = None
-                    except OSError:
-                        sec = None
-                if sec is None:
-                    bad.append((start + done + off) // sector)
-                    sec = bytes(sector)
-                buf += sec
-            buf = buf[:want]
+        except OSError as exc:
+            if on_log is not None:
+                on_log(
+                    f"read of {human(want)} at byte {start + done} failed "
+                    f"({exc}); using adaptive recovery"
+                )
+            buf, recovered_bad, cancelled = _recover_chunk(
+                disk, start + done, want, sector, retries, should_cancel,
+                on_log
+            )
+            if cancelled:
+                return done, bad, True
+        if should_cancel is not None and should_cancel():
+            return done, bad, True
+        bad.extend(recovered_bad)
+        if recovered_bad and on_log is not None:
+            on_log(
+                f"zero-filled {len(recovered_bad)} unreadable sector(s) "
+                f"in the chunk at byte {start + done}"
+            )
         for h in hashers:
             h.update(buf)
         if out_fh is not None:
@@ -607,7 +706,8 @@ def image_disk(disk_number, output, *, partition=None, offset=0, length=0,
         try:
             copied, bad, cancelled = copy_stream(
                 d, fh, start, span, sector, chunk, hashers.values(),
-                on_progress=on_progress, should_cancel=should_cancel)
+                on_progress=on_progress, should_cancel=should_cancel,
+                on_log=log)
         finally:
             fh.close()
         t1 = datetime.now(timezone.utc)

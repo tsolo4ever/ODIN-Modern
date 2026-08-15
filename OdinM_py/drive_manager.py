@@ -6,12 +6,14 @@ appears as a single slot. The ODINC target is \\Device\\HarddiskN\\Partition0 (w
 """
 
 import ctypes
+import os
 import struct
 from ctypes import wintypes
 from dataclasses import dataclass
 from collections.abc import Callable
 
 DRIVE_REMOVABLE = 2
+DRIVE_FIXED = 3
 POLL_INTERVAL_MS = 2000
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 IOCTL_STORAGE_GET_DEVICE_NUM = 0x2D1080  # DeviceIoControl code
@@ -25,6 +27,7 @@ IOCTL_DISK_GET_DRIVE_GEOMETRY = 0x00070000
 FILE_SHARE_READ_WRITE = 0x1 | 0x2
 OPEN_EXISTING = 3
 MAX_PHYSICAL_DISKS = 16  # highest \\.\PhysicalDriveN scanned
+MAX_IMAGE_SOURCE_DISKS = 64
 
 # use_last_error=True is required for GetLastError() to be reliably
 # populated after these calls, and explicit argtypes/restype are required
@@ -57,6 +60,9 @@ class DriveInfo:
     label: str = ""
     size_bytes: int = 0
     hw_serial: str = ""  # device firmware serial — stable across repartitions
+    model: str = ""
+    removable: bool = True
+    is_system: bool = False
 
     @property
     def target_path(self) -> str:
@@ -84,6 +90,19 @@ class DriveInfo:
         letters = ", ".join(self.all_letters) if self.all_letters else "(no drive letter)"
         label = self.label or "Removable"
         return f"[Disk {self.disk_number}]  {letters}  {label}  ({self.size_str})"
+
+    @property
+    def source_display(self) -> str:
+        """Read-only Make Image label; unlike flash slots this includes fixed disks."""
+        letters = ", ".join(self.all_letters) if self.all_letters else "no drive letter"
+        traits = ["Removable" if self.removable else "Fixed"]
+        if self.is_system:
+            traits.append("Windows system")
+        name = self.model or self.label or "Physical disk"
+        return (
+            f"[Disk {self.disk_number}] {letters}  {name}  "
+            f"[{', '.join(traits)}]  ({self.size_str})"
+        )
 
 
 # ── Win32 helpers ──────────────────────────────────────────────────────────────
@@ -162,6 +181,46 @@ def _get_device_serial(disk_number: int) -> str:
         end = buf.raw.find(b"\x00", serial_offset)
         end = end if end != -1 else int(returned.value)
         return buf.raw[serial_offset:end].decode("ascii", errors="ignore").strip()
+    except Exception:
+        return ""
+    finally:
+        _k32.CloseHandle(h)
+
+
+def _get_device_model(disk_number: int) -> str:
+    """Return the storage descriptor vendor/product text when available."""
+    path = f"\\\\.\\PhysicalDrive{disk_number}"
+    h = _k32.CreateFileW(
+        path, GENERIC_READ, FILE_SHARE_READ_WRITE, None, OPEN_EXISTING, 0, None
+    )
+    if h == INVALID_HANDLE_VALUE:
+        return ""
+    try:
+        query = ctypes.create_string_buffer(8)
+        buf = ctypes.create_string_buffer(1024)
+        returned = ctypes.c_ulong(0)
+        ok = _k32.DeviceIoControl(
+            h,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            query,
+            8,
+            buf,
+            1024,
+            ctypes.byref(returned),
+            None,
+        )
+        if not ok or returned.value < 28:
+            return ""
+
+        def descriptor_text(offset_pos: int) -> str:
+            offset = struct.unpack_from("<I", buf.raw, offset_pos)[0]
+            if offset == 0 or offset >= returned.value:
+                return ""
+            end = buf.raw.find(b"\x00", offset)
+            end = end if end != -1 else int(returned.value)
+            return buf.raw[offset:end].decode("ascii", errors="ignore").strip()
+
+        return " ".join(filter(None, (descriptor_text(12), descriptor_text(16))))
     except Exception:
         return ""
     finally:
@@ -318,6 +377,84 @@ def _letters_by_disk() -> dict[int, list[str]]:
         if disk_num >= 0:
             out.setdefault(disk_num, []).append(letter)
     return out
+
+
+def _all_letters_by_disk() -> dict[int, list[str]]:
+    """Map every mounted fixed/removable volume to its physical disk."""
+    out: dict[int, list[str]] = {}
+    bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+    for i in range(26):
+        if not (bitmask & (1 << i)):
+            continue
+        letter = chr(65 + i) + ":"
+        drive_type = ctypes.windll.kernel32.GetDriveTypeW(letter + "\\")
+        if drive_type not in (DRIVE_REMOVABLE, DRIVE_FIXED):
+            continue
+        disk_num = _get_physical_disk_number(letter)
+        if disk_num >= 0:
+            out.setdefault(disk_num, []).append(letter)
+    return out
+
+
+def get_path_disk_number(path: str) -> int:
+    """Return the physical disk hosting a local output path, or -1."""
+    drive, _tail = os.path.splitdrive(os.path.abspath(path))
+    if len(drive) != 2 or drive[1] != ":":
+        return -1
+    return _get_physical_disk_number(drive)
+
+
+def get_system_disk_number() -> int:
+    """Return the physical disk containing the active Windows system drive."""
+    system_drive = os.environ.get("SystemDrive", "C:")
+    return _get_physical_disk_number(system_drive)
+
+
+def get_physical_drive(disk_number: int) -> DriveInfo | None:
+    """Return one readable physical disk for read-only imaging."""
+    size = _get_physical_disk_size(disk_number)
+    if size <= 0:
+        return None
+    letters = sorted(_all_letters_by_disk().get(disk_number, []))
+    label = _get_volume_label(letters[0] + "\\") if letters else ""
+    return DriveInfo(
+        disk_number=disk_number,
+        first_letter=letters[0] if letters else "",
+        all_letters=letters,
+        label=label,
+        size_bytes=size,
+        hw_serial=_get_device_serial(disk_number),
+        model=_get_device_model(disk_number),
+        removable=is_disk_removable(disk_number),
+        is_system=disk_number == get_system_disk_number(),
+    )
+
+
+def get_all_readable_drives() -> list[DriveInfo]:
+    """Return all readable physical disks for the read-only Make Image picker."""
+    letters_by_disk = _all_letters_by_disk()
+    system_disk = get_system_disk_number()
+    drives = []
+    for disk_number in range(MAX_IMAGE_SOURCE_DISKS):
+        size = _get_physical_disk_size(disk_number)
+        if size <= 0:
+            continue
+        letters = sorted(letters_by_disk.get(disk_number, []))
+        label = _get_volume_label(letters[0] + "\\") if letters else ""
+        drives.append(
+            DriveInfo(
+                disk_number=disk_number,
+                first_letter=letters[0] if letters else "",
+                all_letters=letters,
+                label=label,
+                size_bytes=size,
+                hw_serial=_get_device_serial(disk_number),
+                model=_get_device_model(disk_number),
+                removable=is_disk_removable(disk_number),
+                is_system=disk_number == system_disk,
+            )
+        )
+    return drives
 
 
 def get_removable_drives() -> list[DriveInfo]:

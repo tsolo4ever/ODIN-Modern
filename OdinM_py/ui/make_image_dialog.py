@@ -7,6 +7,7 @@ Modal dialog — automated image setup workflow:
 After completing, per-partition verify is ready to use.
 """
 
+import glob
 import os
 from tkinter import filedialog, messagebox
 
@@ -16,8 +17,14 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
 from clone_worker import CloneStatus, CloneWorker
+from compact_image import compact_manifest_path
 from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
-from drive_manager import DriveInfo, get_removable_drives, is_disk_removable
+from drive_manager import (
+    DriveInfo,
+    get_all_readable_drives,
+    get_path_disk_number,
+    get_physical_drive,
+)
 from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
@@ -25,12 +32,15 @@ from partition_reader import get_image_hash_region
 from pyimager_worker import PyImagerWorker
 
 ENGINE_ODINC = "ODINC.exe  (ODIN container image)"
+ENGINE_PY_COMPACT = "pyimager  (skip trailing unallocated space)"
 ENGINE_PY = "pyimager  (raw .img, built in)"
 ENGINE_PY_GZ = "pyimager  (gzip-compressed .img.gz)"
-ENGINE_LABELS = [ENGINE_ODINC, ENGINE_PY, ENGINE_PY_GZ]
+ENGINE_LABELS = [ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ, ENGINE_ODINC]
 
 ENGINE_HINTS = {
     ENGINE_ODINC: "ODIN container format. Options… sets backup flags.",
+    ENGINE_PY_COMPACT: "MBR disks only. Copies through the final real partition "
+                       "and skips trailing unallocated space.",
     ENGINE_PY: "Plain dd-style image, no header. Real progress, per-sector "
                "retry, SHA-256 while reading.",
     ENGINE_PY_GZ: "Same as raw but gzip-compressed; hashes still describe the "
@@ -48,8 +58,8 @@ class MakeImageDialog(ttk.Toplevel):
         self._parent = parent
         self._odinc = odinc_path
         self._config = config
-        self._drives = get_removable_drives()
-        self._worker: CloneWorker | None = None
+        self._drives = get_all_readable_drives()
+        self._worker: CloneWorker | PyImagerWorker | None = None
         self._hasher: HashWorker | None = None
         self._output_path = ""
         self._backup_flags = ["-allBlocks", "-compression=none"]
@@ -80,12 +90,12 @@ class MakeImageDialog(ttk.Toplevel):
         ttk.Label(outer, text="Source drive:", anchor=W).grid(
             row=0, column=0, sticky=W, pady=(0, 4)
         )
-        drive_labels = [d.display for d in self._drives]
+        drive_labels = [d.source_display for d in self._drives]
         self._drive_var = ttk.StringVar(
-            value=drive_labels[0] if drive_labels else "No removable drives found"
+            value=drive_labels[0] if drive_labels else "No readable physical disks found"
         )
         self._drive_cb = ttk.Combobox(
-            outer, textvariable=self._drive_var, state="readonly", values=drive_labels, width=46
+            outer, textvariable=self._drive_var, state="readonly", values=drive_labels, width=80
         )
         self._drive_cb.grid(row=0, column=1, columnspan=2, sticky=EW, padx=(8, 0), pady=(0, 4))
 
@@ -119,12 +129,13 @@ class MakeImageDialog(ttk.Toplevel):
 
         # Auto-workflow toggle
         self._auto_var = ttk.BooleanVar(value=True)
-        ttk.Checkbutton(
+        self._auto_check = ttk.Checkbutton(
             outer,
             text="Auto hash & configure after backup",
             variable=self._auto_var,
             bootstyle="round-toggle",
-        ).grid(row=4, column=0, columnspan=3, sticky=W, pady=(4, 8))
+        )
+        self._auto_check.grid(row=4, column=0, columnspan=3, sticky=W, pady=(4, 8))
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
             row=5, column=0, columnspan=3, sticky=EW, pady=(0, 8)
@@ -212,7 +223,11 @@ class MakeImageDialog(ttk.Toplevel):
 
     @property
     def _use_pyimager(self) -> bool:
-        return self._engine in (ENGINE_PY, ENGINE_PY_GZ)
+        return self._engine in (ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ)
+
+    @property
+    def _compact_mode(self) -> bool:
+        return self._engine == ENGINE_PY_COMPACT
 
     def _on_engine_change(self, _event=None):
         """Keep the hint, the Options button and the output extension in step."""
@@ -222,11 +237,26 @@ class MakeImageDialog(ttk.Toplevel):
         # Raw vs gzip is a pyimager-only detail with no equivalent in the
         # app-wide setting - both map back to the same "pyimager" engine.
         self._config.set_engine(ENGINE_PYIMAGER if self._use_pyimager else ENGINE_ODIN)
+        if self._compact_mode:
+            self._auto_var.set(False)
+            self._auto_check.configure(state=DISABLED)
+        elif self._use_pyimager:
+            self._auto_check.configure(state=NORMAL)
+        else:
+            self._sync_backup_mode()
 
         # Nudge the extension so the chosen engine and the filename agree.
         path = self._output_var.get().strip()
         if not path:
             return
+        if self._compact_mode:
+            if not path.lower().endswith(".compact.img"):
+                root, _ext = os.path.splitext(path)
+                self._output_var.set(root + ".compact.img")
+            return
+        if path.lower().endswith(".compact.img"):
+            path = path[:-len(".compact.img")] + ".img"
+            self._output_var.set(path)
         wants_gz = self._engine == ENGINE_PY_GZ
         has_gz = path.lower().endswith(".gz")
         if wants_gz and not has_gz:
@@ -235,7 +265,10 @@ class MakeImageDialog(ttk.Toplevel):
             self._output_var.set(path[:-3])
 
     def _browse_output(self):
-        if self._engine == ENGINE_PY_GZ:
+        if self._compact_mode:
+            default_ext = ".compact.img"
+            types = [("Bounded raw image", "*.compact.img"), ("All files", "*.*")]
+        elif self._engine == ENGINE_PY_GZ:
             default_ext = ".img.gz"
             types = [("Gzipped raw image", "*.img.gz *.gz"), ("All files", "*.*")]
         elif self._engine == ENGINE_PY:
@@ -247,15 +280,22 @@ class MakeImageDialog(ttk.Toplevel):
             default_ext = ".img"
             types = [("ODIN image", "*.img *.odin *.bin"),
                      ("All files", "*.*")]
+        last_output_dir = self._config.get_last_output_dir()
         path = filedialog.asksaveasfilename(
             title="Save image as",
             defaultextension=default_ext,
             filetypes=types,
             parent=self,
+            initialdir=last_output_dir if os.path.isdir(last_output_dir) else None,
         )
         if not path:
             return
+        path = os.path.abspath(path)
+        if self._compact_mode and not path.lower().endswith(".compact.img"):
+            root, _ext = os.path.splitext(path)
+            path = root + ".compact.img"
         self._output_var.set(path)
+        self._config.set_last_output_dir(os.path.dirname(path))
         # Picking a .gz by hand implies the compressing engine, and vice versa.
         if path.lower().endswith(".gz") and self._engine == ENGINE_PY:
             self._engine_var.set(ENGINE_PY_GZ)
@@ -270,24 +310,122 @@ class MakeImageDialog(ttk.Toplevel):
         dlg = ImageOptionsDialog(self, self._backup_flags)
         if dlg.result is not None:
             self._backup_flags = dlg.result
+            self._sync_backup_mode()
+
+    @property
+    def _used_block_mode(self) -> bool:
+        return any(flag in self._backup_flags for flag in ("-usedBlocks", "-makeSnapshot"))
+
+    def _sync_backup_mode(self):
+        if self._used_block_mode:
+            self._auto_var.set(False)
+            self._auto_check.configure(state=DISABLED)
+            self._engine_hint.configure(
+                text="Repair/archive set: MBR + partition images; no raw-disk hash config."
+            )
+        else:
+            self._auto_check.configure(state=NORMAL)
+            self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""))
+
+    @staticmethod
+    def _used_block_files_for(output_path: str) -> list[str]:
+        root, _ext = os.path.splitext(output_path)
+        paths = [root + ".mbr"]
+        paths.extend(glob.glob(root + "-Partition*.img*"))
+        return [path for path in paths if os.path.isfile(path)]
+
+    def _used_block_files(self) -> list[str]:
+        return self._used_block_files_for(self._output_path)
 
     def _start(self):
         idx = self._drive_cb.current()
         if idx < 0 or idx >= len(self._drives):
             self._status("No drive selected.", "danger")
             return
-        drive: DriveInfo = self._drives[idx]
-        if not is_disk_removable(drive.disk_number):
-            self._status(f"Disk {drive.disk_number} is not removable — aborted.", "danger")
+        selected: DriveInfo = self._drives[idx]
+        drive = get_physical_drive(selected.disk_number)
+        if drive is None:
+            self._status(f"Disk {selected.disk_number} is no longer readable.", "danger")
             return
-        output = self._output_var.get().strip()
+        if drive.size_bytes != selected.size_bytes or (
+            selected.hw_serial
+            and drive.hw_serial
+            and selected.hw_serial.casefold() != drive.hw_serial.casefold()
+        ):
+            self._status(
+                f"Disk {selected.disk_number} changed after the source list was loaded. "
+                "Close and reopen Make Image.",
+                "danger",
+            )
+            return
+        output = os.path.expanduser(os.path.expandvars(self._output_var.get().strip()))
         if not output:
             self._status("Choose an output file first.", "danger")
             return
-        if os.path.exists(output):
+        if not os.path.isabs(output):
+            last_output_dir = self._config.get_last_output_dir()
+            if not last_output_dir:
+                self._status(
+                    "Choose an output folder with Browse before entering only a filename.",
+                    "danger",
+                )
+                return
+            output = os.path.join(last_output_dir, output)
+        output = os.path.abspath(output)
+        if self._compact_mode and not output.lower().endswith(".compact.img"):
+            root, _ext = os.path.splitext(output)
+            output = root + ".compact.img"
+        self._output_var.set(output)
+        self._config.set_last_output_dir(os.path.dirname(output))
+        output_disk = get_path_disk_number(output)
+        if output_disk == drive.disk_number:
+            self._status(
+                f"Output is on source Disk {drive.disk_number}. Choose another disk or a "
+                "network location.",
+                "danger",
+            )
+            return
+        if drive.is_system and not messagebox.askyesno(
+            "Back up the Windows system disk?",
+            f"Disk {drive.disk_number} is the active Windows system disk.\n\n"
+            f"{drive.source_display}\n\n"
+            "Make Image opens the source read-only and writes only to the selected "
+            "output path. Continue?",
+            parent=self,
+        ):
+            self._status("Backup cancelled.", "warning")
+            return
+        if self._compact_mode and not messagebox.askyesno(
+            "Create bounded raw image?",
+            "This MBR-only mode copies every byte through the final real partition "
+            "and skips only trailing unallocated space. It creates a .compact.img "
+            "and matching .compact.json manifest. Continue?",
+            parent=self,
+        ):
+            self._status("Backup cancelled.", "warning")
+            return
+        if self._used_block_mode and not messagebox.askyesno(
+            "Create repair/archive image set?",
+            "This mode creates an MBR plus partition-image set. It is not a "
+            "byte-for-byte approved gaming firmware image. Keep every generated "
+            "file together. Continue?",
+            parent=self,
+        ):
+            self._status("Backup cancelled.", "warning")
+            return
+        existing = self._used_block_files_for(output) if self._used_block_mode else []
+        if self._compact_mode:
+            manifest = compact_manifest_path(output)
+            existing = [str(path) for path in (output, manifest) if os.path.exists(path)]
+        if os.path.exists(output) or existing:
+            conflict_text = (
+                "\n".join(os.path.basename(path) for path in existing)
+                if existing
+                else output
+            )
             overwrite = messagebox.askyesno(
                 "Overwrite image?",
-                f"The output file already exists:\n\n{output}\n\nOverwrite it?",
+                f"Existing output will be replaced:\n\n{conflict_text}\n\nOverwrite it?",
                 parent=self,
             )
             if not overwrite:
@@ -318,6 +456,9 @@ class MakeImageDialog(ttk.Toplevel):
                 on_log=lambda line: self._status(line, "secondary"),
                 on_done=self._on_backup_done,
                 sha1=True,
+                compact=self._compact_mode,
+                expected_size=drive.size_bytes,
+                expected_serial=drive.hw_serial,
             )
             self._worker.start()
             return
@@ -367,6 +508,38 @@ class MakeImageDialog(ttk.Toplevel):
         self._pbar.configure(mode="determinate")
         if status == CloneStatus.DONE:
             self._set_step(0, "done")
+            if self._compact_mode:
+                manifest = compact_manifest_path(self._output_path)
+                if not os.path.isfile(self._output_path) or not manifest.is_file():
+                    self._set_step(0, "failed")
+                    self._status("Compact capture finished without its manifest.", "danger")
+                else:
+                    result = getattr(self._worker, "result", None) or {}
+                    saved = int(result.get("saved_trailing_bytes", 0)) / (1 << 30)
+                    self._progress_var.set(100)
+                    self._status(
+                        f"Bounded image complete; skipped {saved:.2f} GiB of trailing "
+                        "unallocated space. Keep the image and manifest together.",
+                        "success",
+                    )
+                self._finish_buttons()
+                return
+            if self._used_block_mode:
+                files = self._used_block_files()
+                if len(files) < 2:
+                    self._set_step(0, "failed")
+                    self._status(
+                        "Backup reported complete, but the MBR/partition image set is incomplete.",
+                        "danger",
+                    )
+                else:
+                    self._progress_var.set(100)
+                    self._status(
+                        f"Repair/archive set complete ({len(files)} files). Select the .mbr to restore; keep the set together.",
+                        "success",
+                    )
+                self._finish_buttons()
+                return
             if not self._auto_var.get():
                 self._progress_var.set(100)
                 self._status("Backup complete.", "success")
@@ -498,7 +671,8 @@ class MakeImageDialog(ttk.Toplevel):
         path = self._output_path
 
         try:
-            size = os.path.getsize(path)
+            files = self._used_block_files() if self._used_block_mode else []
+            size = sum(os.path.getsize(item) for item in files) if files else os.path.getsize(path)
         except OSError:
             size = -1
 

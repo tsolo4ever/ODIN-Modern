@@ -10,6 +10,7 @@ DEFAULTS = {
     "max_concurrent": "3",
     "auto_clone": "false",
     "last_image": "",
+    "last_output_dir": "",
     "verify_after_clone": "false",
     "stop_on_verify_fail": "false",
     "show_flash_widget": "true",
@@ -76,6 +77,9 @@ class ConfigManager:
     def get_last_image(self) -> str:
         return self._cfg["settings"].get("last_image", "")
 
+    def get_last_output_dir(self) -> str:
+        return self._cfg["settings"].get("last_output_dir", "").strip()
+
     def get_verify_after_clone(self) -> bool:
         return self._cfg["settings"].get("verify_after_clone", "false").lower() == "true"
 
@@ -127,6 +131,10 @@ class ConfigManager:
 
     def set_last_image(self, path: str):
         self._cfg["settings"]["last_image"] = path
+        self._save()
+
+    def set_last_output_dir(self, path: str):
+        self._cfg["settings"]["last_output_dir"] = path
         self._save()
 
     def set_verify_after_clone(self, v: bool):
