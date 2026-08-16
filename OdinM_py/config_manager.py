@@ -21,7 +21,7 @@ DEFAULTS = {
     "max_disks": "5",
     # Imaging/flashing engine: "odin" drives ODINC.exe, "pyimager" uses the
     # built-in Python imager (scripts/pyimager.py).
-    "engine": "odin",
+    "engine": "pyimager",
 }
 
 ENGINE_ODIN = "odin"

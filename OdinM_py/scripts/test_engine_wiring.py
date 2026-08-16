@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 import ttkbootstrap as ttk  # noqa: E402
 
 import ui.make_image_dialog as mid  # noqa: E402
-from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER  # noqa: E402
+from config_manager import DEFAULTS, ENGINE_ODIN, ENGINE_PYIMAGER  # noqa: E402
 
 # wait_window() would block; grab_set() needs a viewable window.
 mid.MakeImageDialog.wait_window = lambda self, *a, **k: None
@@ -56,6 +56,7 @@ def check(name, got, want):
 print("\ndefault engine (ODINC):")
 check("use_pyimager", dlg._use_pyimager, False)
 check("Options enabled", str(dlg._options_btn.cget("state")), "normal")
+check("new app config defaults to pyimager", DEFAULTS["engine"], ENGINE_PYIMAGER)
 
 print("\nswitch to pyimager raw:")
 dlg._engine_var.set(mid.ENGINE_PY)

@@ -18,12 +18,57 @@ from tkinter.scrolledtext import ScrolledText
 
 from clone_worker import CloneStatus
 from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
+from guarded_flash_safety import DiskIdentity
+from guarded_restore import GuardedImagePlan
+from ui.guarded_single_flash import GuardedSingleFlashFrame, MODE_GUARDED, MODE_MULTI
 from ui.slot_widget import SlotWidget
 
 NUM_SLOTS = 5
 
 _ENGINE_DISPLAY = {ENGINE_ODIN: "ODIN (ODINC.exe)", ENGINE_PYIMAGER: "pyimager (built-in)"}
 _ENGINE_FROM_DISPLAY = {v: k for k, v in _ENGINE_DISPLAY.items()}
+
+
+def format_eta(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds >= 3600:
+        return f"~{seconds // 3600}h {(seconds % 3600) // 60}m"
+    if seconds >= 60:
+        return f"~{seconds // 60}m {seconds % 60:02d}s"
+    return f"~{seconds}s"
+
+
+def format_speed(bytes_per_second: float) -> str:
+    if bytes_per_second >= 1 << 30:
+        return f"{bytes_per_second / (1 << 30):.1f} GB/s"
+    if bytes_per_second >= 1 << 20:
+        return f"{bytes_per_second / (1 << 20):.1f} MB/s"
+    if bytes_per_second >= 1 << 10:
+        return f"{bytes_per_second / (1 << 10):.0f} KB/s"
+    return f"{bytes_per_second:.0f} B/s"
+
+
+def sync_flash_widget(widget, drives, workers, displayed_disk_nums) -> None:
+    if widget is None or not widget.winfo_exists():
+        return
+    for idx in range(NUM_SLOTS):
+        drive = drives[idx]
+        disk_num = drive.disk_number if drive is not None else None
+        if displayed_disk_nums.get(idx) != disk_num:
+            displayed_disk_nums[idx] = disk_num
+            if drive is None:
+                widget.reset(idx)
+            else:
+                widget.set_drive(idx, drive.display)
+        if drive is not None:
+            worker = workers.get(idx)
+            if worker is not None and worker.status != CloneStatus.IDLE:
+                widget.set_status(idx, worker.status)
+
+
+def call_flash_widget(widget, method: str, *args) -> None:
+    if widget is not None and widget.winfo_exists():
+        getattr(widget, method)(*args)
 
 
 class MainWindow(ttk.Frame):
@@ -47,6 +92,7 @@ class MainWindow(ttk.Frame):
         # live progress/speed/eta (SlotWidget.set_drive() resets all of that).
         self._displayed_disk_nums: dict[int, int | None] = {}
         self._image_var = ttk.StringVar(value=config.get_last_image())
+        self._multi_widgets: tuple[tk.Widget, ...] = ()
         self._init_callbacks()
         self._build()
 
@@ -64,6 +110,11 @@ class MainWindow(ttk.Frame):
     on_verify_stored: Callable[[], None]
     on_make_image: Callable[[], None]
     on_flash_widget_toggle: Callable[[bool], None]
+    on_request_guarded_mode: Callable[[], tuple[bool, str]]
+    on_guarded_mode_entered: Callable[[], None]
+    on_multi_mode_entered: Callable[[], None]
+    on_prepare_guarded_flash: Callable[[DiskIdentity, GuardedImagePlan], None]
+    on_stop_guarded_flash: Callable[[], None]
 
     def _init_callbacks(self):
         self.on_start_slot = lambda idx: None
@@ -78,12 +129,37 @@ class MainWindow(ttk.Frame):
         self.on_verify_stored = lambda: None
         self.on_make_image = lambda: None
         self.on_flash_widget_toggle = lambda enabled: None
+        self.on_request_guarded_mode = lambda: (True, "")
+        self.on_guarded_mode_entered = lambda: None
+        self.on_multi_mode_entered = lambda: None
+        self.on_prepare_guarded_flash = lambda disk, plan: None
+        self.on_stop_guarded_flash = lambda: None
 
     # ── public API ────────────────────────────────────────────────────────────
 
     @property
     def image_path(self) -> str:
         return self._image_var.get().strip()
+
+    @property
+    def multi_flash_active(self) -> bool:
+        return self._mode_var.get() == MODE_MULTI
+
+    @property
+    def guarded_busy(self) -> bool:
+        return self._guarded_frame.busy
+
+    def guarded_log(self, text: str, *, warning: bool = False) -> None:
+        self._guarded_frame.append_log(text, warning=warning)
+
+    def guarded_confirm_disk_number(self, disk: DiskIdentity, summary: str) -> bool:
+        return self._guarded_frame.confirm_disk_number(disk, summary)
+
+    def guarded_finish_attempt(self, message: str, *, warning: bool = False) -> None:
+        self._guarded_frame.finish_attempt(message, warning=warning)
+
+    def guarded_set_progress(self, phase: str, percent: int) -> None:
+        self._guarded_frame.set_progress(phase, percent)
 
     def update_drives(self, drives: list, locked: dict):
         """Called by app.py whenever its slot->drive mapping changes.
@@ -175,11 +251,69 @@ class MainWindow(ttk.Frame):
         self.columnconfigure(0, weight=1)
 
         self._build_menu()
+        self._build_mode_selector()
         self._build_image_bar()
         self._build_slots()
         self._build_controls()
         self._build_settings()
         self._build_log()
+        self._multi_widgets = tuple(
+            widget for widget in self.grid_slaves() if widget not in (self._mode_frame,)
+        )
+        self._guarded_frame = GuardedSingleFlashFrame(
+            self,
+            on_prepare_flash=lambda disk, plan: self.on_prepare_guarded_flash(disk, plan),
+            on_stop_flash=lambda: self.on_stop_guarded_flash(),
+            on_busy_change=self._on_guarded_busy_change,
+        )
+        self._guarded_frame.grid(row=1, column=0, rowspan=5, sticky=NSEW)
+        self._guarded_frame.grid_remove()
+
+    def _build_mode_selector(self):
+        self._mode_frame = ttk.LabelFrame(self, text="Operation Mode")  # type: ignore[attr-defined]
+        self._mode_frame.grid(row=0, column=0, sticky=EW, pady=(0, 8))
+        self._mode_frame.columnconfigure(1, weight=1)
+        ttk.Label(self._mode_frame, text="Mode:").grid(row=0, column=0, padx=(8, 6), pady=6)
+        self._mode_var = ttk.StringVar(value=MODE_MULTI)
+        self._mode_combo = ttk.Combobox(
+            self._mode_frame,
+            textvariable=self._mode_var,
+            state="readonly",
+            values=(MODE_MULTI, MODE_GUARDED),
+        )
+        self._mode_combo.grid(row=0, column=1, sticky=EW, padx=(0, 8), pady=6)
+        self._mode_combo.bind("<<ComboboxSelected>>", self._on_mode_change)
+
+    def _on_mode_change(self, _event=None):
+        requested = self._mode_var.get()
+        if requested == MODE_GUARDED:
+            allowed, reason = self.on_request_guarded_mode()
+            if not allowed:
+                self._mode_var.set(MODE_MULTI)
+                messagebox.showwarning("Cannot enter Guarded Single Flash", reason, parent=self)
+                return
+            self.on_guarded_mode_entered()
+            for widget in self._multi_widgets:
+                widget.grid_remove()
+            self._guarded_frame.grid()
+            self._guarded_frame.activate()
+            return
+        if self._guarded_frame.busy:
+            self._mode_var.set(MODE_GUARDED)
+            messagebox.showwarning(
+                "Guarded operation active",
+                "Wait for the guarded refresh, validation, write, or verification to finish.",
+                parent=self,
+            )
+            return
+        self._guarded_frame.deactivate()
+        self._guarded_frame.grid_remove()
+        for widget in self._multi_widgets:
+            widget.grid()
+        self.on_multi_mode_entered()
+
+    def _on_guarded_busy_change(self, busy: bool):
+        self._mode_combo.configure(state=DISABLED if busy else "readonly")
 
     def _build_menu(self):
         menubar = tk.Menu(self._root_win)
@@ -240,7 +374,7 @@ class MainWindow(ttk.Frame):
 
     def _build_image_bar(self):
         frame = ttk.LabelFrame(self, text="Image File")  # type: ignore[attr-defined]
-        frame.grid(row=0, column=0, sticky=EW, pady=(0, 8))
+        frame.grid(row=1, column=0, sticky=EW, pady=(0, 8))
         frame.columnconfigure(0, weight=1)
 
         ttk.Entry(frame, textvariable=self._image_var).grid(
@@ -261,7 +395,7 @@ class MainWindow(ttk.Frame):
 
     def _build_slots(self):
         frame = ttk.LabelFrame(self, text="Drive Slots")  # type: ignore[attr-defined]
-        frame.grid(row=1, column=0, sticky=EW, pady=(0, 8))
+        frame.grid(row=2, column=0, sticky=EW, pady=(0, 8))
         frame.columnconfigure(0, weight=1)
         self._slots_frame = frame
 
@@ -279,7 +413,7 @@ class MainWindow(ttk.Frame):
 
     def _build_controls(self):
         frame = ttk.Frame(self)
-        frame.grid(row=2, column=0, sticky=EW, pady=(0, 8))
+        frame.grid(row=3, column=0, sticky=EW, pady=(0, 8))
 
         ttk.Button(
             frame, text="Start All", bootstyle="success", command=lambda: self.on_start_all()
@@ -312,7 +446,7 @@ class MainWindow(ttk.Frame):
 
     def _build_settings(self):
         frame = ttk.LabelFrame(self, text="Settings")  # type: ignore[attr-defined]
-        frame.grid(row=3, column=0, sticky=EW, pady=(0, 4))
+        frame.grid(row=4, column=0, sticky=EW, pady=(0, 4))
 
         self._auto_clone_var = ttk.BooleanVar(value=self._config.get_auto_clone())
         ttk.Checkbutton(
@@ -354,8 +488,8 @@ class MainWindow(ttk.Frame):
 
     def _build_log(self):
         frame = ttk.LabelFrame(self, text="Log")  # type: ignore[attr-defined]
-        frame.grid(row=4, column=0, sticky=NSEW, pady=(0, 4))
-        self.rowconfigure(4, weight=1)
+        frame.grid(row=5, column=0, sticky=NSEW, pady=(0, 4))
+        self.rowconfigure(5, weight=1)
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 

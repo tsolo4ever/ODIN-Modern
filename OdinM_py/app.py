@@ -20,47 +20,29 @@ from drive_manager import (
     is_disk_removable,
 )
 from hash_worker import HashStatus, HashWorker
+from guarded_restore import GuardedRestoreCoordinator
 from partition_reader import get_image_hash_region
 from partition_waiter import PartitionTableWaiter
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
 from ui.flash_status_window import FlashStatusWindow
-from ui.main_window import MainWindow, NUM_SLOTS
+from ui.main_window import (
+    MainWindow,
+    NUM_SLOTS,
+    call_flash_widget,
+    format_eta,
+    format_speed,
+    sync_flash_widget,
+)
 
 APP_TITLE = "OdinM_py v2 — Multi-Drive Clone Tool"
-
-
-def _fmt_eta(seconds: float) -> str:
-    s = int(seconds)
-    if s >= 3600:
-        return f"~{s // 3600}h {(s % 3600) // 60}m"
-    if s >= 60:
-        return f"~{s // 60}m {s % 60:02d}s"
-    return f"~{s}s"
-
-
-def _fmt_speed(bps: float) -> str:
-    if bps >= 1 << 30:
-        return f"{bps / (1 << 30):.1f} GB/s"
-    if bps >= 1 << 20:
-        return f"{bps / (1 << 20):.1f} MB/s"
-    if bps >= 1 << 10:
-        return f"{bps / (1 << 10):.0f} KB/s"
-    return f"{bps:.0f} B/s"
 
 
 MIN_WIDTH = 780
 MIN_HEIGHT = 560
 
-# How long a newly-inserted drive must sit connected before auto-clone starts
-# writing to it - gives Windows/the reader a moment to settle after insertion
-# rather than writing the instant the card is first detected.
-AUTO_CLONE_DELAY_MS = 5000
+AUTO_CLONE_DELAY_MS = 5000  # let a newly inserted card settle before Auto-Flash
 
-# How long a slot's confirmed lock survives after its disk is confirmed
-# removed. The same disk number reappearing within this window is still
-# treated as confirmed (no re-click needed, auto-clone can proceed) - only
-# after this long with it still gone does the lock actually expire.
-CONFIRM_LOCK_GRACE_MS = 15 * 60 * 1000
+CONFIRM_LOCK_GRACE_MS = 15 * 60 * 1000  # preserve confirmation across a brief reconnect
 
 
 class OdinMApp:
@@ -83,6 +65,7 @@ class OdinMApp:
             self._root.iconbitmap(_icon)
 
         self._window = MainWindow(self._root, config)
+        self._guarded_restore = GuardedRestoreCoordinator(self._root, self._window)
         self._wire_callbacks()
 
         # Drive slots: letter → slot index mapping
@@ -136,6 +119,30 @@ class OdinMApp:
         self._window.on_verify_stored = self._verify_stored
         self._window.on_make_image = self._make_image
         self._window.on_flash_widget_toggle = self._on_flash_widget_toggle
+        self._window.on_request_guarded_mode = self._can_enter_guarded_mode
+        self._window.on_guarded_mode_entered = self._enter_guarded_mode
+        self._window.on_multi_mode_entered = self._return_to_multi_mode
+        self._window.on_prepare_guarded_flash = self._guarded_restore.prepare
+        self._window.on_stop_guarded_flash = self._guarded_restore.stop
+
+    def _can_enter_guarded_mode(self) -> tuple[bool, str]:
+        active_workers = any(w.status == CloneStatus.RUNNING for w in self._workers.values())
+        active_verifiers = any(w.status == HashStatus.RUNNING for w in self._verify_workers.values())
+        if active_workers or active_verifiers or self._queue or self._partition_waiters:
+            return False, "Stop all Multi Flash writes, queued work, and verification first."
+        return True, ""
+
+    def _enter_guarded_mode(self):
+        for job in self._auto_clone_pending.values():
+            self._root.after_cancel(job)
+        self._auto_clone_pending.clear()
+        if self._flash_widget is not None and self._flash_widget.winfo_exists():
+            self._flash_widget.withdraw()
+
+    def _return_to_multi_mode(self):
+        self._monitor.refresh()
+        if self._config.get_show_flash_widget():
+            self._show_flash_widget()
 
     # ── drive monitor callback ────────────────────────────────────────────────
 
@@ -222,7 +229,11 @@ class OdinMApp:
             # Not confirmed yet - just settle-delay bookkeeping for auto-
             # clone; _auto_clone_delayed() still waits on Confirm before
             # ever actually starting anything.
-            if self._config.get_auto_clone() and d.disk_number not in self._auto_clone_pending:
+            if (
+                self._window.multi_flash_active
+                and self._config.get_auto_clone()
+                and d.disk_number not in self._auto_clone_pending
+            ):
                 self._window.log(
                     f"[Auto] New drive in slot {slot + 1} — waiting "
                     f"{AUTO_CLONE_DELAY_MS // 1000}s for it to settle"
@@ -325,7 +336,7 @@ class OdinMApp:
         reclaim path in _on_drives_changed() - both represent a slot
         becoming confirmed without going through the fresh-disk settle-
         delay path that _auto_clone_delayed() handles."""
-        if not self._config.get_auto_clone():
+        if not self._window.multi_flash_active or not self._config.get_auto_clone():
             return
         drive = self._drives[idx]
         if drive is None or drive.disk_number in self._finished_disk_nums:
@@ -345,7 +356,7 @@ class OdinMApp:
         pulled, swapped, or auto-clone/the image may have changed during the
         wait."""
         self._auto_clone_pending.pop(disk_number, None)
-        if not self._config.get_auto_clone():
+        if not self._window.multi_flash_active or not self._config.get_auto_clone():
             return
         image = self._window.image_path
         if not image or not os.path.isfile(image):
@@ -416,6 +427,9 @@ class OdinMApp:
     # ── start / stop ──────────────────────────────────────────────────────────
 
     def _start_slot(self, idx: int):
+        if not self._window.multi_flash_active:
+            self._window.log("[Guarded] Multi Flash start blocked while guarded mode is active.")
+            return
         image = self._window.image_path
         if not image:
             self._window.log("[Error] No image file selected.")
@@ -456,6 +470,9 @@ class OdinMApp:
         self._launch(idx)
 
     def _launch(self, idx: int):
+        if not self._window.multi_flash_active:
+            self._window.log("[Guarded] Queued Multi Flash launch blocked.")
+            return
         drive = self._drives[idx]
         if drive is None:
             return
@@ -476,8 +493,8 @@ class OdinMApp:
                         dt = t1 - t0
                         if dt > 0 and p1 > p0:
                             bps = (p1 - p0) / 100.0 * sz / dt
-                            spd = _fmt_speed(bps)
-                            eta = _fmt_eta((100 - p1) / 100.0 * sz / bps)
+                            spd = format_speed(bps)
+                            eta = format_eta((100 - p1) / 100.0 * sz / bps)
                             self._window.set_slot_speed(i, spd)
                             self._window.set_slot_eta(i, eta)
                             self._flash_set_speed(i, spd)
@@ -523,6 +540,8 @@ class OdinMApp:
         return sum(1 for w in self._workers.values() if w.status == CloneStatus.RUNNING)
 
     def _drain_queue(self):
+        if not self._window.multi_flash_active:
+            return
         max_conc = self._config.get_max_concurrent()
         while self._queue and self._running_count() < max_conc:
             next_idx = self._queue.pop(0)
@@ -559,6 +578,8 @@ class OdinMApp:
             self._window.log(f"[Slot {idx + 1}] Stop requested.")
 
     def _start_all(self):
+        if not self._window.multi_flash_active:
+            return
         for i in range(NUM_SLOTS):
             if self._drives[i] is not None:
                 w = self._workers.get(i)
@@ -945,52 +966,26 @@ class OdinMApp:
             self._flash_widget.withdraw()
 
     def _mirror_drives_to_flash(self):
-        """Sync current drive/worker state to the flash widget.
-
-        set_drive()/reset() both reset status to IDLE and clear pct/speed/eta
-        - fine the first time a slot's disk appears, but calling either again
-        for a slot whose disk hasn't actually changed would wipe an active
-        flash's live progress every time ANY other slot's drive-list entry
-        refreshes. Only re-render a slot when its disk_number actually
-        changes; otherwise just let a running worker's real status show.
-        """
-        if self._flash_widget is None or not self._flash_widget.winfo_exists():
-            return
-        for idx in range(NUM_SLOTS):
-            drive = self._drives[idx]
-            disk_num = drive.disk_number if drive is not None else None
-            if self._flash_displayed_disk_nums.get(idx) != disk_num:
-                self._flash_displayed_disk_nums[idx] = disk_num
-                if drive is None:
-                    self._flash_widget.reset(idx)
-                else:
-                    self._flash_widget.set_drive(idx, drive.display)
-            if drive is not None:
-                w = self._workers.get(idx)
-                if w is not None and w.status != CloneStatus.IDLE:
-                    self._flash_widget.set_status(idx, w.status)
+        sync_flash_widget(
+            self._flash_widget, self._drives, self._workers, self._flash_displayed_disk_nums
+        )
 
     # ── flash widget pass-through helpers ─────────────────────────────────────
 
     def _flash_set_drive(self, idx: int, display: str):
-        if self._flash_widget and self._flash_widget.winfo_exists():
-            self._flash_widget.set_drive(idx, display)
+        call_flash_widget(self._flash_widget, "set_drive", idx, display)
 
     def _flash_set_status(self, idx: int, status: CloneStatus):
-        if self._flash_widget and self._flash_widget.winfo_exists():
-            self._flash_widget.set_status(idx, status)
+        call_flash_widget(self._flash_widget, "set_status", idx, status)
 
     def _flash_set_progress(self, idx: int, pct: int):
-        if self._flash_widget and self._flash_widget.winfo_exists():
-            self._flash_widget.set_progress(idx, pct)
+        call_flash_widget(self._flash_widget, "set_progress", idx, pct)
 
     def _flash_set_speed(self, idx: int, speed: str):
-        if self._flash_widget and self._flash_widget.winfo_exists():
-            self._flash_widget.set_speed(idx, speed)
+        call_flash_widget(self._flash_widget, "set_speed", idx, speed)
 
     def _flash_set_eta(self, idx: int, eta: str):
-        if self._flash_widget and self._flash_widget.winfo_exists():
-            self._flash_widget.set_eta(idx, eta)
+        call_flash_widget(self._flash_widget, "set_eta", idx, eta)
 
     def _mark_pulled(self, idx: int):
         self._window.log(f"[Slot {idx + 1}] Pull acknowledged.")
