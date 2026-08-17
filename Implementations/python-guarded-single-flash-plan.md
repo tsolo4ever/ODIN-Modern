@@ -245,7 +245,7 @@ PyImager; an existing explicit engine choice remains unchanged.
 
 Completed automated validation:
 
-- guarded preflight/restore simulations: 12/12 passed;
+- guarded preflight/restore simulations: 11/11 passed;
 - guarded worker/UI integration and configured-policy checks: 7/7 passed;
 - guarded mode mutual-exclusion checks: 14/14 passed;
 - engine/default wiring checks: 14/14 passed;
@@ -297,12 +297,20 @@ not the donor disk's unused trailing capacity. The original source size remains
 manifest provenance and capacity-accounting evidence, while a smaller target is
 accepted only when it can hold every captured partition byte.
 
-A different 7.9 GB BIWIN SSD failed twice on the first aligned 8 MiB write with
-Windows `ERROR_INVALID_FUNCTION` (1). Windows reported the disk online,
-writable, and using 512-byte logical and physical sectors. The older proven raw
-writer uses 1 MiB transfers, so Guarded Single Flash now uses that compatible
-write size while retaining larger chunks for read-only hashing and verification.
-The BIWIN target still requires a user-attended hardware retest.
+A different 7.9 GB BIWIN SSD rejected the first aligned write with Windows
+`ERROR_INVALID_FUNCTION` (1) in the dock's known-good Source bay. Windows
+reported the disk online, writable, and using 512-byte logical and physical
+sectors. A user-attended retry at 1 MiB failed identically, disproving transfer
+size as the cause; Guarded Single Flash therefore retains its 8 MiB chunk and
+the BIWIN is rejected for imaging through this hardware path.
+
+Follow-up (2026-08-17): the returned non-booting Crucial M4 Disk 3 still matched
+`Roulette.compact.img` everywhere except LBA 2050. That sector is exactly 1,024
+bytes into the active ext4 partition, and only the ext4 superblock
+`last_write_time` changed (`2016-04-14 12:57:22Z` to
+`2016-04-18 17:54:49Z`). The cabinet therefore recognized the drive and wrote
+filesystem metadata during its boot attempt; the MBR, active flag, partition
+layout, boot code, and every other captured sector remained identical.
 
 1. Baseline a workstation with all flash targets unplugged.
 2. Confirm every baseline and live Windows system disk remains unavailable.
