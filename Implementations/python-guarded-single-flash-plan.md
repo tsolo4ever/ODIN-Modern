@@ -310,7 +310,13 @@ bytes into the active ext4 partition, and only the ext4 superblock
 `last_write_time` changed (`2016-04-14 12:57:22Z` to
 `2016-04-18 17:54:49Z`). The cabinet therefore recognized the drive and wrote
 filesystem metadata during its boot attempt; the MBR, active flag, partition
-layout, boot code, and every other captured sector remained identical.
+layout, boot code, and every other captured sector remained identical. The
+manifest donor and Crucial target are both exactly 64,023,257,088 bytes, ruling
+out smaller-target capacity as the Disk 3 boot cause. A read-only forced
+`e2fsck -f -n` of the image's ext4 partition completed all five passes without
+structural errors. Its superblock retains a historical `clean with errors`
+state with `Errors behavior: Continue`, but its inode, directory, reference,
+and block-group checks are internally consistent.
 
 1. Baseline a workstation with all flash targets unplugged.
 2. Confirm every baseline and live Windows system disk remains unavailable.
