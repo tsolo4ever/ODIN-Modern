@@ -36,7 +36,6 @@ from scripts import pyimager
 
 
 CHUNK_BYTES = 8 << 20
-WRITE_CHUNK_BYTES = 1 << 20
 MIN_SECTOR_BYTES = 512
 HEX_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -475,7 +474,7 @@ def restore_and_verify(
                 if should_cancel is not None and should_cancel():
                     cancelled = True
                     break
-                block = source.read(min(WRITE_CHUNK_BYTES, plan.write_bytes - bytes_written))
+                block = source.read(min(CHUNK_BYTES, plan.write_bytes - bytes_written))
                 if not block:
                     raise GuardedRestoreError("short source read during write", target_not_trusted=True)
                 written = target.write(block)
