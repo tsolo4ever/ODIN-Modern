@@ -1,5 +1,7 @@
 """Headless regression checks for partition-aware target verification."""
 
+import ctypes
+import ctypes.wintypes as wintypes
 import sys
 import tempfile
 from pathlib import Path
@@ -10,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 import app as app_module  # noqa: E402
 import hash_config as hash_config_module  # noqa: E402
+import raw_disk as raw_disk_module  # noqa: E402
 from clone_worker import CloneStatus  # noqa: E402
 from hash_worker import HashStatus  # noqa: E402
 from partition_reader import (  # noqa: E402
@@ -20,6 +23,41 @@ from partition_reader import (  # noqa: E402
 )
 
 _REAL_HASH_CONFIG = hash_config_module.HashConfig
+
+
+class _FakeRawKernel:
+    def __init__(self, payload: bytes):
+        self.payload = payload
+        self.position = 0
+        self.reads: list[tuple[int, int]] = []
+
+    def SetFilePointerEx(self, _handle, offset, new_position, _method):
+        self.position = int(offset.value)
+        if new_position:
+            ctypes.cast(
+                new_position, ctypes.POINTER(ctypes.c_longlong)
+            ).contents.value = self.position
+        return True
+
+    def ReadFile(self, _handle, buffer, size, bytes_read, _overlapped):
+        self.reads.append((self.position, size))
+        data = self.payload[self.position : self.position + size]
+        ctypes.memmove(buffer, data, len(data))
+        ctypes.cast(bytes_read, ctypes.POINTER(wintypes.DWORD)).contents.value = len(data)
+        self.position += len(data)
+        return True
+
+
+def _raw_reader(payload: bytes, *, sector_size: int = 512):
+    reader = raw_disk_module.Win32RawDiskReader.__new__(
+        raw_disk_module.Win32RawDiskReader
+    )
+    reader.path = r"\\.\PhysicalDrive2"
+    reader._k32 = _FakeRawKernel(payload)
+    reader._handle = 1
+    reader._sector_size = sector_size
+    reader._position = 0
+    return reader
 
 
 def _cfg(*, sha1: str = "", sha256: str = "") -> dict:
@@ -297,6 +335,21 @@ def test_strict_partition_reader_preserves_invalid_mbr_reason():
         else:
             raise AssertionError("invalid MBR should raise PartitionReadError")
 
+
+def test_raw_physical_reader_aligns_small_partition_reads():
+    payload = bytes(index % 251 for index in range(8192))
+    reader = _raw_reader(payload, sector_size=4096)
+
+    reader.seek(510)
+    assert reader.read(2) == payload[510:512]
+    assert reader.tell() == 512
+    assert reader._k32.reads == [(0, 4096)]
+
+    reader.seek(4090)
+    assert reader.read(16) == payload[4090:4106]
+    assert reader.tell() == 4106
+    assert reader._k32.reads[-1] == (0, 8192)
+
 if __name__ == "__main__":
     tests = [
         test_multiple_partition_checks_run_in_order,
@@ -307,6 +360,7 @@ if __name__ == "__main__":
         test_explicit_disk_level_verification_is_preserved,
         test_saving_hash_scopes_keeps_whole_disk_and_partitions_exclusive,
         test_strict_partition_reader_preserves_invalid_mbr_reason,
+        test_raw_physical_reader_aligns_small_partition_reads,
     ]
     for test in tests:
         test()
