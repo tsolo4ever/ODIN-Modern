@@ -141,8 +141,8 @@ opened for writing.
 A `.compact.img` is never treated as an ordinary raw image. It requires its
 matching `.compact.json` and must pass strict manifest schema, image length,
 layout, source-capacity, and SHA-256 validation before target access. The target
-capacity must be at least the original source capacity recorded in the
-manifest, even when the captured prefix would fit on a smaller disk.
+must be large enough for the validated captured layout; the original donor
+capacity remains provenance and accounting evidence rather than a minimum.
 
 ## PyImager write and verification contract
 
@@ -211,7 +211,7 @@ the copyable guarded log collapses without hiding its current status.
 
 Completed validation:
 
-- guarded mode/state checks: 11/11 passed;
+- guarded mode/state checks: 14/14 passed;
 - hidden main-window build and multi/guarded/multi repaint smoke passed;
 - Auto-Flash delay/confirmation checks: 13/13 passed;
 - sticky drive-slot checks: 17/17 passed;
@@ -245,13 +245,13 @@ PyImager; an existing explicit engine choice remains unchanged.
 
 Completed automated validation:
 
-- guarded preflight/restore simulations: 11/11 passed;
+- guarded preflight/restore simulations: 12/12 passed;
 - guarded worker/UI integration and configured-policy checks: 7/7 passed;
-- guarded mode mutual-exclusion checks: 11/11 passed;
+- guarded mode mutual-exclusion checks: 14/14 passed;
 - engine/default wiring checks: 14/14 passed;
-- the complete `OdinM_py/scripts/test_*.py` automated suite passed; the existing
-  concurrent-volume test required preloading production `raw_disk.py` because
-  its harness otherwise shadows that module with `scripts/raw_disk.py`;
+- the complete `OdinM_py/scripts/test_*.py` automated suite passed; the
+  concurrent-volume harness imports `scripts.pyimager` without shadowing
+  production `raw_disk.py`;
 - live read-only Windows inventory classification passed; and
 - no protected-hardware baseline was created and no physical disk was opened
   for writing during automated validation.
@@ -274,6 +274,35 @@ Exit criteria:
 
 Status: Pending user-attended testing with a known disposable fixed-classified
 target. Do not substitute a production, system, project, or vault disk.
+
+Hardware findings (2026-08-16): the first disposable Disk 2 attempt completed
+the guarded write path but failed closed before verification when the shared
+physical-disk reader issued the partition parser's two-byte MBR-signature read
+directly at byte 510. Windows returned `ERROR_INVALID_PARAMETER` (87) because
+raw-device transfers must be sector aligned. `OdinM_py/raw_disk.py` now aligns
+the underlying transfer to the disk's reported logical sector size while
+preserving the caller's requested logical byte range. The same Disk 2 then
+wrote and passed mandatory SHA-256 read-back for 7,917,797,376 bytes.
+
+An identical SSD failed read-back in the dock's Target bay, then passed in its
+Source bay, isolating that mismatch to the dock path rather than the image or
+guarded verifier. A later external wipe also exposed that confirmed Multi
+Flash slot watches continued their two-second disk check-ins while Guarded mode
+was active. Closing ODIN released the interference. Guarded mode now pauses
+those watches without forgetting them and resumes them on return to Multi
+Flash. The protected-baseline scan becomes unavailable once its file exists,
+and collapsing the guarded log now reduces the actual main-window height.
+Compact restore capacity is based on the strictly validated captured layout,
+not the donor disk's unused trailing capacity. The original source size remains
+manifest provenance and capacity-accounting evidence, while a smaller target is
+accepted only when it can hold every captured partition byte.
+
+A different 7.9 GB BIWIN SSD failed twice on the first aligned 8 MiB write with
+Windows `ERROR_INVALID_FUNCTION` (1). Windows reported the disk online,
+writable, and using 512-byte logical and physical sectors. The older proven raw
+writer uses 1 MiB transfers, so Guarded Single Flash now uses that compatible
+write size while retaining larger chunks for read-only hashing and verification.
+The BIWIN target still requires a user-attended hardware retest.
 
 1. Baseline a workstation with all flash targets unplugged.
 2. Confirm every baseline and live Windows system disk remains unavailable.
