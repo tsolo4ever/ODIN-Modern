@@ -26,11 +26,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
 
-import pyimager  # noqa: E402
+from scripts import pyimager  # noqa: E402
 
-from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER  # noqa: E402
+from config_manager import ENGINE_PYIMAGER  # noqa: E402
 from drive_manager import DriveInfo  # noqa: E402
 
 import app as app_module  # noqa: E402
