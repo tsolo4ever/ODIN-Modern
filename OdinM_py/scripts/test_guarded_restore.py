@@ -78,11 +78,19 @@ def _compact(path: Path, disk_size: int = 4096) -> tuple[bytes, Path]:
 
 
 class FakeDisk:
-    def __init__(self, storage: bytearray, write: bool = False, *, short_write: bool = False):
+    def __init__(
+        self,
+        storage: bytearray,
+        write: bool = False,
+        *,
+        short_write: bool = False,
+        write_sizes: list[int] | None = None,
+    ):
         self.storage = storage
         self.writable = write
         self.position = 0
         self.short_write = short_write
+        self.write_sizes = write_sizes
         self.h = 1
 
     @property
@@ -102,6 +110,8 @@ class FakeDisk:
         return data
 
     def write(self, data):
+        if self.write_sizes is not None:
+            self.write_sizes.append(len(data))
         count = len(data) - 1 if self.short_write else len(data)
         self.storage[self.position : self.position + count] = data[:count]
         self.position += count
@@ -137,8 +147,10 @@ def _restore(
     cancel=None,
     protected=False,
     partition_waiter=None,
+    disk_size=4096,
+    write_sizes=None,
 ):
-    disk = _disk()
+    disk = _disk(disk_size)
     storage = storage if storage is not None else bytearray(disk.size_bytes)
     events = []
     store = _store(folder)
@@ -147,7 +159,12 @@ def _restore(
 
     def factory(_path, write=False):
         events.append("open-write" if write else "open-read")
-        return FakeDisk(storage, write, short_write=short_write and write)
+        return FakeDisk(
+            storage,
+            write,
+            short_write=short_write and write,
+            write_sizes=write_sizes if write else None,
+        )
 
     result = restore.restore_and_verify(
         plan,
@@ -194,20 +211,22 @@ def test_gzip_is_fully_spooled_and_cleanup_is_explicit():
         assert not plan.source_path.exists()
 
 
-def test_compact_manifest_layout_hash_and_original_capacity_are_required():
+def test_compact_target_requires_only_the_validated_captured_layout():
     with tempfile.TemporaryDirectory() as folder:
         image = Path(folder) / "roulette.compact.img"
         data, _manifest = _compact(image)
-        plan = restore.preflight_image(image, 4096)
+        plan = restore.preflight_image(image, len(data))
         assert plan.image_format == "compact"
         assert plan.write_bytes == len(data)
-        assert plan.required_capacity == 4096
+        assert plan.required_capacity == len(data)
+        smaller_than_source = restore.preflight_image(image, 2048)
+        assert smaller_than_source.required_capacity == len(data)
         try:
-            restore.preflight_image(image, 2048)
+            restore.preflight_image(image, len(data) - 512)
         except restore.GuardedImageError as exc:
-            assert "original source capacity" in str(exc)
+            assert "captured layout" in str(exc)
         else:
-            raise AssertionError("undersized compact target was accepted")
+            raise AssertionError("target smaller than the captured layout was accepted")
 
 
 def test_missing_or_altered_compact_pair_is_rejected():
@@ -257,6 +276,25 @@ def test_success_requires_flush_refresh_and_matching_readback():
         assert result.verified
         assert storage[: len(data)] == data
         assert events == ["open-read", "open-write", "flush", "unlock", "close", "partition-ready", "open-read"]
+
+
+def test_restore_uses_one_mib_physical_write_chunks():
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "raw.img"
+        data = _raw(image, (1 << 20) + 512)
+        disk_size = 2 << 20
+        plan = restore.preflight_image(image, disk_size)
+        write_sizes: list[int] = []
+        result, storage, _events = _restore(
+            plan,
+            folder,
+            storage=bytearray(disk_size),
+            disk_size=disk_size,
+            write_sizes=write_sizes,
+        )
+        assert result.verified
+        assert storage[: len(data)] == data
+        assert write_sizes == [1 << 20, 512]
 
 
 def test_bad_confirmation_and_protected_target_never_open_a_disk():
@@ -325,12 +363,12 @@ def test_cancellation_reports_partial_target_and_never_verifies():
             checks += 1
             return checks > 1
 
-        original_chunk = restore.CHUNK_BYTES
-        restore.CHUNK_BYTES = 512
+        original_chunk = restore.WRITE_CHUNK_BYTES
+        restore.WRITE_CHUNK_BYTES = 512
         try:
             result, _storage, events = _restore(plan, folder, cancel=cancel)
         finally:
-            restore.CHUNK_BYTES = original_chunk
+            restore.WRITE_CHUNK_BYTES = original_chunk
         assert result.cancelled
         assert result.target_not_trusted
         assert "partition-ready" not in events

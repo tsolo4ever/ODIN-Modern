@@ -36,6 +36,7 @@ from scripts import pyimager
 
 
 CHUNK_BYTES = 8 << 20
+WRITE_CHUNK_BYTES = 1 << 20
 MIN_SECTOR_BYTES = 512
 HEX_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -305,9 +306,9 @@ def preflight_image(
         manifest, disk_size, capture_length, recorded_sha = _load_compact_manifest(path)
         if path.stat().st_size != capture_length:
             raise GuardedImageError("compact image length does not match its manifest")
-        if target_capacity < disk_size:
+        if target_capacity < capture_length:
             raise GuardedImageError(
-                f"target capacity {target_capacity} is smaller than original source capacity {disk_size}"
+                f"target capacity {target_capacity} is smaller than captured layout {capture_length}"
             )
         with path.open("rb") as stream:
             digest, read_bytes = _hash_stream(
@@ -319,7 +320,7 @@ def preflight_image(
         _validate_compact_layout(path, manifest, disk_size)
         log(f"Compact image validated: {read_bytes} bytes, SHA-256 {digest}")
         return GuardedImagePlan(
-            path, path, "compact", capture_length, disk_size, digest,
+            path, path, "compact", capture_length, capture_length, digest,
             manifest_path=compact_manifest_path(path),
         )
 
@@ -474,7 +475,7 @@ def restore_and_verify(
                 if should_cancel is not None and should_cancel():
                     cancelled = True
                     break
-                block = source.read(min(CHUNK_BYTES, plan.write_bytes - bytes_written))
+                block = source.read(min(WRITE_CHUNK_BYTES, plan.write_bytes - bytes_written))
                 if not block:
                     raise GuardedRestoreError("short source read during write", target_not_trusted=True)
                 written = target.write(block)
