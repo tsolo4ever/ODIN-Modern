@@ -136,10 +136,12 @@ class OdinMApp:
         for job in self._auto_clone_pending.values():
             self._root.after_cancel(job)
         self._auto_clone_pending.clear()
+        self._monitor.pause()
         if self._flash_widget is not None and self._flash_widget.winfo_exists():
             self._flash_widget.withdraw()
 
     def _return_to_multi_mode(self):
+        self._monitor.resume()
         self._monitor.refresh()
         if self._config.get_show_flash_widget():
             self._show_flash_widget()

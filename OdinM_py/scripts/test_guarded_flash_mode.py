@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,12 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import app  # noqa: E402
+import ttkbootstrap as ttk  # noqa: E402
 from clone_worker import CloneStatus  # noqa: E402
+from drive_manager import DriveMonitor  # noqa: E402
+from guarded_flash_safety import ProtectedHardwareStore  # noqa: E402
 from hash_worker import HashStatus  # noqa: E402
 from ui.guarded_single_flash import (  # noqa: E402
     IMAGE_PLACEHOLDER,
     MODE_GUARDED,
     MODE_MULTI,
+    GuardedSingleFlashFrame,
     GuardedSessionState,
 )
 from ui.main_window import format_eta, format_speed, sync_flash_widget  # noqa: E402
@@ -103,8 +108,9 @@ def test_entering_guarded_cancels_auto_jobs_and_hides_flash_widget():
         winfo_exists=lambda: True,
         withdraw=lambda: cancelled.append("hidden"),
     )
+    instance._monitor = SimpleNamespace(pause=lambda: cancelled.append("paused"))
     instance._enter_guarded_mode()
-    assert cancelled == ["job-2", "job-3", "hidden"]
+    assert cancelled == ["job-2", "job-3", "paused", "hidden"]
     assert not instance._auto_clone_pending
 
 
@@ -127,14 +133,104 @@ def test_delayed_auto_job_is_discarded_in_guarded_mode():
     assert not instance._auto_clone_pending
 
 
-def test_return_to_multi_refreshes_before_auto_flash_can_resume():
+def test_return_to_multi_resumes_watches_then_refreshes():
     instance = _bare_app(multi_active=True)
     events = []
-    instance._monitor = SimpleNamespace(refresh=lambda: events.append("refresh"))
+    instance._monitor = SimpleNamespace(
+        resume=lambda: events.append("resume"),
+        refresh=lambda: events.append("refresh"),
+    )
     instance._config = SimpleNamespace(get_show_flash_widget=lambda: True)
     instance._show_flash_widget = lambda: events.append("widget")
     instance._return_to_multi_mode()
-    assert events == ["refresh", "widget"]
+    assert events == ["resume", "refresh", "widget"]
+
+
+def test_guarded_mode_pause_preserves_and_resumes_disk_watches():
+    scheduled = {}
+    cancelled = []
+    next_job = 0
+
+    class Root:
+        def after(self, _delay, callback):
+            nonlocal next_job
+            next_job += 1
+            job = f"job-{next_job}"
+            scheduled[job] = callback
+            return job
+
+        def after_cancel(self, job):
+            cancelled.append(job)
+            scheduled.pop(job, None)
+
+    monitor = DriveMonitor(Root(), lambda _drives: None)
+    monitor.watch_slot(2, 7, lambda: None)
+    state = monitor._watches[2]
+    first_job = state["job"]
+    monitor.pause()
+    assert cancelled == [first_job]
+    assert state["job"] is None
+    assert 2 in monitor._watches
+    monitor.resume()
+    assert state["job"] in scheduled
+    assert state["job"] != first_job
+
+
+_UI_ROOT = None
+
+
+def _ui_root():
+    global _UI_ROOT
+    if _UI_ROOT is None:
+        _UI_ROOT = ttk.Window(themename="darkly")
+        _UI_ROOT.withdraw()
+    return _UI_ROOT
+
+
+def test_existing_baseline_disables_the_scan_action():
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "protected.json"
+        path.write_text(
+            '{"schema_version":1,"records":[{"record_id":"test",'
+            '"stable_key":null,"descriptor_key":"descriptor:test",'
+            '"first_seen_utc":"2026-08-16T00:00:00+00:00",'
+            '"last_seen_utc":"2026-08-16T00:00:00+00:00",'
+            '"description":"test baseline","disk_snapshot":{}}]}',
+            encoding="utf-8",
+        )
+        frame = GuardedSingleFlashFrame(
+            _ui_root(), store=ProtectedHardwareStore(path)
+        )
+        refreshed = []
+        frame.refresh_targets = lambda: refreshed.append(True)
+        frame.activate()
+        assert frame._protection_text.get() == "Protected baseline loaded."
+        assert str(frame._scan_button.cget("state")) == "disabled"
+        assert frame._scan_button.cget("text") == "Hardware Protected"
+        assert refreshed == [True]
+        frame.destroy()
+
+
+def test_collapsing_guarded_log_shrinks_and_restores_window():
+    def geometry_height(window) -> int:
+        return int(window.geometry().split("x", 1)[1].split("+", 1)[0])
+
+    root = _ui_root()
+    root.geometry("780x700+10000+10000")
+    root.deiconify()
+    frame = GuardedSingleFlashFrame(root)
+    frame.pack(fill="both", expand=True)
+    root.update()
+    expanded = geometry_height(root)
+    frame._toggle_log()
+    root.update()
+    collapsed = geometry_height(root)
+    assert collapsed < expanded
+    frame._toggle_log()
+    root.update()
+    assert geometry_height(root) >= expanded
+    frame.destroy()
+    root.withdraw()
 
 
 def test_moved_display_helpers_keep_existing_values():
@@ -171,6 +267,8 @@ def _run_direct() -> int:
         except Exception as exc:
             failures += 1
             print(f"FAIL {test.__name__}: {exc}")
+    if _UI_ROOT is not None:
+        _UI_ROOT.destroy()
     print(f"\n{len(tests) - failures}/{len(tests)} checks passed")
     return 1 if failures else 0
 

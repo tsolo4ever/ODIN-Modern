@@ -80,6 +80,10 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._target_by_display: dict[str, DiskIdentity] = {}
         self._placeholder_visible = False
         self._log_expanded = True
+        self._baseline_exists = False
+        self._baseline_ready = False
+        self._expanded_window_height: int | None = None
+        self._original_minsize: tuple[int, int] | None = None
         self._build()
 
     @property
@@ -97,11 +101,13 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self.clear_log()
         self._set_status("Auto-Flash paused. Create or load the protected baseline.")
         self.append_log("[Guarded] Mode entered. Auto-Flash is paused.")
+        self._baseline_exists = self._store.path.exists()
         try:
             baseline_ready = bool(self._store.load())
         except ProtectedStoreError as exc:
             self.append_log(f"[Protection] {exc}", warning=True)
             baseline_ready = False
+        self._set_baseline_state(self._baseline_exists, baseline_ready)
         if baseline_ready:
             self.refresh_targets()
         else:
@@ -192,14 +198,11 @@ class GuardedSingleFlashFrame(ttk.Frame):
         protection = ttk.LabelFrame(self, text="Protected System Hardware")
         protection.grid(row=1, column=0, sticky=EW, pady=(0, 8))
         protection.columnconfigure(0, weight=1)
+        self._protection_text = ttk.StringVar()
         ttk.Label(
             protection,
-            text=(
-                "Unplug every flash target and other removable storage before scanning. "
-                "Every disk found is added to the protected list."
-            ),
+            textvariable=self._protection_text,
             justify=LEFT,
-            wraplength=700,
         ).grid(row=0, column=0, sticky=W, padx=8, pady=6)
         self._scan_button = ttk.Button(
             protection,
@@ -208,6 +211,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
             command=self._scan_system_hardware,
         )
         self._scan_button.grid(row=0, column=1, padx=8, pady=6)
+        self._set_baseline_state(False, False)
 
         target = ttk.LabelFrame(self, text="One Fixed-Disk Target")
         target.grid(row=2, column=0, sticky=EW, pady=(0, 8))
@@ -271,6 +275,12 @@ class GuardedSingleFlashFrame(ttk.Frame):
     def _scan_system_hardware(self) -> None:
         if self.busy:
             return
+        if self._baseline_exists:
+            self.append_log(
+                "[Protection] Protected baseline already exists; scan is disabled.",
+                warning=True,
+            )
+            return
         confirmed = messagebox.askokcancel(
             "Scan Protected System Hardware",
             "Before continuing, unplug EVERY flash target and all other removable storage.\n\n"
@@ -288,6 +298,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
 
     def _baseline_complete(self, result: object) -> None:
         scan = result
+        self._set_baseline_state(True, True)
         self.append_log(
             f"[Protection] Scan complete: {len(scan.disks)} disk(s), "
             f"{len(scan.added_record_ids)} newly protected."
@@ -392,7 +403,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
     def _set_busy(self, busy: bool) -> None:
         self.state.busy = busy
         widget_state = DISABLED if busy else NORMAL
-        self._scan_button.configure(state=widget_state)
+        self._update_baseline_controls()
         self._refresh_button.configure(state=widget_state)
         self._prepare_button.configure(state=widget_state)
         self._target_combo.configure(state=DISABLED if busy else "readonly")
@@ -453,14 +464,49 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._target_var.set("")
         self._target_detail.set("No eligible fixed disk selected.")
 
+    def _set_baseline_state(self, exists: bool, ready: bool) -> None:
+        self._baseline_exists = exists
+        self._baseline_ready = ready
+        self._update_baseline_controls()
+
+    def _update_baseline_controls(self) -> None:
+        if self._baseline_ready:
+            text = "Protected baseline loaded."
+        elif self._baseline_exists:
+            text = "Protected baseline file exists but could not be loaded."
+        else:
+            text = "Unplug all flash targets and extra drives, then scan once."
+        self._protection_text.set(text)
+        self._scan_button.configure(
+            text="Hardware Protected" if self._baseline_exists else "Scan System Hardware",
+            state=DISABLED if self.busy or self._baseline_exists else NORMAL,
+        )
+
     def _toggle_log(self) -> None:
+        window = self.winfo_toplevel()
+        window.update_idletasks()
         self._log_expanded = not self._log_expanded
         if self._log_expanded:
             self._log_box.grid()
             self._log_toggle.configure(text="Collapse")
+            window.update_idletasks()
+            if self._original_minsize is not None:
+                window.minsize(*self._original_minsize)
+            target_height = max(
+                self._expanded_window_height or 0,
+                window.winfo_reqheight(),
+                (self._original_minsize or (0, 0))[1],
+            )
+            window.geometry(f"{window.winfo_width()}x{target_height}")
         else:
+            self._expanded_window_height = window.winfo_height()
+            self._original_minsize = window.minsize()
             self._log_box.grid_remove()
             self._log_toggle.configure(text="Expand")
+            window.update_idletasks()
+            compact_height = window.winfo_reqheight()
+            window.minsize(self._original_minsize[0], compact_height)
+            window.geometry(f"{window.winfo_width()}x{compact_height}")
 
     def _select_all_log(self, _event=None):
         self._log_box.tag_add("sel", "1.0", "end-1c")

@@ -516,8 +516,15 @@ class DriveMonitor:
         self._root = root
         self._on_changed = on_drives_changed
         self._known_serials: dict[int, str] = {}
+        self._paused = False
         # slot_idx -> {"disk_number", "miss_streak", "job"}
         self._watches: dict[int, dict] = {}
+
+    def _schedule_watch(self, state: dict) -> None:
+        if self._paused or self._watches.get(state["slot_idx"]) is not state:
+            state["job"] = None
+            return
+        state["job"] = self._root.after(state["interval_ms"], state["check"])
 
     def refresh(self):
         """One-shot manual scan - fires on_drives_changed with whatever is
@@ -544,12 +551,21 @@ class DriveMonitor:
         other disk can affect it. Replaces any existing watch on this slot.
         """
         self.unwatch_slot(slot_idx)
-        state = {"disk_number": disk_number, "miss_streak": 0, "job": None}
+        state = {
+            "slot_idx": slot_idx,
+            "disk_number": disk_number,
+            "miss_streak": 0,
+            "job": None,
+            "interval_ms": interval_ms,
+        }
         self._watches[slot_idx] = state
 
         def _check():
             if self._watches.get(slot_idx) is not state:
                 return  # this watch was cancelled/replaced - stale callback
+            if self._paused:
+                state["job"] = None
+                return
             if is_disk_removable(disk_number):
                 state["miss_streak"] = 0
             else:
@@ -558,9 +574,10 @@ class DriveMonitor:
                     del self._watches[slot_idx]
                     on_missing()
                     return
-            state["job"] = self._root.after(interval_ms, _check)
+            self._schedule_watch(state)
 
-        state["job"] = self._root.after(interval_ms, _check)
+        state["check"] = _check
+        self._schedule_watch(state)
 
     def watch_for_return(self, slot_idx: int, disk_number: int,
                          on_return: Callable[[], None],
@@ -574,19 +591,47 @@ class DriveMonitor:
         Replaces any existing watch on this slot.
         """
         self.unwatch_slot(slot_idx)
-        state = {"disk_number": disk_number, "miss_streak": 0, "job": None}
+        state = {
+            "slot_idx": slot_idx,
+            "disk_number": disk_number,
+            "miss_streak": 0,
+            "job": None,
+            "interval_ms": interval_ms,
+        }
         self._watches[slot_idx] = state
 
         def _check():
             if self._watches.get(slot_idx) is not state:
                 return  # this watch was cancelled/replaced - stale callback
+            if self._paused:
+                state["job"] = None
+                return
             if is_disk_removable(disk_number):
                 del self._watches[slot_idx]
                 on_return()
                 return
-            state["job"] = self._root.after(interval_ms, _check)
+            self._schedule_watch(state)
 
-        state["job"] = self._root.after(interval_ms, _check)
+        state["check"] = _check
+        self._schedule_watch(state)
+
+    def pause(self) -> None:
+        """Stop disk check-ins without forgetting confirmed-slot watches."""
+        if self._paused:
+            return
+        self._paused = True
+        for state in self._watches.values():
+            if state["job"] is not None:
+                self._root.after_cancel(state["job"])
+                state["job"] = None
+
+    def resume(self) -> None:
+        """Resume the exact watches that were active before pause()."""
+        if not self._paused:
+            return
+        self._paused = False
+        for state in list(self._watches.values()):
+            self._schedule_watch(state)
 
     def unwatch_slot(self, slot_idx: int):
         """Stop watching a slot, e.g. because it's being reassigned."""
