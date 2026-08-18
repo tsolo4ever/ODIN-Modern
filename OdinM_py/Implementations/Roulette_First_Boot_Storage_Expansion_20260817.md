@@ -2,9 +2,10 @@
 
 ## Status
 
-Implemented and validated in disposable loop-device tests on 2026-08-17.
-Awaiting the operator-attended cabinet test before this plan can move to
-`Implementations/Done/`.
+Implemented and validated in disposable loop-device tests on 2026-08-17. The
+operator-attended cabinet test expanded the disposable 64-GB target and booted
+the game successfully. The corrected image still requires one unattended
+cabinet boot before this plan can move to `Implementations/Done/`.
 
 ## Validated source image
 
@@ -15,7 +16,9 @@ Awaiting the operator-attended cabinet test before this plan can move to
 - Partition table: MBR with one bootable Linux partition
 - Root partition: number 1, start LBA 2,048, 7,317,504 sectors, ext4
 - Root UUID: `e4059dde-ca92-4c9a-99d7-bc75247a9a64`
-- Filesystem check: all five `e2fsck -f -n` passes completed without errors
+- Filesystem check: all five `e2fsck -f -n` passes completed without structural
+  errors, but the captured source superblock carried an inherited
+  `clean with errors` state
 - Guest OS: Ubuntu 12.04.4 LTS
 - Guest partition tooling: util-linux `sfdisk` 2.20.1, `partprobe`,
   `resize2fs`, `mkswap`, and `swapon`
@@ -104,8 +107,9 @@ recreated.
 - Disposable integration test: `scripts/test_roulette_expand_storage.sh`
 - Derived test image: `D:\cards\Roulette Auto Expand TEST.compact.img`
 - Derived manifest: `D:\cards\Roulette Auto Expand TEST.compact.json`
-- Derived image SHA-1: `8de339323c7aedb984250a3840224b55de7e75af`
-- Derived image SHA-256: `71dcf7d19214c80b1156e407717f1ebb62c285bc60ecb193842a36282ef4382e`
+- Broken-clock configuration: `scripts/roulette_e2fsck.conf`
+- Derived image SHA-1: `2fda253b290818c999f4d197c915f01e3c45c68c`
+- Derived image SHA-256: `edf291e76ed3b1d9689cf2e0a788a8c88aee94f537e9e3bf85e9f935871f6c73`
 
 The integration test proved both stages using a disposable 10-GiB sparse disk,
 preserved the MBR disk identifier, grew ext4 to the new partition-1 boundary,
@@ -117,3 +121,29 @@ with the image's actual Ubuntu 12.04 `sfdisk` 2.20.1, `resize2fs`, and `mkswap`.
 Odin compact preflight accepted the final derived image and its updated
 manifest. `e2fsck -f -n` completed all five passes without errors, and Ubuntu
 12.04 `dash -n` accepted the exact script embedded in the image.
+
+## Cabinet validation and fsck correction
+
+The first physical cabinet boot stopped when Ubuntu 12.04 automatic fsck
+returned status 4. An operator-approved forced repair cleared the condition;
+the expansion then completed both stages and the game booted. Post-test
+inspection proved the exact planned partition geometry, preserved root and
+swap UUIDs, preserved the MBR disk identifier, one canonical swap entry,
+successful completion state, and an inert `0644` boot script. The expanded
+root passed all five offline `e2fsck -f -n` passes with exit code 0.
+
+Both the untouched No Swap source and the initial derived image had the ext4
+superblock state `clean with errors`, while reporting no structural errors.
+The derived image also has filesystem timestamps newer than the cabinet's
+2016 real-time clock. The corrected derived image now:
+
+- has a clean ext4 superblock state;
+- contains `/etc/e2fsck.conf` as root-owned mode `0644` with
+  `broken_system_clock = true`;
+- passes the image's own Ubuntu 12.04 `e2fsck` 1.42 with its effective time
+  forced back to the cabinet's 2016 date; and
+- passes Odin compact-image preflight against the updated manifest digest.
+
+The pre-correction image and manifest are retained as adjacent
+`.pre-fsck-fix-20260818.bak` files. The original No Swap source remains
+unchanged.
