@@ -17,9 +17,12 @@ from pathlib import Path
 from typing import Any
 
 from compact_image import (
+    EXT4_MANIFEST_FORMAT,
+    EXT4_MANIFEST_SCHEMA,
     MANIFEST_FORMAT,
     MANIFEST_SCHEMA,
     compact_manifest_path,
+    minimum_target_bytes,
     parse_mbr_layout,
 )
 from clone_worker import CloneStatus
@@ -38,6 +41,10 @@ from scripts import pyimager
 CHUNK_BYTES = 8 << 20
 MIN_SECTOR_BYTES = 512
 HEX_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
+UUID_TEXT = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 class GuardedImageError(ValueError):
@@ -199,7 +206,199 @@ def _positive_int(value: Any, label: str, *, allow_zero: bool = False) -> int:
     return value
 
 
-def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str]:
+def _validate_partition_record(value: Any, label: str) -> dict[str, Any]:
+    record = _require_object(
+        value,
+        label,
+        {
+            "number", "kind", "type_code", "start_lba", "sector_count",
+            "table_lba", "bootable", "type",
+        },
+    )
+    _positive_int(record["number"], f"{label}.number")
+    _positive_int(record["start_lba"], f"{label}.start_lba")
+    _positive_int(record["sector_count"], f"{label}.sector_count")
+    _positive_int(record["table_lba"], f"{label}.table_lba", allow_zero=True)
+    _positive_int(record["type_code"], f"{label}.type_code")
+    if record["kind"] not in ("primary", "logical") or not isinstance(record["bootable"], bool):
+        raise GuardedImageError(f"compact manifest {label} partition schema is invalid")
+    if record["type"] != f"0x{record['type_code']:02X}":
+        raise GuardedImageError(f"compact manifest {label} partition type is inconsistent")
+    return record
+
+
+def _validate_ext4_records(
+    root: dict[str, Any], disk_size: int, sector_size: int, capture_length: int
+) -> int:
+    source_layout = _require_object(
+        root["source_layout"],
+        "source_layout",
+        {"partition_style", "extended_start_lba", "extended_sector_count", "partitions"},
+    )
+    filesystem = _require_object(
+        root["filesystem"],
+        "filesystem",
+        {
+            "partition_number", "uuid", "block_size", "original_start_lba",
+            "original_sector_count", "compact_sector_count", "minimum_blocks",
+            "buffer_bytes", "prefix_bytes", "type",
+        },
+    )
+    expansion = _require_object(
+        root["expansion"],
+        "expansion",
+        {
+            "root_uuid", "swap_uuid", "swap_sector_count", "alignment_sectors",
+            "minimum_target_bytes", "installed_script_sha256", "armed",
+        },
+    )
+    omitted = root["omitted_partitions"]
+    if not isinstance(omitted, list) or len(omitted) != 1:
+        raise GuardedImageError("compact manifest omitted swap schema is invalid")
+    swap = _require_object(
+        omitted[0],
+        "omitted_partitions[0]",
+        {"partition_number", "uuid", "original_start_lba", "sector_count", "type"},
+    )
+    if source_layout["partition_style"] != "MBR" or not isinstance(
+        source_layout["partitions"], list
+    ):
+        raise GuardedImageError("compact manifest source layout is invalid")
+    source_partitions = [
+        _validate_partition_record(item, f"source_layout.partitions[{index}]")
+        for index, item in enumerate(source_layout["partitions"])
+    ]
+    if len(source_partitions) != 2 or len(
+        {item["number"] for item in source_partitions}
+    ) != 2:
+        raise GuardedImageError(
+            "compact manifest source must contain exactly one root and one swap partition"
+        )
+    image_partitions = root["layout"]["partitions"]
+    if not isinstance(image_partitions, list) or len(image_partitions) != 1:
+        raise GuardedImageError("ext4 compact image must contain exactly one partition")
+    if (
+        root["layout"]["extended_start_lba"] is not None
+        or root["layout"]["extended_sector_count"] is not None
+    ):
+        raise GuardedImageError("ext4 compact image must not contain an extended partition")
+    image_root = _validate_partition_record(image_partitions[0], "layout.partitions[0]")
+    for key in (
+        "partition_number", "block_size", "original_start_lba",
+        "original_sector_count", "compact_sector_count", "minimum_blocks",
+        "buffer_bytes", "prefix_bytes",
+    ):
+        _positive_int(filesystem[key], f"filesystem.{key}")
+    for key in (
+        "partition_number", "original_start_lba", "sector_count"
+    ):
+        _positive_int(swap[key], f"omitted_partitions[0].{key}")
+    for key in (
+        "swap_sector_count", "alignment_sectors", "minimum_target_bytes"
+    ):
+        _positive_int(expansion[key], f"expansion.{key}")
+    if filesystem["type"] != "ext4" or swap["type"] != "linux-swap":
+        raise GuardedImageError("compact manifest filesystem types are invalid")
+    if not UUID_TEXT.fullmatch(str(filesystem["uuid"])) or not UUID_TEXT.fullmatch(
+        str(swap["uuid"])
+    ):
+        raise GuardedImageError("compact manifest filesystem UUID is invalid")
+    if expansion["armed"] is not True or not HEX_SHA256.fullmatch(
+        str(expansion["installed_script_sha256"])
+    ):
+        raise GuardedImageError("compact manifest expansion hook is not valid")
+    if filesystem["buffer_bytes"] != 64 << 20:
+        raise GuardedImageError("compact manifest ext4 buffer is unsupported")
+    if filesystem["block_size"] not in (1024, 2048, 4096):
+        raise GuardedImageError("compact manifest ext4 block size is unsupported")
+    if filesystem["buffer_bytes"] % filesystem["block_size"]:
+        raise GuardedImageError("compact manifest ext4 buffer is not block aligned")
+    compact_bytes = filesystem["compact_sector_count"] * sector_size
+    expected_compact_bytes = (
+        filesystem["minimum_blocks"] * filesystem["block_size"]
+        + filesystem["buffer_bytes"]
+    )
+    if compact_bytes != expected_compact_bytes:
+        raise GuardedImageError("compact manifest ext4 minimum and buffer are inconsistent")
+    if filesystem["compact_sector_count"] > filesystem["original_sector_count"]:
+        raise GuardedImageError("compact manifest ext4 size exceeds the source filesystem")
+    if filesystem["prefix_bytes"] != filesystem["original_start_lba"] * sector_size:
+        raise GuardedImageError("compact manifest prefix length is inconsistent")
+    if filesystem["partition_number"] != 1 or image_root["number"] != 1:
+        raise GuardedImageError("compact manifest root must be partition 1")
+    if image_root["type_code"] != 0x83 or not image_root["bootable"]:
+        raise GuardedImageError("compact manifest root partition is not bootable ext4")
+    if (
+        image_root["start_lba"] != filesystem["original_start_lba"]
+        or image_root["sector_count"] != filesystem["compact_sector_count"]
+        or capture_length != image_root["start_lba"] * sector_size
+        + image_root["sector_count"] * sector_size
+    ):
+        raise GuardedImageError("compact manifest ext4 geometry is inconsistent")
+    source_root = next(
+        (item for item in source_partitions if item["number"] == filesystem["partition_number"]),
+        None,
+    )
+    source_swap = next(
+        (item for item in source_partitions if item["number"] == swap["partition_number"]),
+        None,
+    )
+    if source_root is None or source_swap is None:
+        raise GuardedImageError("compact manifest source partitions are incomplete")
+    if (
+        source_root["type_code"] != 0x83
+        or source_root["kind"] != "primary"
+        or not source_root["bootable"]
+        or source_root["start_lba"] != filesystem["original_start_lba"]
+        or source_root["sector_count"] != filesystem["original_sector_count"]
+        or source_swap["type_code"] != 0x82
+        or source_swap["start_lba"] != swap["original_start_lba"]
+        or source_swap["sector_count"] != swap["sector_count"]
+    ):
+        raise GuardedImageError("compact manifest source geometry is inconsistent")
+    disk_sectors = disk_size // sector_size
+    if any(
+        item["start_lba"] + item["sector_count"] > disk_sectors
+        for item in source_partitions
+    ):
+        raise GuardedImageError("compact manifest source partition exceeds the source disk")
+    if source_swap["kind"] == "logical":
+        extended_start = source_layout["extended_start_lba"]
+        extended_count = source_layout["extended_sector_count"]
+        if (
+            not isinstance(extended_start, int)
+            or not isinstance(extended_count, int)
+            or extended_start <= 0
+            or extended_count <= 0
+            or source_swap["start_lba"] < extended_start
+            or source_swap["start_lba"] + source_swap["sector_count"]
+            > extended_start + extended_count
+        ):
+            raise GuardedImageError("compact manifest source extended geometry is invalid")
+    elif (
+        source_layout["extended_start_lba"] is not None
+        or source_layout["extended_sector_count"] is not None
+    ):
+        raise GuardedImageError("compact manifest source extended geometry is unexpected")
+    if (
+        str(expansion["root_uuid"]).casefold() != str(filesystem["uuid"]).casefold()
+        or str(expansion["swap_uuid"]).casefold() != str(swap["uuid"]).casefold()
+        or expansion["swap_sector_count"] != swap["sector_count"]
+    ):
+        raise GuardedImageError("compact manifest expansion identity is inconsistent")
+    required = minimum_target_bytes(
+        image_root["start_lba"],
+        image_root["sector_count"],
+        swap["sector_count"],
+        expansion["alignment_sectors"],
+        sector_size,
+    )
+    if expansion["minimum_target_bytes"] != required or required > disk_size:
+        raise GuardedImageError("compact manifest minimum target capacity is inconsistent")
+    return required
+
+
+def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, int]:
     manifest_path = compact_manifest_path(path)
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -207,13 +406,26 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str]:
         raise GuardedImageError(f"matching compact manifest is missing: {manifest_path}") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise GuardedImageError(f"compact manifest is unreadable: {exc}") from exc
-    root = _require_object(
-        payload,
-        "root",
-        {"schema_version", "format", "source", "capture", "layout"},
+    if not isinstance(payload, dict):
+        raise GuardedImageError("compact manifest root schema is invalid")
+    legacy = (
+        payload.get("schema_version") == MANIFEST_SCHEMA
+        and payload.get("format") == MANIFEST_FORMAT
     )
-    if root["schema_version"] != MANIFEST_SCHEMA or root["format"] != MANIFEST_FORMAT:
+    ext4_compact = (
+        payload.get("schema_version") == EXT4_MANIFEST_SCHEMA
+        and payload.get("format") == EXT4_MANIFEST_FORMAT
+    )
+    if legacy:
+        root_keys = {"schema_version", "format", "source", "capture", "layout"}
+    elif ext4_compact:
+        root_keys = {
+            "schema_version", "format", "source", "capture", "layout",
+            "source_layout", "filesystem", "omitted_partitions", "expansion",
+        }
+    else:
         raise GuardedImageError("compact manifest version or format is unsupported")
+    root = _require_object(payload, "root", root_keys)
     source = _require_object(
         root["source"],
         "source",
@@ -261,7 +473,12 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str]:
         raise GuardedImageError("compact manifest SHA-256 is missing or invalid")
     if layout["partition_style"] != "MBR" or not isinstance(layout["partitions"], list):
         raise GuardedImageError("compact manifest partition layout is invalid")
-    return root, disk_size, capture_length, sha256.lower()
+    required_capacity = capture_length
+    if ext4_compact:
+        required_capacity = _validate_ext4_records(
+            root, disk_size, sector_size, capture_length
+        )
+    return root, disk_size, capture_length, sha256.lower(), required_capacity
 
 
 def _validate_compact_layout(path: Path, manifest: dict[str, Any], disk_size: int) -> None:
@@ -302,12 +519,20 @@ def preflight_image(
     lower_name = path.name.casefold()
 
     if lower_name.endswith(".compact.img"):
-        manifest, disk_size, capture_length, recorded_sha = _load_compact_manifest(path)
+        manifest, disk_size, capture_length, recorded_sha, required_capacity = (
+            _load_compact_manifest(path)
+        )
         if path.stat().st_size != capture_length:
             raise GuardedImageError("compact image length does not match its manifest")
-        if target_capacity < capture_length:
+        if target_capacity < required_capacity:
+            requirement = (
+                "required compact root-plus-swap capacity"
+                if manifest["schema_version"] == EXT4_MANIFEST_SCHEMA
+                else "captured layout"
+            )
             raise GuardedImageError(
-                f"target capacity {target_capacity} is smaller than captured layout {capture_length}"
+                f"target capacity {target_capacity} is smaller than "
+                f"{requirement} {required_capacity}"
             )
         with path.open("rb") as stream:
             digest, read_bytes = _hash_stream(
@@ -319,7 +544,7 @@ def preflight_image(
         _validate_compact_layout(path, manifest, disk_size)
         log(f"Compact image validated: {read_bytes} bytes, SHA-256 {digest}")
         return GuardedImagePlan(
-            path, path, "compact", capture_length, capture_length, digest,
+            path, path, "compact", capture_length, required_capacity, digest,
             manifest_path=compact_manifest_path(path),
         )
 

@@ -25,6 +25,7 @@ from drive_manager import (
     get_path_disk_number,
     get_physical_drive,
 )
+from ext4_compact_capture import Ext4CompactCaptureError, check_prerequisites
 from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
@@ -32,15 +33,15 @@ from partition_reader import get_image_hash_region
 from pyimager_worker import PyImagerWorker
 
 ENGINE_ODINC = "ODINC.exe  (ODIN container image)"
-ENGINE_PY_COMPACT = "pyimager  (skip trailing unallocated space)"
+ENGINE_PY_COMPACT = "pyimager  (ext4 used blocks, omit swap)"
 ENGINE_PY = "pyimager  (raw .img, built in)"
 ENGINE_PY_GZ = "pyimager  (gzip-compressed .img.gz)"
 ENGINE_LABELS = [ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ, ENGINE_ODINC]
 
 ENGINE_HINTS = {
     ENGINE_ODINC: "ODIN container format. Options… sets backup flags.",
-    ENGINE_PY_COMPACT: "MBR disks only. Copies through the final real partition "
-                       "and skips trailing unallocated space.",
+    ENGINE_PY_COMPACT: "MBR Linux disks only. Preserves the boot prefix, compacts "
+                       "ext4 with 64 MiB free, and records omitted swap metadata.",
     ENGINE_PY: "Plain dd-style image, no header. Real progress, per-sector "
                "retry, SHA-256 while reading.",
     ENGINE_PY_GZ: "Same as raw but gzip-compressed; hashes still describe the "
@@ -396,14 +397,21 @@ class MakeImageDialog(ttk.Toplevel):
             self._status("Backup cancelled.", "warning")
             return
         if self._compact_mode and not messagebox.askyesno(
-            "Create bounded raw image?",
-            "This MBR-only mode copies every byte through the final real partition "
-            "and skips only trailing unallocated space. It creates a .compact.img "
-            "and matching .compact.json manifest. Continue?",
+            "Create ext4 compact image?",
+            "This MBR-only mode preserves the complete boot prefix, copies allocated "
+            "ext4 blocks into a staging image, leaves 64 MiB free, and omits swap "
+            "data while recording its UUID and size in the matching JSON. The source "
+            "disk is never mounted or changed. Continue?",
             parent=self,
         ):
             self._status("Backup cancelled.", "warning")
             return
+        if self._compact_mode:
+            try:
+                check_prerequisites()
+            except Ext4CompactCaptureError as exc:
+                self._status(str(exc), "danger")
+                return
         if self._used_block_mode and not messagebox.askyesno(
             "Create repair/archive image set?",
             "This mode creates an MBR plus partition-image set. It is not a "
@@ -518,8 +526,8 @@ class MakeImageDialog(ttk.Toplevel):
                     saved = int(result.get("saved_trailing_bytes", 0)) / (1 << 30)
                     self._progress_var.set(100)
                     self._status(
-                        f"Bounded image complete; skipped {saved:.2f} GiB of trailing "
-                        "unallocated space. Keep the image and manifest together.",
+                        f"Ext4 compact image complete; omitted swap and saved "
+                        f"{saved:.2f} GiB. Keep the image and manifest together.",
                         "success",
                     )
                 self._finish_buttons()

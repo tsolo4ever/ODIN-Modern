@@ -16,9 +16,7 @@ from pathlib import Path
 
 from clone_worker import CloneStatus
 from compact_image import (
-    build_manifest,
     compact_manifest_path,
-    parse_mbr_layout,
     write_manifest,
 )
 
@@ -28,6 +26,10 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import pyimager  # noqa: E402
+from ext4_compact_capture import (  # noqa: E402
+    Ext4CompactCaptureCancelled,
+    capture_ext4_compact,
+)
 
 
 def randomize_disk_signature(disk_number: int, volumes=None) -> bytes:
@@ -168,65 +170,29 @@ class PyImagerWorker:
                 pass
 
         try:
-            with pyimager.Win32Disk(rf"\\.\PhysicalDrive{self._disk}") as disk:
-                info = disk.device_info()
-                current_serial = (info.get("serial") or "").strip()
-                if self._expected_size and disk.size != self._expected_size:
-                    raise OSError(
-                        f"PhysicalDrive{self._disk} changed size before capture: "
-                        f"expected {self._expected_size}, found {disk.size}."
-                    )
-                if (
-                    self._expected_serial
-                    and current_serial
-                    and current_serial.casefold() != self._expected_serial.casefold()
-                ):
-                    raise OSError(
-                        f"PhysicalDrive{self._disk} identity changed before capture."
-                    )
-                layout = parse_mbr_layout(disk, disk.size, disk.sector_size)
-
-            saved_gib = layout.saved_bytes / (1 << 30)
-            capture_gib = layout.capture_bytes / (1 << 30)
-            self._fire_log(
-                f"Bounded MBR capture: {capture_gib:.2f} GiB; "
-                f"skipping {saved_gib:.2f} GiB of trailing unallocated space."
-            )
-            meta = pyimager.image_disk(
-                self._disk,
-                str(temp_image),
-                offset=0,
-                length=layout.capture_bytes,
-                sha1=self._sha1,
-                force=True,
-                on_progress=self._progress,
-                on_log=self._fire_log,
-                should_cancel=self._cancel.is_set,
-                write_sidecars=False,
-            )
-            if meta.get("cancelled"):
-                return meta
-            if meta.get("bytes_written") != layout.capture_bytes:
-                raise OSError(
-                    f"Compact image is short: wrote {meta.get('bytes_written', 0)} of "
-                    f"{layout.capture_bytes} bytes."
+            try:
+                meta, manifest = capture_ext4_compact(
+                    self._disk,
+                    temp_image,
+                    expected_size=self._expected_size,
+                    expected_serial=self._expected_serial,
+                    include_sha1=self._sha1,
+                    should_cancel=self._cancel.is_set,
+                    on_progress=self._progress_percent,
+                    on_log=self._fire_log,
                 )
-            captured_serial = ((meta.get("device") or {}).get("serial") or "").strip()
-            if (
-                self._expected_serial
-                and captured_serial
-                and captured_serial.casefold() != self._expected_serial.casefold()
-            ):
-                raise OSError(f"PhysicalDrive{self._disk} changed during capture.")
-            manifest = build_manifest(layout, meta)
+            except Ext4CompactCaptureCancelled:
+                return {
+                    "cancelled": True,
+                    "bytes_written": 0,
+                    "region_length": 0,
+                    "bad_sector_count": 0,
+                    "digests": {},
+                }
             write_manifest(temp_manifest, manifest)
             os.replace(temp_image, output)
             os.replace(temp_manifest, manifest_path)
-            meta["format"] = "bounded_raw"
             meta["manifest"] = str(manifest_path)
-            meta["disk_size"] = layout.disk_size
-            meta["region_length"] = layout.capture_bytes
-            meta["saved_trailing_bytes"] = layout.saved_bytes
             return meta
         finally:
             for path in (temp_image, temp_manifest):
@@ -239,6 +205,9 @@ class PyImagerWorker:
 
     def _progress(self, done: int, total: int):
         pct = int(done * 100 / total) if total else 0
+        self._progress_percent(pct)
+
+    def _progress_percent(self, pct: int):
         if pct != self._last_pct:
             self._last_pct = pct
             self._call(self._on_progress, pct)

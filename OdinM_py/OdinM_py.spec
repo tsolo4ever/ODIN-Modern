@@ -8,6 +8,10 @@ from PyInstaller.utils.hooks import collect_data_files
 
 # ttkbootstrap ships theme JSON/CSS data files that must travel with the exe
 datas = collect_data_files('ttkbootstrap')
+datas += [
+    ('scripts/roulette_expand_storage.sh', 'scripts'),
+    ('scripts/roulette_e2fsck.conf', 'scripts'),
+]
 
 a = Analysis(
     ['main.py'],
@@ -42,6 +46,7 @@ a = Analysis(
         # built-in Python imaging engine (scripts/pyimager.py) and its worker
         'pyimager',
         'pyimager_worker',
+        'ext4_compact_capture',
     ],
     hookspath=[],
     hooksconfig={},

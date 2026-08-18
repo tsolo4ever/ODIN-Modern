@@ -18,6 +18,10 @@ GPT_PROTECTIVE_TYPE = 0xEE
 MAX_LOGICAL_PARTITIONS = 128
 MANIFEST_SCHEMA = 1
 MANIFEST_FORMAT = "odinm-bounded-raw"
+EXT4_MANIFEST_SCHEMA = 2
+EXT4_MANIFEST_FORMAT = "odinm-ext4-compact"
+EXT4_PARTITION_TYPE = 0x83
+SWAP_PARTITION_TYPE = 0x82
 
 
 class CompactImageError(ValueError):
@@ -57,6 +61,60 @@ class CompactLayout:
     @property
     def saved_bytes(self) -> int:
         return self.disk_size - self.capture_bytes
+
+    def manifest_dict(self) -> dict:
+        return {
+            "partition_style": "MBR",
+            "extended_start_lba": self.extended_start_lba,
+            "extended_sector_count": self.extended_sector_count,
+            "partitions": [item.manifest_dict() for item in self.partitions],
+        }
+
+
+@dataclass(frozen=True)
+class Ext4FilesystemRecord:
+    partition_number: int
+    uuid: str
+    block_size: int
+    original_start_lba: int
+    original_sector_count: int
+    compact_sector_count: int
+    minimum_blocks: int
+    buffer_bytes: int
+    prefix_bytes: int
+
+    def manifest_dict(self) -> dict:
+        data = asdict(self)
+        data["type"] = "ext4"
+        return data
+
+
+@dataclass(frozen=True)
+class OmittedSwapRecord:
+    partition_number: int
+    uuid: str
+    original_start_lba: int
+    sector_count: int
+
+    def manifest_dict(self) -> dict:
+        data = asdict(self)
+        data["type"] = "linux-swap"
+        return data
+
+
+@dataclass(frozen=True)
+class ExpansionRecord:
+    root_uuid: str
+    swap_uuid: str
+    swap_sector_count: int
+    alignment_sectors: int
+    minimum_target_bytes: int
+    installed_script_sha256: str
+
+    def manifest_dict(self) -> dict:
+        data = asdict(self)
+        data["armed"] = True
+        return data
 
 
 @dataclass(frozen=True)
@@ -119,7 +177,11 @@ def _overlap(left: PartitionExtent, right: PartitionExtent) -> bool:
 
 
 def parse_mbr_layout(
-    reader: BinaryIO, disk_size: int, sector_size: int = 512
+    reader: BinaryIO,
+    disk_size: int,
+    sector_size: int = 512,
+    *,
+    require_trailing_space: bool = True,
 ) -> CompactLayout:
     """Parse one MBR disk and return the safe raw-prefix capture boundary."""
     if sector_size < 512 or disk_size < sector_size or disk_size % sector_size:
@@ -244,7 +306,7 @@ def parse_mbr_layout(
                 f"Partitions {left.number} and {right.number} overlap."
             )
     capture_bytes = max(item.end_lba for item in ordered) * sector_size
-    if capture_bytes >= disk_size:
+    if require_trailing_space and capture_bytes >= disk_size:
         raise CompactImageError("Disk has no trailing unallocated space to omit.")
 
     return CompactLayout(
@@ -291,12 +353,143 @@ def build_manifest(layout: CompactLayout, capture_meta: dict) -> dict:
             "started_utc": capture_meta.get("started_utc", ""),
             "finished_utc": capture_meta.get("finished_utc", ""),
         },
-        "layout": {
-            "partition_style": "MBR",
-            "extended_start_lba": layout.extended_start_lba,
-            "extended_sector_count": layout.extended_sector_count,
-            "partitions": [item.manifest_dict() for item in layout.partitions],
+        "layout": layout.manifest_dict(),
+    }
+
+
+def make_ext4_only_layout(
+    source_layout: CompactLayout,
+    root_partition: PartitionExtent,
+    compact_sector_count: int,
+) -> CompactLayout:
+    if root_partition.number != 1 or root_partition.kind != "primary":
+        raise CompactImageError("Compact ext4 capture requires primary partition 1.")
+    if root_partition.type_code != EXT4_PARTITION_TYPE:
+        raise CompactImageError("Compact root partition is not Linux type 0x83.")
+    if compact_sector_count <= 0 or compact_sector_count > root_partition.sector_count:
+        raise CompactImageError("Compact ext4 sector count is out of range.")
+    compact_root = PartitionExtent(
+        number=1,
+        kind="primary",
+        type_code=EXT4_PARTITION_TYPE,
+        start_lba=root_partition.start_lba,
+        sector_count=compact_sector_count,
+        table_lba=0,
+        bootable=root_partition.bootable,
+    )
+    capture_bytes = compact_root.end_lba * source_layout.sector_size
+    if capture_bytes >= source_layout.disk_size:
+        raise CompactImageError("Compacted ext4 layout does not fit inside the source capacity.")
+    return CompactLayout(
+        disk_size=source_layout.disk_size,
+        sector_size=source_layout.sector_size,
+        disk_signature=source_layout.disk_signature,
+        partitions=(compact_root,),
+        capture_bytes=capture_bytes,
+    )
+
+
+def patch_ext4_only_prefix(
+    prefix: bytes,
+    root_partition: PartitionExtent,
+    compact_sector_count: int,
+) -> bytes:
+    if len(prefix) < 512 or root_partition.start_lba * 512 != len(prefix):
+        raise CompactImageError("Captured prefix does not end at the ext4 partition start.")
+    if root_partition.number != 1 or root_partition.kind != "primary":
+        raise CompactImageError("Compact ext4 capture requires primary partition 1.")
+    if compact_sector_count <= 0 or compact_sector_count > 0xFFFFFFFF:
+        raise CompactImageError("Compact ext4 sector count is not MBR-compatible.")
+    patched = bytearray(prefix)
+    patched[:512] = patch_ext4_only_mbr(
+        bytes(patched[:512]), root_partition, compact_sector_count
+    )
+    return bytes(patched)
+
+
+def patch_ext4_only_mbr(
+    mbr: bytes,
+    root_partition: PartitionExtent,
+    compact_sector_count: int,
+) -> bytes:
+    if len(mbr) != 512 or mbr[510:512] != MBR_SIGNATURE:
+        raise CompactImageError("Captured MBR sector is invalid.")
+    if root_partition.number != 1 or root_partition.kind != "primary":
+        raise CompactImageError("Compact ext4 capture requires primary partition 1.")
+    if compact_sector_count <= 0 or compact_sector_count > 0xFFFFFFFF:
+        raise CompactImageError("Compact ext4 sector count is not MBR-compatible.")
+    patched = bytearray(mbr)
+    root_offset = PARTITION_TABLE_OFFSET
+    original_root = bytes(patched[root_offset:root_offset + PARTITION_ENTRY_SIZE])
+    patched[PARTITION_TABLE_OFFSET:PARTITION_TABLE_OFFSET + 4 * PARTITION_ENTRY_SIZE] = bytes(
+        4 * PARTITION_ENTRY_SIZE
+    )
+    patched[root_offset:root_offset + PARTITION_ENTRY_SIZE] = original_root
+    struct.pack_into("<I", patched, root_offset + 12, compact_sector_count)
+    return bytes(patched)
+
+
+def minimum_target_bytes(
+    root_start_lba: int,
+    root_sector_count: int,
+    swap_sector_count: int,
+    alignment_sectors: int,
+    sector_size: int,
+) -> int:
+    for value, label in (
+        (root_start_lba, "root start"),
+        (root_sector_count, "root size"),
+        (swap_sector_count, "swap size"),
+        (alignment_sectors, "alignment"),
+        (sector_size, "sector size"),
+    ):
+        if value <= 0:
+            raise CompactImageError(f"{label} must be positive.")
+    root_end = root_start_lba + root_sector_count
+    required_swap_start = root_end + alignment_sectors
+    swap_start = (
+        (required_swap_start + alignment_sectors - 1) // alignment_sectors
+    ) * alignment_sectors
+    return (swap_start + swap_sector_count) * sector_size
+
+
+def build_ext4_manifest(
+    image_layout: CompactLayout,
+    source_layout: CompactLayout,
+    capture_meta: dict,
+    filesystem: Ext4FilesystemRecord,
+    omitted_swap: OmittedSwapRecord,
+    expansion: ExpansionRecord,
+) -> dict:
+    device = capture_meta.get("device") or {}
+    return {
+        "schema_version": EXT4_MANIFEST_SCHEMA,
+        "format": EXT4_MANIFEST_FORMAT,
+        "source": {
+            "disk": capture_meta.get("source", ""),
+            "disk_size": source_layout.disk_size,
+            "sector_size": source_layout.sector_size,
+            "disk_signature": source_layout.disk_signature,
+            "vendor": device.get("vendor", ""),
+            "product": device.get("product", ""),
+            "serial": device.get("serial", ""),
+            "removable": bool(device.get("removable", False)),
         },
+        "capture": {
+            "offset": 0,
+            "length": image_layout.capture_bytes,
+            "saved_trailing_bytes": image_layout.saved_bytes,
+            "bytes_written": capture_meta.get("bytes_written", 0),
+            "bad_sector_count": capture_meta.get("bad_sector_count", 0),
+            "digests": capture_meta.get("digests") or {},
+            "started_utc": capture_meta.get("started_utc", ""),
+            "finished_utc": capture_meta.get("finished_utc", ""),
+        },
+        "layout": image_layout.manifest_dict(),
+        "source_layout": source_layout.manifest_dict(),
+        "filesystem": filesystem.manifest_dict(),
+        "omitted_partitions": [omitted_swap.manifest_dict()],
+        "expansion": expansion.manifest_dict(),
     }
 
 

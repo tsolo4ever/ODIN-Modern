@@ -88,10 +88,20 @@ ROOT_PART=$(partition_path "$LOOP_DEVICE" 1)
 mkfs.ext4 -q -F -U e4059dde-ca92-4c9a-99d7-bc75247a9a64 "$ROOT_PART"
 mount "$ROOT_PART" "$ROOT_MOUNT"
 prepare_root_files "$ROOT_MOUNT"
+mkdir -p "$ROOT_MOUNT/var/lib/roulette-storage-expand"
+touch "$ROOT_MOUNT/var/lib/roulette-storage-expand/complete" \
+    "$ROOT_MOUNT/var/lib/roulette-storage-expand/stage2.state" \
+    "$ROOT_MOUNT/var/lib/roulette-storage-expand/expand.log"
 
 "$EXPAND_SCRIPT" --install "$ROOT_MOUNT"
 INSTALLED_SCRIPT="$ROOT_MOUNT/usr/local/sbin/roulette-expand-storage"
 [[ -x "$INSTALLED_SCRIPT" ]] || fail "installer did not create an executable script"
+[[ ! -e "$ROOT_MOUNT/var/lib/roulette-storage-expand/complete" ]] ||
+    fail "installer did not clear stale completion state"
+[[ ! -e "$ROOT_MOUNT/var/lib/roulette-storage-expand/stage2.state" ]] ||
+    fail "installer did not clear stale stage-2 state"
+[[ ! -e "$ROOT_MOUNT/var/lib/roulette-storage-expand/expand.log" ]] ||
+    fail "installer did not clear the stale expansion log"
 grep '^# roulette-expand pending: UUID=dc05c11c-afd3-417d-adf6-2c327b67b968 ' \
     "$ROOT_MOUNT/etc/fstab" >/dev/null || fail "installer did not defer the missing swap entry"
 if grep '^UUID=dc05c11c-afd3-417d-adf6-2c327b67b968 ' "$ROOT_MOUNT/etc/fstab" >/dev/null; then

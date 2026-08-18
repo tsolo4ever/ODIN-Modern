@@ -77,6 +77,98 @@ def _compact(path: Path, disk_size: int = 4096) -> tuple[bytes, Path]:
     return captured, manifest_path
 
 
+def _ext4_compact(path: Path) -> tuple[int, int, Path]:
+    sector_size = 512
+    root_start = 2048
+    minimum_blocks = 256
+    block_size = 4096
+    buffer_bytes = 64 << 20
+    compact_sectors = (
+        minimum_blocks * block_size + buffer_bytes
+    ) // sector_size
+    original_root_sectors = compact_sectors + 4096
+    swap_sectors = 8192
+    extended_start = root_start + original_root_sectors + 2048
+    swap_start = extended_start + 2048
+    disk_sectors = swap_start + swap_sectors + 2048
+    disk_size = disk_sectors * sector_size
+
+    source_root = compact_image.PartitionExtent(
+        1, "primary", 0x83, root_start, original_root_sectors, 0, True
+    )
+    source_swap = compact_image.PartitionExtent(
+        5, "logical", 0x82, swap_start, swap_sectors, extended_start, False
+    )
+    source_layout = compact_image.CompactLayout(
+        disk_size=disk_size,
+        sector_size=sector_size,
+        disk_signature="54455354",
+        partitions=(source_root, source_swap),
+        capture_bytes=(swap_start + swap_sectors) * sector_size,
+        extended_start_lba=extended_start,
+        extended_sector_count=swap_sectors + 4096,
+    )
+    image_layout = compact_image.make_ext4_only_layout(
+        source_layout, source_root, compact_sectors
+    )
+    required_capacity = compact_image.minimum_target_bytes(
+        root_start, compact_sectors, swap_sectors, 2048, sector_size
+    )
+
+    with path.open("wb") as stream:
+        mbr = bytearray(512)
+        mbr[440:444] = b"TEST"
+        entry = bytearray(16)
+        entry[0] = 0x80
+        entry[4] = 0x83
+        struct.pack_into("<I", entry, 8, root_start)
+        struct.pack_into("<I", entry, 12, compact_sectors)
+        mbr[446:462] = entry
+        mbr[510:512] = b"\x55\xaa"
+        stream.write(mbr)
+        stream.seek(image_layout.capture_bytes - 1)
+        stream.write(b"\0")
+    with path.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    root_uuid = "e4059dde-ca92-4c9a-99d7-bc75247a9a64"
+    swap_uuid = "dc05c11c-afd3-417d-adf6-2c327b67b968"
+    manifest = compact_image.build_ext4_manifest(
+        image_layout,
+        source_layout,
+        {
+            "source": "PhysicalDrive7",
+            "bytes_written": image_layout.capture_bytes,
+            "bad_sector_count": 0,
+            "digests": {"sha256": digest},
+        },
+        compact_image.Ext4FilesystemRecord(
+            1,
+            root_uuid,
+            block_size,
+            root_start,
+            original_root_sectors,
+            compact_sectors,
+            minimum_blocks,
+            buffer_bytes,
+            root_start * sector_size,
+        ),
+        compact_image.OmittedSwapRecord(
+            5, swap_uuid, swap_start, swap_sectors
+        ),
+        compact_image.ExpansionRecord(
+            root_uuid,
+            swap_uuid,
+            swap_sectors,
+            2048,
+            required_capacity,
+            "a" * 64,
+        ),
+    )
+    manifest_path = compact_image.compact_manifest_path(path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return image_layout.capture_bytes, required_capacity, manifest_path
+
+
 class FakeDisk:
     def __init__(self, storage: bytearray, write: bool = False, *, short_write: bool = False):
         self.storage = storage
@@ -210,6 +302,36 @@ def test_compact_target_requires_only_the_validated_captured_layout():
             assert "captured layout" in str(exc)
         else:
             raise AssertionError("target smaller than the captured layout was accepted")
+
+
+def test_ext4_compact_requires_room_to_recreate_swap():
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "roulette.compact.img"
+        capture_length, required_capacity, _manifest = _ext4_compact(image)
+        try:
+            restore.preflight_image(image, required_capacity - 512)
+        except restore.GuardedImageError as exc:
+            assert "root-plus-swap" in str(exc)
+        else:
+            raise AssertionError("schema-2 compact image accepted an undersized target")
+        plan = restore.preflight_image(image, required_capacity)
+        assert plan.write_bytes == capture_length
+        assert plan.required_capacity == required_capacity
+
+
+def test_ext4_compact_rejects_manifest_identity_tampering():
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "roulette.compact.img"
+        _capture_length, required_capacity, manifest_path = _ext4_compact(image)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["expansion"]["swap_uuid"] = "00000000-0000-0000-0000-000000000000"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        try:
+            restore.preflight_image(image, required_capacity)
+        except restore.GuardedImageError as exc:
+            assert "expansion identity" in str(exc)
+        else:
+            raise AssertionError("tampered swap identity was accepted")
 
 
 def test_missing_or_altered_compact_pair_is_rejected():

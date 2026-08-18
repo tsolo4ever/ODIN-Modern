@@ -215,6 +215,9 @@ install_into_root() {
 
     mkdir -p "$(dirname "$roulette_installed")" "$roulette_state"
     chmod 700 "$roulette_state"
+    rm -f "$roulette_state/complete" "$roulette_state/stage2.state" \
+        "$roulette_state/current.sfdisk" "$roulette_state/post-write.sfdisk" \
+        "$roulette_state/planned.sfdisk" "$roulette_state/expand.log"
     cp "$0" "$roulette_installed"
     chmod 755 "$roulette_installed"
 
@@ -224,6 +227,12 @@ install_into_root() {
     if [ ! -f "$roulette_state/rc.local.before-install" ]; then
         cp "$roulette_rc_local" "$roulette_state/rc.local.before-install"
     fi
+
+    roulette_active_swap_lines=$(grep -c \
+        "^[[:space:]]*UUID=${SWAP_UUID}[[:space:]].*[[:space:]]swap[[:space:]]" \
+        "$roulette_fstab" || true)
+    [ "$roulette_active_swap_lines" = "1" ] ||
+        fail "fstab must contain exactly one active entry for the captured swap UUID"
 
     roulette_tmp="$roulette_fstab.roulette.$$"
     awk -v uuid="$SWAP_UUID" '
