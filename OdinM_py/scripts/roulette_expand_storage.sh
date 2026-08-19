@@ -231,19 +231,26 @@ install_into_root() {
     roulette_active_swap_lines=$(grep -c \
         "^[[:space:]]*UUID=${SWAP_UUID}[[:space:]].*[[:space:]]swap[[:space:]]" \
         "$roulette_fstab" || true)
-    [ "$roulette_active_swap_lines" = "1" ] ||
-        fail "fstab must contain exactly one active entry for the captured swap UUID"
+    roulette_pending_swap_lines=$(grep -c \
+        "^[[:space:]]*# roulette-expand pending:[[:space:]]*UUID=${SWAP_UUID}[[:space:]].*[[:space:]]swap[[:space:]]" \
+        "$roulette_fstab" || true)
 
-    roulette_tmp="$roulette_fstab.roulette.$$"
-    awk -v uuid="$SWAP_UUID" '
-        index($0, "UUID=" uuid) && $0 !~ /^[[:space:]]*#/ && $0 ~ /[[:space:]]swap[[:space:]]/ {
-            print "# roulette-expand pending: " $0
-            next
-        }
-        { print }
-    ' "$roulette_fstab" > "$roulette_tmp"
-    chmod 644 "$roulette_tmp"
-    mv "$roulette_tmp" "$roulette_fstab"
+    if [ "$roulette_active_swap_lines" = "1" ] &&
+       [ "$roulette_pending_swap_lines" = "0" ]; then
+        roulette_tmp="$roulette_fstab.roulette.$$"
+        awk -v uuid="$SWAP_UUID" '
+            index($0, "UUID=" uuid) && $0 !~ /^[[:space:]]*#/ && $0 ~ /[[:space:]]swap[[:space:]]/ {
+                print "# roulette-expand pending: " $0
+                next
+            }
+            { print }
+        ' "$roulette_fstab" > "$roulette_tmp"
+        chmod 644 "$roulette_tmp"
+        mv "$roulette_tmp" "$roulette_fstab"
+    elif [ "$roulette_active_swap_lines" != "0" ] ||
+         [ "$roulette_pending_swap_lines" != "1" ]; then
+        fail "fstab must contain exactly one active or pending entry for the captured swap UUID"
+    fi
 
     if ! grep '^# roulette-storage-expand begin$' "$roulette_rc_local" >/dev/null 2>&1; then
         roulette_tmp="$roulette_rc_local.roulette.$$"

@@ -110,6 +110,13 @@ fi
 grep '^# roulette-storage-expand begin$' "$ROOT_MOUNT/etc/rc.local" >/dev/null ||
     fail "installer did not add the boot hook"
 
+FSTAB_AFTER_FIRST_INSTALL=$(sha256sum "$ROOT_MOUNT/etc/fstab")
+"$EXPAND_SCRIPT" --install "$ROOT_MOUNT"
+[[ $(sha256sum "$ROOT_MOUNT/etc/fstab") == "$FSTAB_AFTER_FIRST_INSTALL" ]] ||
+    fail "installer rerun changed the pending swap entry"
+[[ $(grep -c '^# roulette-storage-expand begin$' "$ROOT_MOUNT/etc/rc.local") == 1 ]] ||
+    fail "installer rerun duplicated the boot hook"
+
 MBR_ID_BEFORE=$(dd if="$LOOP_DEVICE" bs=1 skip=440 count=4 status=none | sha256sum)
 "$INSTALLED_SCRIPT" --test "$ROOT_PART" "$LOOP_DEVICE" "$ROOT_MOUNT"
 [[ -f "$ROOT_MOUNT/var/lib/roulette-storage-expand/stage2.state" ]] ||
