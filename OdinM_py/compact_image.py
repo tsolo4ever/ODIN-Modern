@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -22,6 +24,20 @@ EXT4_MANIFEST_SCHEMA = 2
 EXT4_MANIFEST_FORMAT = "odinm-ext4-compact"
 EXT4_PARTITION_TYPE = 0x83
 SWAP_PARTITION_TYPE = 0x82
+CLEANUP_METADATA_BEGIN = "# ODINM-CLEANUP-METADATA-BEGIN"
+CLEANUP_METADATA_END = "# ODINM-CLEANUP-METADATA-END"
+CLEANUP_METADATA_FORMAT = "odinm-cleanup-installer-v1"
+CLEANUP_INSTALL_CONTRACT = "sh-install-root-v1"
+CLEANUP_INSTALLED_PATH = "/usr/local/sbin/roulette-profile-cleanup"
+CLEANUP_SCHEDULE_PATH = "/etc/cron.d/roulette-profile-cleanup"
+CURRENT_LINUX_ID = "ubuntu"
+CURRENT_LINUX_VERSION = "12.04"
+MAX_CLEANUP_INSTALLER_BYTES = 1 << 20
+CLEANUP_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
+CLEANUP_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+LINUX_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,31}$")
+LINUX_VERSION = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
+CLEANUP_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$")
 
 
 class CompactImageError(ValueError):
@@ -115,6 +131,100 @@ class ExpansionRecord:
         data = asdict(self)
         data["armed"] = True
         return data
+
+
+@dataclass(frozen=True)
+class CleanupRecord:
+    installer_id: str
+    source_filename: str
+    source_sha256: str
+    linux_id: str
+    linux_versions: tuple[str, ...]
+    install_contract: str
+    installed_path: str
+    schedule_path: str
+
+    def manifest_dict(self) -> dict:
+        data = asdict(self)
+        data["linux_versions"] = list(self.linux_versions)
+        data["format"] = "odinm-cleanup-installer-v1"
+        data["installed"] = True
+        return data
+
+
+def parse_cleanup_installer_record(path: str | os.PathLike[str]) -> CleanupRecord:
+    source_path = Path(path)
+    try:
+        payload = source_path.read_bytes()
+    except OSError as exc:
+        raise CompactImageError(f"Cleanup installer is unreadable: {exc}") from exc
+    if not source_path.is_file() or not payload or len(payload) > MAX_CLEANUP_INSTALLER_BYTES:
+        raise CompactImageError(
+            "Cleanup installer must be a nonempty file no larger than 1 MiB."
+        )
+    if b"\x00" in payload:
+        raise CompactImageError("Cleanup installer contains binary data.")
+    try:
+        lines = payload.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise CompactImageError("Cleanup installer must be UTF-8 text.") from exc
+
+    begins = [index for index, line in enumerate(lines) if line == CLEANUP_METADATA_BEGIN]
+    ends = [index for index, line in enumerate(lines) if line == CLEANUP_METADATA_END]
+    if len(begins) != 1 or len(ends) != 1 or ends[0] <= begins[0] + 1:
+        raise CompactImageError(
+            "Cleanup installer must contain one complete ODINM metadata block."
+        )
+
+    values: dict[str, str] = {}
+    for line in lines[begins[0] + 1:ends[0]]:
+        if not line.startswith("# ") or "=" not in line:
+            raise CompactImageError("Cleanup installer metadata is malformed.")
+        key, value = line[2:].split("=", 1)
+        if not CLEANUP_KEY.fullmatch(key) or not value or key in values:
+            raise CompactImageError("Cleanup installer metadata is malformed or duplicated.")
+        values[key] = value
+
+    expected_keys = {
+        "format",
+        "installer_id",
+        "install_contract",
+        "linux_id",
+        "linux_versions",
+        "installed_path",
+        "schedule_path",
+    }
+    if set(values) != expected_keys:
+        raise CompactImageError("Cleanup installer metadata keys are incomplete or unknown.")
+    versions = tuple(values["linux_versions"].split(","))
+    if (
+        values["format"] != CLEANUP_METADATA_FORMAT
+        or not CLEANUP_ID.fullmatch(values["installer_id"])
+        or values["install_contract"] != CLEANUP_INSTALL_CONTRACT
+        or not LINUX_ID.fullmatch(values["linux_id"])
+        or not versions
+        or len(set(versions)) != len(versions)
+        or any(not LINUX_VERSION.fullmatch(version) for version in versions)
+        or values["installed_path"] != CLEANUP_INSTALLED_PATH
+        or values["schedule_path"] != CLEANUP_SCHEDULE_PATH
+        or not CLEANUP_FILENAME.fullmatch(source_path.name)
+    ):
+        raise CompactImageError("Cleanup installer metadata values are invalid.")
+    if values["linux_id"] != CURRENT_LINUX_ID or CURRENT_LINUX_VERSION not in versions:
+        raise CompactImageError(
+            "Cleanup installer does not declare Ubuntu 12.04 support. "
+            "Newer Linux expansion adapters are not implemented yet."
+        )
+    return CleanupRecord(
+        installer_id=values["installer_id"],
+        source_filename=source_path.name,
+        source_sha256=hashlib.sha256(payload).hexdigest(),
+        linux_id=values["linux_id"],
+        linux_versions=versions,
+        install_contract=values["install_contract"],
+        installed_path=values["installed_path"],
+        schedule_path=values["schedule_path"],
+    )
 
 
 @dataclass(frozen=True)
@@ -460,9 +570,10 @@ def build_ext4_manifest(
     filesystem: Ext4FilesystemRecord,
     omitted_swap: OmittedSwapRecord,
     expansion: ExpansionRecord,
+    cleanup: CleanupRecord | None = None,
 ) -> dict:
     device = capture_meta.get("device") or {}
-    return {
+    manifest = {
         "schema_version": EXT4_MANIFEST_SCHEMA,
         "format": EXT4_MANIFEST_FORMAT,
         "source": {
@@ -491,6 +602,9 @@ def build_ext4_manifest(
         "omitted_partitions": [omitted_swap.manifest_dict()],
         "expansion": expansion.manifest_dict(),
     }
+    if cleanup is not None:
+        manifest["cleanup"] = cleanup.manifest_dict()
+    return manifest
 
 
 def write_manifest(path: str | os.PathLike[str], manifest: dict) -> None:

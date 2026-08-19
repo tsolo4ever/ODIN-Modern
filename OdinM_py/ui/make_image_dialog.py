@@ -25,7 +25,11 @@ from drive_manager import (
     get_path_disk_number,
     get_physical_drive,
 )
-from ext4_compact_capture import Ext4CompactCaptureError, check_prerequisites
+from ext4_compact_capture import (
+    Ext4CompactCaptureError,
+    check_prerequisites,
+    parse_cleanup_installer,
+)
 from hash_config import HashConfig
 from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
@@ -128,15 +132,46 @@ class MakeImageDialog(ttk.Toplevel):
         self._engine_hint = ttk.Label(outer, text="", anchor=W, bootstyle="secondary")
         self._engine_hint.grid(row=3, column=1, columnspan=2, sticky=W, padx=(8, 0))
 
+        option_frame = ttk.Frame(outer)
+        option_frame.grid(row=4, column=0, columnspan=3, sticky=EW, pady=(4, 8))
+        option_frame.columnconfigure(0, weight=1)
+
+        self._cleanup_frame = ttk.Frame(option_frame)
+        self._cleanup_frame.grid(row=0, column=0, sticky=EW, pady=(0, 4))
+        self._cleanup_frame.columnconfigure(1, weight=1)
+        self._cleanup_var = ttk.BooleanVar(value=False)
+        self._cleanup_check = ttk.Checkbutton(
+            self._cleanup_frame,
+            text="Install cleanup",
+            variable=self._cleanup_var,
+            command=self._on_cleanup_toggle,
+            bootstyle="round-toggle",
+        )
+        self._cleanup_check.grid(row=0, column=0, sticky=W)
+        self._cleanup_path_var = ttk.StringVar()
+        ttk.Entry(
+            self._cleanup_frame,
+            textvariable=self._cleanup_path_var,
+            state="readonly",
+        ).grid(row=0, column=1, sticky=EW, padx=(8, 4))
+        self._cleanup_browse_btn = ttk.Button(
+            self._cleanup_frame,
+            text="Browse…",
+            width=9,
+            command=self._browse_cleanup,
+            state=DISABLED,
+        )
+        self._cleanup_browse_btn.grid(row=0, column=2)
+
         # Auto-workflow toggle
         self._auto_var = ttk.BooleanVar(value=True)
         self._auto_check = ttk.Checkbutton(
-            outer,
+            option_frame,
             text="Auto hash & configure after backup",
             variable=self._auto_var,
             bootstyle="round-toggle",
         )
-        self._auto_check.grid(row=4, column=0, columnspan=3, sticky=W, pady=(4, 8))
+        self._auto_check.grid(row=1, column=0, sticky=W)
 
         ttk.Separator(outer, orient=HORIZONTAL).grid(
             row=5, column=0, columnspan=3, sticky=EW, pady=(0, 8)
@@ -241,9 +276,14 @@ class MakeImageDialog(ttk.Toplevel):
         if self._compact_mode:
             self._auto_var.set(False)
             self._auto_check.configure(state=DISABLED)
+            self._cleanup_frame.grid()
         elif self._use_pyimager:
             self._auto_check.configure(state=NORMAL)
+            self._clear_cleanup_selection()
+            self._cleanup_frame.grid_remove()
         else:
+            self._clear_cleanup_selection()
+            self._cleanup_frame.grid_remove()
             self._sync_backup_mode()
 
         # Nudge the extension so the chosen engine and the filename agree.
@@ -304,6 +344,50 @@ class MakeImageDialog(ttk.Toplevel):
         elif not path.lower().endswith(".gz") and self._engine == ENGINE_PY_GZ:
             self._engine_var.set(ENGINE_PY)
             self._on_engine_change()
+
+    def _on_cleanup_toggle(self):
+        if not self._cleanup_var.get():
+            self._clear_cleanup_selection()
+            return
+        self._cleanup_browse_btn.configure(state=NORMAL)
+        if not self._browse_cleanup():
+            self._clear_cleanup_selection()
+
+    def _clear_cleanup_selection(self):
+        self._cleanup_var.set(False)
+        self._cleanup_path_var.set("")
+        self._cleanup_browse_btn.configure(state=DISABLED)
+
+    def _browse_cleanup(self) -> bool:
+        selected = self._cleanup_path_var.get().strip()
+        if selected:
+            initial_dir = os.path.dirname(selected)
+        else:
+            initial_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"
+            )
+        path = filedialog.askopenfilename(
+            title="Select ODIN cleanup installer",
+            filetypes=[("Shell scripts", "*.sh"), ("All files", "*.*")],
+            parent=self,
+            initialdir=initial_dir if os.path.isdir(initial_dir) else None,
+        )
+        if not path:
+            return False
+        path = os.path.abspath(path)
+        try:
+            descriptor = parse_cleanup_installer(path)
+        except Ext4CompactCaptureError as exc:
+            messagebox.showerror("Invalid cleanup installer", str(exc), parent=self)
+            return False
+        self._cleanup_path_var.set(path)
+        self._cleanup_var.set(True)
+        self._cleanup_browse_btn.configure(state=NORMAL)
+        self._status(
+            f"Cleanup selected: {descriptor.installer_id} ({descriptor.source_filename})",
+            "info",
+        )
+        return True
 
     def _open_options(self):
         from ui.image_options_dialog import ImageOptionsDialog
@@ -378,6 +462,19 @@ class MakeImageDialog(ttk.Toplevel):
             output = root + ".compact.img"
         self._output_var.set(output)
         self._config.set_last_output_dir(os.path.dirname(output))
+        cleanup_script = None
+        if self._compact_mode and self._cleanup_var.get():
+            cleanup_script = os.path.abspath(
+                os.path.expanduser(
+                    os.path.expandvars(self._cleanup_path_var.get().strip())
+                )
+            )
+            try:
+                parse_cleanup_installer(cleanup_script)
+            except Ext4CompactCaptureError as exc:
+                self._status(str(exc), "danger")
+                return
+            self._cleanup_path_var.set(cleanup_script)
         output_disk = get_path_disk_number(output)
         if output_disk == drive.disk_number:
             self._status(
@@ -401,7 +498,13 @@ class MakeImageDialog(ttk.Toplevel):
             "This MBR-only mode preserves the complete boot prefix, copies allocated "
             "ext4 blocks into a staging image, leaves 64 MiB free, and omits swap "
             "data while recording its UUID and size in the matching JSON. The source "
-            "disk is never mounted or changed. Continue?",
+            "disk is never mounted or changed."
+            + (
+                f"\n\nCleanup installer: {os.path.basename(cleanup_script)}"
+                if cleanup_script
+                else "\n\nNo cleanup installer will be added."
+            )
+            + "\n\nContinue?",
             parent=self,
         ):
             self._status("Backup cancelled.", "warning")
@@ -467,6 +570,7 @@ class MakeImageDialog(ttk.Toplevel):
                 compact=self._compact_mode,
                 expected_size=drive.size_bytes,
                 expected_serial=drive.hw_serial,
+                cleanup_script=cleanup_script,
             )
             self._worker.start()
             return

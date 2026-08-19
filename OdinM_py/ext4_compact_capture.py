@@ -19,6 +19,7 @@ from pathlib import Path
 from compact_image import (
     EXT4_PARTITION_TYPE,
     SWAP_PARTITION_TYPE,
+    CleanupRecord,
     CompactImageError,
     ExpansionRecord,
     Ext4FilesystemRecord,
@@ -27,6 +28,7 @@ from compact_image import (
     build_ext4_manifest,
     make_ext4_only_layout,
     minimum_target_bytes,
+    parse_cleanup_installer_record,
     parse_mbr_layout,
     patch_ext4_only_mbr,
 )
@@ -150,6 +152,13 @@ def _asset_path(name: str) -> Path:
         if candidate.is_file():
             return candidate
     raise Ext4CompactCaptureError(f"Required compact-capture asset is missing: {name}")
+
+
+def parse_cleanup_installer(path: str | os.PathLike[str]) -> CleanupRecord:
+    try:
+        return parse_cleanup_installer_record(path)
+    except CompactImageError as exc:
+        raise Ext4CompactCaptureError(str(exc)) from exc
 
 
 def _wsl_path(path: Path) -> str:
@@ -356,18 +365,41 @@ def _install_expansion(
     work_path: str,
     script_path: Path,
     script_sha256: str,
+    cleanup_script_path: Path | None,
+    cleanup: CleanupRecord | None,
 ) -> None:
+    if (cleanup_script_path is None) != (cleanup is None):
+        raise Ext4CompactCaptureError("Cleanup installer selection is inconsistent.")
     mount_path = f"{work_path}/mount"
     script_wsl = _wsl_path(script_path)
+    cleanup_wsl = _wsl_path(cleanup_script_path) if cleanup_script_path else ""
+    cleanup_sha256 = cleanup.source_sha256 if cleanup else ""
     clock_config = _wsl_path(_asset_path("roulette_e2fsck.conf"))
     _run_wsl_script(
         "set -e\n"
-        "stage=$1\nmountpoint=$2\nscript=$3\nclock=$4\nexpected=$5\n"
+        "stage=$1\nmountpoint=$2\nscript=$3\ncleanup_enabled=$4\n"
+        "cleanup_script=$5\nclock=$6\nexpected=$7\ncleanup_expected=$8\n"
         'mkdir -p "$mountpoint"\n'
         'cleanup() { umount "$mountpoint" >/dev/null 2>&1 || true; }\n'
         "trap cleanup EXIT INT TERM\n"
         'mount -o loop,rw "$stage" "$mountpoint"\n'
         '/bin/sh "$script" --install "$mountpoint"\n'
+        'if [ "$cleanup_enabled" = "1" ]; then\n'
+        '  /bin/sh "$cleanup_script" --install "$mountpoint"\n'
+        '  cleanup_actual=$(sha256sum '
+        '"$mountpoint/usr/local/sbin/roulette-profile-cleanup" | '
+        "awk '{print $1}')\n"
+        '  [ "$cleanup_actual" = "$cleanup_expected" ]\n'
+        '  [ "$(stat -c \'%u:%g:%a\' '
+        '"$mountpoint/usr/local/sbin/roulette-profile-cleanup")" = "0:0:755" ]\n'
+        '  [ "$(stat -c \'%u:%g:%a\' '
+        '"$mountpoint/etc/cron.d/roulette-profile-cleanup")" = "0:0:644" ]\n'
+        '  grep -F "/usr/local/sbin/roulette-profile-cleanup --scheduled" '
+        '"$mountpoint/etc/cron.d/roulette-profile-cleanup" >/dev/null\n'
+        'else\n'
+        '  rm -f "$mountpoint/usr/local/sbin/roulette-profile-cleanup" '
+        '"$mountpoint/etc/cron.d/roulette-profile-cleanup"\n'
+        'fi\n'
         'install -o root -g root -m 0644 "$clock" "$mountpoint/etc/e2fsck.conf"\n'
         'actual=$(sha256sum "$mountpoint/usr/local/sbin/roulette-expand-storage" | '
         "awk '{print $1}')\n"
@@ -377,8 +409,11 @@ def _install_expansion(
             stage_path,
             mount_path,
             script_wsl,
+            "1" if cleanup else "0",
+            cleanup_wsl,
             clock_config,
             script_sha256,
+            cleanup_sha256,
         ],
     )
 
@@ -429,7 +464,10 @@ def capture_ext4_compact(
     should_cancel: Callable[[], bool],
     on_progress: Callable[[int], None],
     on_log: Callable[[str], None],
+    cleanup_script_path: Path | None = None,
 ) -> tuple[dict, dict]:
+    cleanup_path = Path(cleanup_script_path) if cleanup_script_path else None
+    cleanup = parse_cleanup_installer(cleanup_path) if cleanup_path else None
     check_prerequisites()
     started = datetime.now(UTC)
     physical_path = rf"\\.\PhysicalDrive{disk_number}"
@@ -503,6 +541,11 @@ def capture_ext4_compact(
         stage_path = f"{work_path}/root.ext4"
         on_progress(10)
         on_log(f"Source ext4 UUID {root_info.uuid}; omitting swap UUID {swap_info.uuid}.")
+        if cleanup is not None:
+            on_log(
+                f"Cleanup installer selected: {cleanup.source_filename} "
+                f"({cleanup.installer_id})."
+            )
         _run_wsl(
             ["e2image", "-raf", root_info.path, stage_path],
             should_cancel=should_cancel,
@@ -516,7 +559,14 @@ def capture_ext4_compact(
             root_info.uuid, swap_info.uuid, root.start_lba, 1, swap.sector_count
         )
         try:
-            _install_expansion(stage_path, work_path, provisional_script, provisional_sha256)
+            _install_expansion(
+                stage_path,
+                work_path,
+                provisional_script,
+                provisional_sha256,
+                cleanup_path,
+                cleanup,
+            )
         finally:
             provisional_script.unlink(missing_ok=True)
         _check_and_repair(stage_path, should_cancel)
@@ -542,7 +592,14 @@ def capture_ext4_compact(
             swap.sector_count,
         )
         try:
-            _install_expansion(stage_path, work_path, final_script, script_sha256)
+            _install_expansion(
+                stage_path,
+                work_path,
+                final_script,
+                script_sha256,
+                cleanup_path,
+                cleanup,
+            )
         finally:
             final_script.unlink(missing_ok=True)
         _check_and_repair(stage_path, should_cancel)
@@ -613,6 +670,7 @@ def capture_ext4_compact(
             "ext4_uuid": root_info.uuid,
             "swap_uuid": swap_info.uuid,
             "buffer_bytes": BUFFER_BYTES,
+            "cleanup_installed": cleanup is not None,
         }
         filesystem = Ext4FilesystemRecord(
             partition_number=root.number,
@@ -653,6 +711,7 @@ def capture_ext4_compact(
             filesystem,
             omitted_swap,
             expansion,
+            cleanup,
         )
         on_progress(100)
         return meta, manifest

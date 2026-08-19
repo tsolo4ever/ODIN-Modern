@@ -68,6 +68,7 @@ class PyImagerWorker:
         compact: bool = False,
         expected_size: int = 0,
         expected_serial: str = "",
+        cleanup_script: str | None = None,
     ):
         self._root = root
         self._disk = disk_number
@@ -78,6 +79,7 @@ class PyImagerWorker:
         self._compact = compact
         self._expected_size = expected_size
         self._expected_serial = expected_serial.strip()
+        self._cleanup_script = (cleanup_script or "").strip()
         self._on_progress = on_progress
         self._on_log = on_log
         self._on_done = on_done
@@ -180,6 +182,9 @@ class PyImagerWorker:
                     should_cancel=self._cancel.is_set,
                     on_progress=self._progress_percent,
                     on_log=self._fire_log,
+                    cleanup_script_path=(
+                        Path(self._cleanup_script) if self._cleanup_script else None
+                    ),
                 )
             except Ext4CompactCaptureCancelled:
                 return {

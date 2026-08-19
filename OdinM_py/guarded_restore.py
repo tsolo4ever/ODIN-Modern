@@ -45,6 +45,10 @@ UUID_TEXT = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
+CLEANUP_ID_TEXT = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+CLEANUP_FILENAME_TEXT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$")
+LINUX_ID_TEXT = re.compile(r"^[a-z0-9][a-z0-9._-]{0,31}$")
+LINUX_VERSION_TEXT = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 
 
 class GuardedImageError(ValueError):
@@ -227,9 +231,62 @@ def _validate_partition_record(value: Any, label: str) -> dict[str, Any]:
     return record
 
 
+def _validate_cleanup_record(value: Any) -> dict[str, Any]:
+    record = _require_object(
+        value,
+        "cleanup",
+        {
+            "format",
+            "installer_id",
+            "source_filename",
+            "source_sha256",
+            "linux_id",
+            "linux_versions",
+            "install_contract",
+            "installed_path",
+            "schedule_path",
+            "installed",
+        },
+    )
+    versions = record["linux_versions"]
+    string_fields = (
+        "format",
+        "installer_id",
+        "source_filename",
+        "source_sha256",
+        "linux_id",
+        "install_contract",
+        "installed_path",
+        "schedule_path",
+    )
+    if (
+        any(not isinstance(record[field], str) for field in string_fields)
+        or record["format"] != "odinm-cleanup-installer-v1"
+        or not CLEANUP_ID_TEXT.fullmatch(record["installer_id"])
+        or not CLEANUP_FILENAME_TEXT.fullmatch(record["source_filename"])
+        or not HEX_SHA256.fullmatch(record["source_sha256"])
+        or not LINUX_ID_TEXT.fullmatch(record["linux_id"])
+        or not isinstance(versions, list)
+        or not versions
+        or any(not isinstance(version, str) for version in versions)
+        or len(set(versions)) != len(versions)
+        or any(not LINUX_VERSION_TEXT.fullmatch(version) for version in versions)
+        or record["install_contract"] != "sh-install-root-v1"
+        or record["installed_path"] != "/usr/local/sbin/roulette-profile-cleanup"
+        or record["schedule_path"] != "/etc/cron.d/roulette-profile-cleanup"
+        or record["installed"] is not True
+    ):
+        raise GuardedImageError("compact manifest cleanup schema is invalid")
+    if record["linux_id"] != "ubuntu" or "12.04" not in versions:
+        raise GuardedImageError("compact manifest cleanup Linux version is unsupported")
+    return record
+
+
 def _validate_ext4_records(
     root: dict[str, Any], disk_size: int, sector_size: int, capture_length: int
 ) -> int:
+    if "cleanup" in root:
+        _validate_cleanup_record(root["cleanup"])
     source_layout = _require_object(
         root["source_layout"],
         "source_layout",
@@ -423,6 +480,8 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, i
             "schema_version", "format", "source", "capture", "layout",
             "source_layout", "filesystem", "omitted_partitions", "expansion",
         }
+        if "cleanup" in payload:
+            root_keys.add("cleanup")
     else:
         raise GuardedImageError("compact manifest version or format is unsupported")
     root = _require_object(payload, "root", root_keys)

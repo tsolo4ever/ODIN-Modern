@@ -6,6 +6,13 @@ Implemented on 2026-08-17 with a 64 MiB free-space buffer. Automated and
 synthetic-device validation passes; capture/restore on a disposable physical
 SSD and the first unattended cabinet boot remain operator validation gates.
 
+The optional **Install cleanup** selector and cleanup-installer metadata parser
+were implemented on 2026-08-18. The bundled Ubuntu 12.04 installer, checked and
+unchecked injection paths, picker cancellation/replacement behavior, strict
+manifest validation, and existing ODIN Python and Linux script regressions pass.
+Newer Linux/systemd expansion remains deliberately fail-closed until a separate
+adapter has synthetic and physical boot validation.
+
 ## Goal
 
 Create a single guarded `.compact.img` from an MBR Linux source disk while:
@@ -198,3 +205,93 @@ and only this feature's paths will be staged for commit.
 The remaining acceptance work is intentionally physical: create one image from
 the disposable source SSD, guarded-restore it to a target SSD, and observe both
 unattended cabinet boots through root expansion and swap recreation.
+
+## Monthly Firefox Recovery-Backup Cleanup
+
+Read-only inspection of the expanded Roulette source found 65 timestamped
+Firefox crash-recovery profile directories consuming 754,724,864 allocated
+bytes. The persistent `default-backup` and `touchscreen-backup` directories
+must remain because the active profiles are RAM-backed symlinks. The newest
+timestamped copies matched those persistent backups exactly.
+
+The approved follow-up is a standalone POSIX shell script that:
+
+1. Requires the known profile layout, nonempty persistent backups, exact
+   `profiles.ini` entries, and exact RAM-profile symlink targets before removal.
+2. Removes only directories whose complete names match the captured
+   `default-backup-crashrecovery-YYYYMMDD_HHMMSS` or
+   `touchscreen-backup-crashrecovery-YYYYMMDD_HHMMSS` patterns.
+3. Uses a lock directory, logs each removal and its allocated size, and supports
+   a non-mutating dry run.
+4. Installs a root-owned cron entry that performs cleanup at 05:00 on the first
+   Wednesday of each month. The script independently checks the calendar so a
+   malformed cron invocation cannot run scheduled cleanup on another day.
+5. Is installed into the staged compact image beside the expansion hook and is
+   not executed during capture. The physical source remains read-only.
+
+Validation covers installation, exact schedule text, dry-run behavior,
+calendar guarding, exact-name filtering, persistent-backup preservation,
+successful cleanup, and fail-closed behavior when required profile state is
+missing.
+
+## Optional Cleanup Selection
+
+The compact capture engine remains responsible for mandatory first-boot ext4
+expansion and swap recreation. Cleanup is site-specific and will become an
+explicit operator-selected installer:
+
+1. Add an **Install cleanup** checkbox to Make Image. It is shown only for
+   `pyimager (ext4 used blocks, omit swap)` and defaults off for each dialog
+   session.
+2. Checking it immediately opens a shell-script file picker. Cancelling the
+   picker leaves the option unchecked. The selected path is displayed with a
+   Browse button so the operator can replace it before capture.
+3. Require the selected script to implement the existing guarded installer
+   contract: `script --install ROOT`. The installer must publish
+   `/usr/local/sbin/roulette-profile-cleanup` and
+   `/etc/cron.d/roulette-profile-cleanup`; capture verifies the installed
+   script against the selected file's SHA-256 and verifies the schedule.
+4. Pass the selected path through the image worker into compact capture without
+   weakening any existing source-layout, filesystem, or expansion gate.
+5. Always inject and validate the expansion script and broken-clock policy.
+   Execute and validate the selected cleanup installer only when checked.
+6. Record the cleanup source filename and SHA-256 in the schema-2 manifest so
+   an image can be audited without mounting it. Existing schema-2 manifests
+   without cleanup metadata remain readable.
+7. Expand the header comments in `roulette_profile_cleanup.sh` into a reference
+   contract written for a future maintainer or another coding model. It will
+   explain the `--install ROOT` entry point, required installed paths and
+   permissions, schedule ownership, fail-closed validation, dry-run behavior,
+   logging, exact-target restrictions, and how Odin verifies the selected
+   source hash. The operational code remains the working example.
+8. Add focused tests for checked, unchecked, cancelled-browse, missing-file,
+   and invalid-installer cases. Re-run the compact-image, guarded-restore, and
+   safety suites.
+
+The approved implementation scope covers these seven code/test paths:
+
+1. `ui/make_image_dialog.py`
+2. `pyimager_worker.py`
+3. `ext4_compact_capture.py`
+4. `compact_image.py`
+5. `guarded_restore.py`
+6. `scripts/roulette_profile_cleanup.sh`
+7. `scripts/test_compact_image.py`
+
+Restore keeps expansion metadata mandatory and accepts strictly validated,
+optional cleanup metadata without weakening whole-image verification.
+
+### Linux compatibility parser boundary
+
+Cleanup installers carry a bounded comment-header manifest declaring their
+format, identifier, install contract, installed paths, Linux family, and tested
+version list. Odin parses that header without executing the script and rejects
+missing, duplicate, malformed, or incompatible declarations. The bundled
+Roulette installer documents and demonstrates the complete version-1 contract.
+
+This phase fully supports the proven Ubuntu 12.04 plus `rc.local` expansion
+path. Newer Linux releases are represented in the parser contract but remain a
+fail-closed stub until their boot mechanism is implemented and tested. A future
+systemd adapter must install and enable a one-shot expansion unit, prove the
+required filesystem/partition tools exist in that image, and receive its own
+synthetic and physical boot validation before its version is accepted.

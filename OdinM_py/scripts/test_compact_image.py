@@ -13,8 +13,10 @@ sys.path.insert(0, str(ROOT))
 import compact_image  # noqa: E402
 import drive_manager  # noqa: E402
 import ext4_compact_capture  # noqa: E402
+import guarded_restore  # noqa: E402
 import pyimager_worker  # noqa: E402
 from clone_worker import CloneStatus  # noqa: E402
+from ui import make_image_dialog  # noqa: E402
 
 
 SECTOR = 512
@@ -192,6 +194,158 @@ check("ext4 manifest schema", manifest["schema_version"], compact_image.EXT4_MAN
 check("ext4 manifest format", manifest["format"], compact_image.EXT4_MANIFEST_FORMAT)
 check("ext4 manifest swap UUID", manifest["omitted_partitions"][0]["uuid"], omitted.uuid)
 check("ext4 manifest buffer", manifest["filesystem"]["buffer_bytes"], 64 << 20)
+check("cleanup metadata remains optional", "cleanup" in manifest, False)
+
+print("\ncleanup installer metadata:")
+cleanup_source = ROOT / "scripts" / "roulette_profile_cleanup.sh"
+cleanup = ext4_compact_capture.parse_cleanup_installer(cleanup_source)
+check("cleanup installer id", cleanup.installer_id, "roulette-firefox-profile-backups")
+check("cleanup Linux versions", cleanup.linux_versions, ("12.04",))
+check("cleanup source hash length", len(cleanup.source_sha256), 64)
+cleanup_manifest = compact_image.build_ext4_manifest(
+    compact_layout,
+    source_layout,
+    {
+        "source": "PhysicalDrive3",
+        "device": {"serial": "SER1"},
+        "bytes_written": compact_layout.capture_bytes,
+        "digests": {"sha256": "B" * 64},
+    },
+    filesystem,
+    omitted,
+    expansion,
+    cleanup,
+)
+check("cleanup manifest source", cleanup_manifest["cleanup"]["source_filename"], cleanup_source.name)
+check("cleanup manifest installed", cleanup_manifest["cleanup"]["installed"], True)
+validated_cleanup = guarded_restore._validate_cleanup_record(cleanup_manifest["cleanup"])
+check("guarded cleanup metadata accepted", validated_cleanup["installer_id"], cleanup.installer_id)
+
+bad_cleanup = dict(cleanup_manifest["cleanup"])
+bad_cleanup["linux_versions"] = ["22.04"]
+try:
+    guarded_restore._validate_cleanup_record(bad_cleanup)
+except guarded_restore.GuardedImageError as exc:
+    check("unsupported cleanup manifest rejected", "unsupported" in str(exc), True)
+else:
+    check("unsupported cleanup manifest rejected", False, True)
+
+bad_cleanup_types = dict(cleanup_manifest["cleanup"])
+bad_cleanup_types["linux_versions"] = [12]
+try:
+    guarded_restore._validate_cleanup_record(bad_cleanup_types)
+except guarded_restore.GuardedImageError as exc:
+    check("non-text cleanup metadata rejected", "schema is invalid" in str(exc), True)
+else:
+    check("non-text cleanup metadata rejected", False, True)
+
+with tempfile.TemporaryDirectory() as folder:
+    folder_path = Path(folder)
+    incompatible = folder_path / "future-cleanup.sh"
+    incompatible.write_text(
+        cleanup_source.read_text(encoding="utf-8").replace(
+            "# linux_versions=12.04", "# linux_versions=22.04", 1
+        ),
+        encoding="utf-8",
+    )
+    try:
+        ext4_compact_capture.parse_cleanup_installer(incompatible)
+    except ext4_compact_capture.Ext4CompactCaptureError as exc:
+        check("future Linux installer fails closed", "not implemented" in str(exc), True)
+    else:
+        check("future Linux installer fails closed", False, True)
+
+    malformed = folder_path / "malformed.sh"
+    malformed.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    try:
+        ext4_compact_capture.parse_cleanup_installer(malformed)
+    except ext4_compact_capture.Ext4CompactCaptureError as exc:
+        check("missing cleanup metadata rejected", "metadata block" in str(exc), True)
+    else:
+        check("missing cleanup metadata rejected", False, True)
+
+    try:
+        ext4_compact_capture.parse_cleanup_installer(folder_path / "missing.sh")
+    except ext4_compact_capture.Ext4CompactCaptureError as exc:
+        check("missing cleanup file rejected", "unreadable" in str(exc), True)
+    else:
+        check("missing cleanup file rejected", False, True)
+
+print("\ncleanup picker behavior:")
+
+
+class FakeVariable:
+    def __init__(self, value):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
+
+
+class FakeButton:
+    def __init__(self):
+        self.state = None
+
+    def configure(self, *, state):
+        self.state = state
+
+
+class FakeCleanupDialog:
+    def __init__(self, selected=""):
+        self._cleanup_var = FakeVariable(True)
+        self._cleanup_path_var = FakeVariable(selected)
+        self._cleanup_browse_btn = FakeButton()
+        self._clear_cleanup_selection = lambda: (
+            make_image_dialog.MakeImageDialog._clear_cleanup_selection(self)
+        )
+        self._browse_cleanup = lambda: (
+            make_image_dialog.MakeImageDialog._browse_cleanup(self)
+        )
+        self.statuses = []
+
+    def _status(self, message, style):
+        self.statuses.append((message, style))
+
+
+real_cleanup_picker = make_image_dialog.filedialog.askopenfilename
+real_cleanup_error = make_image_dialog.messagebox.showerror
+picker_errors = []
+make_image_dialog.messagebox.showerror = (
+    lambda title, message, **_kwargs: picker_errors.append((title, message))
+)
+try:
+    cancelled_initial = FakeCleanupDialog()
+    make_image_dialog.filedialog.askopenfilename = lambda **_kwargs: ""
+    make_image_dialog.MakeImageDialog._on_cleanup_toggle(cancelled_initial)
+    check("initial picker cancel unchecks cleanup", cancelled_initial._cleanup_var.get(), False)
+    check("initial picker cancel clears path", cancelled_initial._cleanup_path_var.get(), "")
+
+    cancelled_replacement = FakeCleanupDialog(str(cleanup_source))
+    replaced = make_image_dialog.MakeImageDialog._browse_cleanup(cancelled_replacement)
+    check("replacement picker cancel reports no change", replaced, False)
+    check(
+        "replacement picker cancel preserves path",
+        cancelled_replacement._cleanup_path_var.get(),
+        str(cleanup_source),
+    )
+
+    invalid_initial = FakeCleanupDialog()
+    make_image_dialog.filedialog.askopenfilename = lambda **_kwargs: str(malformed)
+    make_image_dialog.MakeImageDialog._on_cleanup_toggle(invalid_initial)
+    check("invalid initial installer unchecks cleanup", invalid_initial._cleanup_var.get(), False)
+    check("invalid initial installer reports error", len(picker_errors), 1)
+
+    valid_initial = FakeCleanupDialog()
+    make_image_dialog.filedialog.askopenfilename = lambda **_kwargs: str(cleanup_source)
+    make_image_dialog.MakeImageDialog._on_cleanup_toggle(valid_initial)
+    check("valid initial installer remains checked", valid_initial._cleanup_var.get(), True)
+    check("valid initial installer path displayed", valid_initial._cleanup_path_var.get(), str(cleanup_source))
+finally:
+    make_image_dialog.filedialog.askopenfilename = real_cleanup_picker
+    make_image_dialog.messagebox.showerror = real_cleanup_error
 
 print("\next4 source safety gates:")
 selected_root, selected_swap = ext4_compact_capture._select_source_layout(source_layout)
@@ -231,6 +385,29 @@ try:
     check("expansion script hash recorded", len(rendered_hash), 64)
 finally:
     rendered_script.unlink(missing_ok=True)
+
+print("\nconditional cleanup installation:")
+install_calls = []
+real_wsl_path = ext4_compact_capture._wsl_path
+real_install_run = ext4_compact_capture._run_wsl_script
+ext4_compact_capture._wsl_path = lambda path: str(path)
+ext4_compact_capture._run_wsl_script = (
+    lambda source, args=None, **_kwargs: install_calls.append((source, args)) or ""
+)
+try:
+    ext4_compact_capture._install_expansion(
+        "stage", "work", cleanup_source, "A" * 64, cleanup_source, cleanup
+    )
+    ext4_compact_capture._install_expansion(
+        "stage", "work", cleanup_source, "A" * 64, None, None
+    )
+finally:
+    ext4_compact_capture._wsl_path = real_wsl_path
+    ext4_compact_capture._run_wsl_script = real_install_run
+check("selected cleanup enabled", install_calls[0][1][3], "1")
+check("selected cleanup hash forwarded", install_calls[0][1][7], cleanup.source_sha256)
+check("unchecked cleanup disabled", install_calls[1][1][3], "0")
+check("unchecked cleanup removes managed artifacts", "rm -f" in install_calls[1][0], True)
 
 real_run_wsl_script = ext4_compact_capture._run_wsl_script
 read_only_scripts = []
@@ -311,7 +488,10 @@ try:
     with tempfile.TemporaryDirectory() as folder:
         output = Path(folder) / "test.compact.img"
 
+        capture_kwargs = {}
+
         def fake_capture(_disk, path, **_kwargs):
+            capture_kwargs.update(_kwargs)
             Path(path).write_bytes(small_bytes[:2 * SECTOR])
             meta = {
                 "format": "ext4_compact",
@@ -352,13 +532,14 @@ try:
         worker = pyimager_worker.PyImagerWorker(
             FakeRoot(), 3, str(output), lambda _pct: None, lambda _line: None,
             statuses.append, compact=True, expected_size=len(small_bytes),
-            expected_serial="SER1",
+            expected_serial="SER1", cleanup_script=str(cleanup_source),
         )
         worker._run()
         manifest = compact_image.compact_manifest_path(output)
         check("compact worker completed", statuses[-1], CloneStatus.DONE)
         check("compact image published", output.stat().st_size, 2 * SECTOR)
         check("compact manifest published", manifest.is_file(), True)
+        check("worker forwards cleanup selection", capture_kwargs["cleanup_script_path"], cleanup_source)
         saved = json.loads(manifest.read_text(encoding="utf-8"))
         check("manifest format", saved["format"], compact_image.EXT4_MANIFEST_FORMAT)
 

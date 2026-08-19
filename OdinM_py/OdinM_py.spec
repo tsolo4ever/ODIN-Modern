@@ -10,6 +10,7 @@ from PyInstaller.utils.hooks import collect_data_files
 datas = collect_data_files('ttkbootstrap')
 datas += [
     ('scripts/roulette_expand_storage.sh', 'scripts'),
+    ('scripts/roulette_profile_cleanup.sh', 'scripts'),
     ('scripts/roulette_e2fsck.conf', 'scripts'),
 ]
 
