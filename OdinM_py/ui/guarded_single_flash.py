@@ -213,25 +213,8 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._scan_button.grid(row=0, column=1, padx=8, pady=6)
         self._set_baseline_state(False, False)
 
-        target = ttk.LabelFrame(self, text="One Fixed-Disk Target")
-        target.grid(row=2, column=0, sticky=EW, pady=(0, 8))
-        target.columnconfigure(1, weight=1)
-        ttk.Label(target, text="Target:").grid(row=0, column=0, sticky=W, padx=(8, 4), pady=6)
-        self._target_var = ttk.StringVar(value="")
-        self._target_combo = ttk.Combobox(target, textvariable=self._target_var, state="readonly")
-        self._target_combo.grid(row=0, column=1, sticky=EW, pady=6)
-        self._target_combo.bind("<<ComboboxSelected>>", self._select_target)
-        self._refresh_button = ttk.Button(
-            target, text="Refresh Targets", bootstyle="warning-outline", command=self.refresh_targets
-        )
-        self._refresh_button.grid(row=0, column=2, padx=8, pady=6)
-        self._target_detail = ttk.StringVar(value="No eligible fixed disk selected.")
-        ttk.Label(
-            target, textvariable=self._target_detail, justify=LEFT, wraplength=760
-        ).grid(row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 6))
-
         image = ttk.LabelFrame(self, text="Image File - required again for every attempt")
-        image.grid(row=3, column=0, sticky=EW, pady=(0, 8))
+        image.grid(row=2, column=0, sticky=EW, pady=(0, 8))
         image.columnconfigure(0, weight=1)
         self._image_var = ttk.StringVar(value="")
         self._image_entry = ttk.Entry(image, textvariable=self._image_var)
@@ -255,6 +238,23 @@ class GuardedSingleFlashFrame(ttk.Frame):
         ttk.Progressbar(image, variable=self._progress_var, maximum=100).grid(
             row=1, column=0, columnspan=4, sticky=EW, padx=8, pady=(0, 6)
         )
+
+        target = ttk.LabelFrame(self, text="One Fixed-Disk Target")
+        target.grid(row=3, column=0, sticky=EW, pady=(0, 8))
+        target.columnconfigure(1, weight=1)
+        ttk.Label(target, text="Target:").grid(row=0, column=0, sticky=W, padx=(8, 4), pady=6)
+        self._target_var = ttk.StringVar(value="")
+        self._target_combo = ttk.Combobox(target, textvariable=self._target_var, state="readonly")
+        self._target_combo.grid(row=0, column=1, sticky=EW, pady=6)
+        self._target_combo.bind("<<ComboboxSelected>>", self._select_target)
+        self._refresh_button = ttk.Button(
+            target, text="Refresh Targets", bootstyle="warning-outline", command=self.refresh_targets
+        )
+        self._refresh_button.grid(row=0, column=2, padx=8, pady=6)
+        self._target_detail = ttk.StringVar(value="No eligible fixed disk selected.")
+        ttk.Label(
+            target, textvariable=self._target_detail, justify=LEFT, wraplength=760
+        ).grid(row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 6))
 
         log_frame = ttk.LabelFrame(self, text="Guarded Log")
         log_frame.grid(row=4, column=0, sticky=NSEW)
