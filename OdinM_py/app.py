@@ -6,6 +6,7 @@ OdinMApp — wires config, drive monitor, clone workers, and UI together.
 import os
 import time
 from collections import deque
+from tkinter import messagebox
 
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -24,6 +25,7 @@ from guarded_restore import GuardedRestoreCoordinator
 from partition_reader import get_image_hash_region
 from partition_waiter import PartitionTableWaiter
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
+from runtime_interlock import wsl_bridge_running
 from ui.flash_status_window import FlashStatusWindow
 from ui.main_window import (
     MainWindow,
@@ -66,6 +68,7 @@ class OdinMApp:
 
         self._window = MainWindow(self._root, config)
         self._guarded_restore = GuardedRestoreCoordinator(self._root, self._window)
+        self._wsl_bridge_warning_shown = False
         self._wire_callbacks()
 
         # Drive slots: letter → slot index mapping
@@ -100,6 +103,7 @@ class OdinMApp:
 
         self._monitor = DriveMonitor(self._root, self._on_drives_changed)
         self._monitor.refresh()  # populate the initial slot state on launch
+        self._root.after_idle(self._show_startup_interlock_warning)
 
     def run(self):
         self._root.mainloop()
@@ -122,8 +126,34 @@ class OdinMApp:
         self._window.on_request_guarded_mode = self._can_enter_guarded_mode
         self._window.on_guarded_mode_entered = self._enter_guarded_mode
         self._window.on_multi_mode_entered = self._return_to_multi_mode
-        self._window.on_prepare_guarded_flash = self._guarded_restore.prepare
+        self._window.on_prepare_guarded_flash = self._prepare_guarded_flash
         self._window.on_stop_guarded_flash = self._guarded_restore.stop
+
+    def _wsl_bridge_blocks(self, operation: str) -> bool:
+        if not wsl_bridge_running():
+            self._wsl_bridge_warning_shown = False
+            return False
+        message = (
+            "WSL Bridge is running. Close it before using ODIN to clone, flash, "
+            f"verify, or capture a disk. The requested {operation} was not started."
+        )
+        self._window.log(f"[Safety] {message}")
+        if not self._wsl_bridge_warning_shown:
+            messagebox.showwarning(
+                "Close WSL Bridge first",
+                message,
+                parent=self._root,
+            )
+            self._wsl_bridge_warning_shown = True
+        return True
+
+    def _show_startup_interlock_warning(self) -> None:
+        self._wsl_bridge_blocks("disk operation")
+
+    def _prepare_guarded_flash(self, disk, plan) -> None:
+        if self._wsl_bridge_blocks("guarded flash"):
+            return
+        self._guarded_restore.prepare(disk, plan)
 
     def _can_enter_guarded_mode(self) -> tuple[bool, str]:
         active_workers = any(w.status == CloneStatus.RUNNING for w in self._workers.values())
@@ -429,6 +459,8 @@ class OdinMApp:
     # ── start / stop ──────────────────────────────────────────────────────────
 
     def _start_slot(self, idx: int):
+        if self._wsl_bridge_blocks("clone"):
+            return
         if not self._window.multi_flash_active:
             self._window.log("[Guarded] Multi Flash start blocked while guarded mode is active.")
             return
@@ -647,6 +679,8 @@ class OdinMApp:
         StoredHashDialog(self._root, image)
 
     def _make_image(self):
+        if self._wsl_bridge_blocks("image capture"):
+            return
         from ui.make_image_dialog import MakeImageDialog
 
         MakeImageDialog(self._root, self._config.get_odinc_path(), self._config)
@@ -721,6 +755,8 @@ class OdinMApp:
         self._start_target_verify(idx)
 
     def _start_target_verify(self, idx: int) -> bool:
+        if self._wsl_bridge_blocks("target verification"):
+            return False
         image = self._window.image_path
         if not image:
             self._verify_failed(idx, "No image selected for target verification.")

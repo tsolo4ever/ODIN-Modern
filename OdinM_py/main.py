@@ -33,10 +33,12 @@ def main():
 
     from config_manager import ConfigManager
     from app import OdinMApp
+    from runtime_interlock import register_odin_runtime
 
-    config = ConfigManager()
-    app = OdinMApp(config)
-    app.run()
+    with register_odin_runtime():
+        config = ConfigManager()
+        app = OdinMApp(config)
+        app.run()
 
 
 if __name__ == "__main__":
