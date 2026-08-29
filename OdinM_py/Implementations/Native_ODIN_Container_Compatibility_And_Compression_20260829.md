@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: Draft complete; implementation requires human approval.
+Status: Phase 2 automated implementation complete; physical-media acceptance pending.
 
 Board request: replace the remaining `ODINC.exe` dependency with native Python
 support that can read original ODIN images, restore them safely, and create
@@ -33,7 +33,10 @@ will remain the byte-for-byte, all-block compatibility option.
 
 ## Current implementation status - 2026-08-29
 
-Phase 1 implementation is complete and Phase 2 has not started:
+Phase 1 implementation and its available cross-implementation oracle are
+complete. Phase 2 is implemented and passes synthetic validation; its
+operator-attended physical-media exit checks remain pending. Phase 3 has not
+started:
 
 - `odin_container.py` now owns strict v1.x header parsing/packing, numbered
   split-set reads, the exact four-token allocation-map codec, bounded streaming
@@ -51,13 +54,28 @@ Phase 1 implementation is complete and Phase 2 has not started:
   `71d3220f`, exactly matching the stored value.
 - Guarded-restore, integration, partition-target, and engine-wiring regression
   suites remain green.
+- The C++ verify path had been reporting the compressed input CRC instead of
+  the downstream logical-payload CRC. `COdinManager::WaitToCompleteOperation`
+  now reads the write/decompression thread CRC in verify mode. The full x64
+  Debug solution and all 86 enabled C++ tests pass.
+- Current `ODIN.exe -verify` accepts Python-generated all-block fixtures for
+  None, zlib, BZip2, LZ4, LZ4-HC, and Zstd after that correction.
+- `odin_worker.py` fully validates and spools an immutable payload before
+  confirmation, records every single/split source member fingerprint, and
+  records either full-stream or allocated-range SHA-256 read-back.
+- Guarded restore now writes all-block ODIN payloads sequentially and legacy
+  used-block payloads only to their validated allocated ranges. It preserves
+  typed confirmation, target revalidation/protection, capacity checks, volume
+  locks, flush/refresh, cancellation, and untrusted-target reporting.
+- Synthetic restore checks cover all six codecs, split boundaries and source
+  mutation, all-allocated and sparse used-block maps, cancellation, short
+  writes, and read-back mismatch. The guarded unit, integration, and container
+  suites pass 18/18, 7/7, and 13/13 respectively.
 
-One cross-implementation acceptance item remains deliberately operator-attended:
-run current `ODINC.exe -verify` against temporary Python fixtures, and retain a
-C++-generated fixture for each readable codec. ODINC initializes Windows drive
-discovery even for verify, so that check was not launched while attached test
-hardware may be active. Phase 2 must not start until this final oracle check is
-accepted or explicitly deferred by the operator.
+The operator authorized progression into Phase 2 on 2026-08-29. Retaining a
+C++-generated fixture for each readable codec and performing disposable-media
+restores remain in the Phase 4 compatibility evidence rather than blocking the
+synthetic implementation.
 
 ## Current evidence
 
@@ -248,6 +266,7 @@ Expected paths:
 - `OdinM_py/scripts/test_odin_container.py` (new)
 - `OdinM_py/scripts/odin_img.py`
 - `OdinM_py/partition_reader.py`
+- `src/ODIN/OdinManager.cpp` (verify-oracle correction discovered during acceptance)
 
 Work:
 
@@ -271,6 +290,12 @@ Exit gate:
 - Python reads C++-generated fixtures for all readable codecs and bitmap mode.
 - The real `15.0.6.2.img` header, partitions, CRC, and logical bytes validate
   without writing to a disk.
+
+Automated acceptance recorded 2026-08-29: Python golden fixtures passed, all
+six Python-produced codec fixtures passed current C++ verification, the real
+field image passed read-only validation, and the complete enabled C++ suite
+passed. C++-produced fixture retention remains operator-attended Phase 4
+evidence.
 
 ### Phase 2 - Native guarded restore
 
@@ -303,6 +328,13 @@ Exit gate:
   disposable target passes full SHA-256 read-back.
 - At least one small compressed all-block fixture and one used-block fixture
   pass disposable-target restore and range verification.
+
+Automated status recorded 2026-08-29: complete. Physical-media status: pending
+the three operator-attended exit checks above. No physical target was opened or
+written during automated validation. PyInstaller construction succeeds, but
+the current system-Python packaging environment does not contain optional
+`lz4` or `zstandard`; bundling and frozen-executable codec self-tests remain
+the explicit Phase 3A dependency/package gate.
 
 ### Phase 3A - Native ODIN writer and codecs
 

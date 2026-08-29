@@ -36,6 +36,16 @@ from guarded_flash_safety import (
 )
 from partition_reader import PartitionReadError, read_mbr_partitions_strict
 from hash_config import HashConfig
+from odin_container import has_odin_magic
+from odin_worker import (
+    OdinRestoreOperationError,
+    OdinRestoreSource,
+    OdinRestoreSourceError,
+    preflight_odin_source,
+    validate_odin_source_unchanged,
+    verify_payload_ranges,
+    write_payload_ranges,
+)
 from scripts import pyimager
 from used_block_archive import (
     ARCHIVE_SUFFIX,
@@ -83,17 +93,23 @@ class GuardedImagePlan:
     manifest_path: Path | None = None
     source_file_bytes: int = 0
     archive_manifest: dict[str, Any] | None = None
+    odin_source: OdinRestoreSource | None = None
 
     def cleanup(self) -> None:
-        if self.temporary_source and self.source_path.is_file():
+        if self.odin_source is not None:
+            self.odin_source.cleanup()
+        elif self.temporary_source and self.source_path.is_file():
             self.source_path.unlink(missing_ok=True)
 
     @property
     def summary(self) -> str:
-        return (
+        summary = (
             f"{self.original_path.name} [{self.image_format}], {self.write_bytes} bytes, "
             f"SHA-256 {self.sha256}"
         )
+        if self.odin_source is not None:
+            summary += f", verify {self.odin_source.verification_strategy}"
+        return summary
 
 
 @dataclass(frozen=True)
@@ -622,12 +638,37 @@ def preflight_image(
     on_log: Callable[[str], None] | None = None,
 ) -> GuardedImagePlan:
     path = Path(image_path).resolve()
-    if not path.is_file():
-        raise GuardedImageError(f"image does not exist: {path}")
     if target_capacity <= 0:
         raise GuardedImageError("target capacity is unavailable")
     log = on_log or (lambda _line: None)
     lower_name = path.name.casefold()
+
+    if has_odin_magic(path):
+        try:
+            odin_source = preflight_odin_source(
+                path,
+                target_capacity,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+                on_log=on_log,
+            )
+        except OdinRestoreSourceError as exc:
+            raise GuardedImageError(str(exc)) from exc
+        image_format = "odin-used-block" if odin_source.used_blocks else "odin-all-block"
+        return GuardedImagePlan(
+            path,
+            odin_source.payload_path,
+            image_format,
+            odin_source.payload_size,
+            odin_source.logical_size,
+            odin_source.payload_sha256,
+            temporary_source=True,
+            source_file_bytes=odin_source.payload_size,
+            odin_source=odin_source,
+        )
+
+    if not path.is_file():
+        raise GuardedImageError(f"image does not exist: {path}")
 
     if lower_name.endswith(ARCHIVE_SUFFIX):
         try:
@@ -761,6 +802,11 @@ def validate_source_unchanged(plan: GuardedImagePlan) -> None:
         digest, _ = _hash_stream(stream, limit=expected_size)
     if digest != plan.sha256:
         raise GuardedImageError("preflighted image source changed after validation")
+    if plan.odin_source is not None:
+        try:
+            validate_odin_source_unchanged(plan.odin_source)
+        except OdinRestoreSourceError as exc:
+            raise GuardedImageError(str(exc)) from exc
 
 
 def validate_ready_to_write(
@@ -772,10 +818,21 @@ def validate_ready_to_write(
     image_disk_provider: Callable[[str], int] | None = None,
 ) -> EligibilityDecision:
     validate_source_unchanged(plan)
-    kwargs = {"inventory_provider": inventory_provider}
     if image_disk_provider is not None:
-        kwargs["image_disk_provider"] = image_disk_provider
-    decision = revalidate_target(expected, store, image_path=str(plan.original_path), **kwargs)
+        decision = revalidate_target(
+            expected,
+            store,
+            image_path=str(plan.original_path),
+            inventory_provider=inventory_provider,
+            image_disk_provider=image_disk_provider,
+        )
+    else:
+        decision = revalidate_target(
+            expected,
+            store,
+            image_path=str(plan.original_path),
+            inventory_provider=inventory_provider,
+        )
     if not decision.eligible:
         raise GuardedRestoreError("target revalidation failed: " + "; ".join(decision.reasons))
     if decision.disk.size_bytes < plan.required_capacity:
@@ -846,6 +903,20 @@ def restore_and_verify(
             volume_locker=volume_locker,
             flush_disk=flush_disk,
             partition_waiter=partition_waiter,
+            should_cancel=should_cancel,
+            on_progress=progress,
+            on_log=log,
+            started=started,
+        )
+    if plan.image_format == "odin-used-block":
+        return _restore_odin_used_blocks(
+            plan,
+            current,
+            disk_factory=disk_factory,
+            volume_locker=volume_locker,
+            flush_disk=flush_disk,
+            partition_waiter=partition_waiter,
+            hash_config_provider=hash_config_provider,
             should_cancel=should_cancel,
             on_progress=progress,
             on_log=log,
@@ -970,6 +1041,123 @@ def restore_and_verify(
         False,
         time.monotonic() - started,
     )
+
+
+def _restore_odin_used_blocks(
+    plan: GuardedImagePlan,
+    current: DiskIdentity,
+    *,
+    disk_factory: Callable[..., Any],
+    volume_locker: Callable[..., list[Any]],
+    flush_disk: Callable[[Any], None],
+    partition_waiter: Callable[[str], None],
+    hash_config_provider: Callable[[], Any],
+    should_cancel: Callable[[], bool] | None,
+    on_progress: Callable[[str, int, int], None],
+    on_log: Callable[[str], None],
+    started: float,
+) -> GuardedRestoreResult:
+    source = plan.odin_source
+    if source is None or not source.used_blocks:
+        raise GuardedRestoreError("used-block ODIN restore metadata is unavailable")
+    raw_path = current.raw_device_path
+    changed = False
+    locked: list[Any] = []
+    try:
+        with disk_factory(raw_path) as probe:
+            if probe.size != current.size_bytes or probe.size < source.logical_size:
+                raise GuardedRestoreError("target capacity changed before ODIN restore")
+            if any(
+                offset % probe.sector_size or length % probe.sector_size
+                for offset, length in source.allocated_ranges
+            ):
+                raise GuardedRestoreError(
+                    "ODIN allocated ranges are not aligned to the target sector size"
+                )
+        if hash_config_provider().get_enabled_partitions(str(plan.original_path)):
+            raise GuardedRestoreError(
+                "configured whole-disk or partition hashes cannot be applied safely "
+                "to a used-block ODIN restore"
+            )
+        if should_cancel is not None and should_cancel():
+            return GuardedRestoreResult(
+                0, plan.sha256, "", False, True, False, time.monotonic() - started
+            )
+        locked = volume_locker(_drive_letters(current.mounted_volumes), on_log=on_log)
+        with disk_factory(raw_path, write=True) as target:
+            written, cancelled = write_payload_ranges(
+                source,
+                target,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+            )
+            changed = written > 0
+            flush_disk(target)
+            if not cancelled and not target.update_properties():
+                raise GuardedRestoreError(
+                    "Windows disk-property refresh failed", target_not_trusted=True
+                )
+        for volume in locked:
+            volume.unlock()
+            volume.close()
+        locked = []
+        if cancelled:
+            return GuardedRestoreResult(
+                written,
+                plan.sha256,
+                "",
+                False,
+                True,
+                changed,
+                time.monotonic() - started,
+            )
+        if written != source.payload_size:
+            raise GuardedRestoreError("ODIN range write was incomplete", target_not_trusted=True)
+        partition_waiter(raw_path)
+        with disk_factory(raw_path) as target:
+            target_digest, verified, cancelled = verify_payload_ranges(
+                source,
+                target,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+            )
+        if cancelled:
+            return GuardedRestoreResult(
+                written,
+                plan.sha256,
+                target_digest,
+                False,
+                True,
+                True,
+                time.monotonic() - started,
+            )
+        if verified != source.payload_size or target_digest != source.payload_sha256:
+            raise GuardedRestoreError(
+                "mandatory ODIN allocated-range SHA-256 mismatch",
+                target_not_trusted=True,
+            )
+        on_log(f"Mandatory ODIN allocated-range read-back passed: SHA-256 {target_digest}")
+        return GuardedRestoreResult(
+            written,
+            plan.sha256,
+            target_digest,
+            True,
+            False,
+            False,
+            time.monotonic() - started,
+        )
+    except OdinRestoreOperationError as exc:
+        raise GuardedRestoreError(
+            str(exc), target_not_trusted=exc.target_not_trusted or changed
+        ) from exc
+    except GuardedRestoreError:
+        raise
+    except Exception as exc:
+        raise GuardedRestoreError(str(exc), target_not_trusted=changed) from exc
+    finally:
+        for volume in locked:
+            volume.unlock()
+            volume.close()
 
 
 def _restore_used_block_archive(

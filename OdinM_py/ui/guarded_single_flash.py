@@ -440,6 +440,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
             title="Select image for this guarded attempt",
             filetypes=[
                 ("Supported images", "*.img *.compact.img *.odin-archive"),
+                ("Raw or native ODIN containers", "*.img"),
                 ("Used-block archives", "*.odin-archive"),
                 ("Compact images", "*.compact.img"),
                 ("All files", "*.*"),

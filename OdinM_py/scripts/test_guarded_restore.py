@@ -17,6 +17,8 @@ sys.path.insert(0, str(ROOT))
 
 import compact_image  # noqa: E402
 import guarded_restore as restore  # noqa: E402
+import odin_container as odin  # noqa: E402
+from scripts.test_odin_container import _fixture  # noqa: E402
 from guarded_flash_safety import (  # noqa: E402
     DiskIdentity,
     ProtectedHardwareStore,
@@ -83,9 +85,7 @@ def _ext4_compact(path: Path) -> tuple[int, int, Path]:
     minimum_blocks = 256
     block_size = 4096
     buffer_bytes = 64 << 20
-    compact_sectors = (
-        minimum_blocks * block_size + buffer_bytes
-    ) // sector_size
+    compact_sectors = (minimum_blocks * block_size + buffer_bytes) // sector_size
     original_root_sectors = compact_sectors + 4096
     swap_sectors = 8192
     extended_start = root_start + original_root_sectors + 2048
@@ -108,9 +108,7 @@ def _ext4_compact(path: Path) -> tuple[int, int, Path]:
         extended_start_lba=extended_start,
         extended_sector_count=swap_sectors + 4096,
     )
-    image_layout = compact_image.make_ext4_only_layout(
-        source_layout, source_root, compact_sectors
-    )
+    image_layout = compact_image.make_ext4_only_layout(source_layout, source_root, compact_sectors)
     required_capacity = compact_image.minimum_target_bytes(
         root_start, compact_sectors, swap_sectors, 2048, sector_size
     )
@@ -152,9 +150,7 @@ def _ext4_compact(path: Path) -> tuple[int, int, Path]:
             buffer_bytes,
             root_start * sector_size,
         ),
-        compact_image.OmittedSwapRecord(
-            5, swap_uuid, swap_start, swap_sectors
-        ),
+        compact_image.OmittedSwapRecord(5, swap_uuid, swap_start, swap_sectors),
         compact_image.ExpansionRecord(
             root_uuid,
             swap_uuid,
@@ -372,6 +368,166 @@ def test_source_change_after_preflight_is_rejected():
             raise AssertionError("changed preflight source was accepted")
 
 
+def test_each_odin_codec_preflights_and_restores_with_full_readback():
+    logical = bytes((index * 19) % 251 for index in range(4096))
+    with tempfile.TemporaryDirectory() as folder:
+        for scheme in odin.CompressionScheme:
+            image = Path(folder) / f"codec-{int(scheme)}.img"
+            _fixture(image, logical, scheme=scheme)
+            plan = restore.preflight_image(image, 4096)
+            try:
+                assert plan.image_format == "odin-all-block"
+                assert plan.required_capacity == len(logical)
+                assert plan.odin_source is not None
+                assert plan.odin_source.verification_strategy == "full logical-stream SHA-256"
+                result, storage, _events = _restore(plan, folder)
+                assert result.verified
+                assert storage == logical
+            finally:
+                plan.cleanup()
+
+
+def test_split_odin_preflight_tracks_every_member_and_detects_change():
+    logical = bytes((index * 23) % 251 for index in range(4096))
+    with tempfile.TemporaryDirectory() as folder:
+        base = Path(folder) / "split.img"
+        _fixture(
+            base,
+            logical,
+            scheme=odin.CompressionScheme.ZLIB,
+            split_size=173,
+        )
+        plan = restore.preflight_image(base, 4096)
+        try:
+            assert plan.odin_source is not None
+            assert len(plan.odin_source.source_members) > 2
+            result, storage, _events = _restore(plan, folder)
+            assert result.verified
+            assert storage == logical
+
+            changed = plan.odin_source.source_members[1].path
+            blob = bytearray(changed.read_bytes())
+            blob[-1] ^= 0x01
+            changed.write_bytes(blob)
+            try:
+                restore.validate_source_unchanged(plan)
+            except restore.GuardedImageError as exc:
+                assert "changed" in str(exc)
+            else:
+                raise AssertionError("changed ODIN split member was accepted")
+        finally:
+            plan.cleanup()
+
+
+def test_used_block_odin_writes_and_verifies_only_allocated_ranges():
+    logical = bytes((index * 29) % 251 for index in range(4096))
+    tokens = (1, 1, 2, 4)
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "used.img"
+        _fixture(image, logical, tokens=tokens, cluster_size=512)
+        plan = restore.preflight_image(image, 4096)
+        storage = bytearray(b"\xa5" * 4096)
+        try:
+            assert plan.image_format == "odin-used-block"
+            assert plan.write_bytes == 1536
+            assert plan.odin_source is not None
+            assert plan.odin_source.allocated_ranges == ((0, 512), (1024, 1024))
+            result, storage, _events = _restore(plan, folder, storage=storage)
+            assert result.verified
+            assert storage[:512] == logical[:512]
+            assert storage[512:1024] == b"\xa5" * 512
+            assert storage[1024:2048] == logical[1024:2048]
+            assert storage[2048:] == b"\xa5" * 2048
+        finally:
+            plan.cleanup()
+
+
+def test_used_block_layout_is_preserved_when_every_cluster_is_allocated():
+    logical = bytes((index * 7) % 251 for index in range(4096))
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "all-allocated-used-block.img"
+        _fixture(image, logical, tokens=(8, 0), cluster_size=512)
+        plan = restore.preflight_image(image, 4096)
+        try:
+            assert plan.image_format == "odin-used-block"
+            assert plan.odin_source is not None and plan.odin_source.used_blocks
+            result, storage, _events = _restore(plan, folder)
+            assert result.verified
+            assert storage == logical
+        finally:
+            plan.cleanup()
+
+
+def test_used_block_odin_cancel_short_write_and_readback_mismatch_fail_closed():
+    logical = bytes((index * 31) % 251 for index in range(4096))
+    tokens = (1, 1, 1, 5)
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "used.img"
+        _fixture(image, logical, tokens=tokens, cluster_size=512)
+
+        cancel_plan = restore.preflight_image(image, 4096)
+        checks = 0
+
+        def cancel():
+            nonlocal checks
+            checks += 1
+            return checks > 2
+
+        try:
+            result, _storage, events = _restore(cancel_plan, folder, cancel=cancel)
+            assert result.cancelled and result.target_not_trusted
+            assert result.bytes_written == 512
+            assert "partition-ready" not in events
+        finally:
+            cancel_plan.cleanup()
+
+        short_plan = restore.preflight_image(image, 4096)
+        try:
+            try:
+                _restore(short_plan, folder, short_write=True)
+            except restore.GuardedRestoreError as exc:
+                assert exc.target_not_trusted
+                assert "short ODIN target write" in str(exc)
+            else:
+                raise AssertionError("short ODIN write was reported as success")
+        finally:
+            short_plan.cleanup()
+
+        mismatch_plan = restore.preflight_image(image, 4096)
+        disk = _disk()
+        storage = bytearray(disk.size_bytes)
+        opens = 0
+
+        def factory(_path, write=False):
+            nonlocal opens
+            opens += 1
+            if opens == 3:
+                storage[0] ^= 0xFF
+            return FakeDisk(storage, write)
+
+        try:
+            try:
+                restore.restore_and_verify(
+                    mismatch_plan,
+                    disk,
+                    _store(folder),
+                    confirmed_disk_number=3,
+                    inventory_provider=lambda: [disk],
+                    image_disk_provider=lambda _path: 0,
+                    disk_factory=factory,
+                    volume_locker=lambda *_args, **_kwargs: [],
+                    flush_disk=lambda _target: None,
+                    partition_waiter=lambda _path: None,
+                )
+            except restore.GuardedRestoreError as exc:
+                assert exc.target_not_trusted
+                assert "mismatch" in str(exc)
+            else:
+                raise AssertionError("ODIN range mismatch was reported as success")
+        finally:
+            mismatch_plan.cleanup()
+
+
 def test_success_requires_flush_refresh_and_matching_readback():
     with tempfile.TemporaryDirectory() as folder:
         image = Path(folder) / "raw.img"
@@ -380,7 +536,15 @@ def test_success_requires_flush_refresh_and_matching_readback():
         result, storage, events = _restore(plan, folder)
         assert result.verified
         assert storage[: len(data)] == data
-        assert events == ["open-read", "open-write", "flush", "unlock", "close", "partition-ready", "open-read"]
+        assert events == [
+            "open-read",
+            "open-write",
+            "flush",
+            "unlock",
+            "close",
+            "partition-ready",
+            "open-read",
+        ]
 
 
 def test_bad_confirmation_and_protected_target_never_open_a_disk():
@@ -392,7 +556,10 @@ def test_bad_confirmation_and_protected_target_never_open_a_disk():
         opened = []
         try:
             restore.restore_and_verify(
-                plan, disk, _store(folder), confirmed_disk_number=2,
+                plan,
+                disk,
+                _store(folder),
+                confirmed_disk_number=2,
                 disk_factory=lambda *_args, **_kwargs: opened.append(True),
             )
         except restore.GuardedRestoreError:
@@ -478,10 +645,16 @@ def test_verification_mismatch_is_a_failure():
 
         try:
             restore.restore_and_verify(
-                plan, disk, _store(folder), confirmed_disk_number=3,
-                inventory_provider=lambda: [disk], image_disk_provider=lambda _path: 0,
-                disk_factory=factory, volume_locker=lambda *_args, **_kwargs: [],
-                flush_disk=lambda _target: None, partition_waiter=lambda _path: None,
+                plan,
+                disk,
+                _store(folder),
+                confirmed_disk_number=3,
+                inventory_provider=lambda: [disk],
+                image_disk_provider=lambda _path: 0,
+                disk_factory=factory,
+                volume_locker=lambda *_args, **_kwargs: [],
+                flush_disk=lambda _target: None,
+                partition_waiter=lambda _path: None,
             )
         except restore.GuardedRestoreError as exc:
             assert exc.target_not_trusted
@@ -491,7 +664,11 @@ def test_verification_mismatch_is_a_failure():
 
 
 def _run_direct() -> int:
-    tests = [value for name, value in sorted(globals().items()) if name.startswith("test_") and callable(value)]
+    tests = [
+        value
+        for name, value in sorted(globals().items())
+        if name.startswith("test_") and callable(value)
+    ]
     failures = 0
     for test in tests:
         try:
