@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-15T05:55:46.119547Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-5eb5e5084280c2614cd1b989050509c3",
+    "revision_number": 1,
+    "summary": "Phase 1 implemented. Automated parser, worker, UI, regression, Ruff, compilation, and PyInstaller checks passed; live elevated disk capture remains pending."
+  },
+  "prefix": "ref",
+  "record_id": "plan_revision-2f23e9dc579f4a5b5e33414140fb9b55",
+  "record_type": "plan_revision",
+  "request_fingerprint": "1d289cf8768c47fa28fbfb031cb898fe9fa8099506ea7e996634ddaf52307643",
+  "schema_version": 2,
+  "session_id": "2fe57575-9ba8-4199-885b-2615bf7024bf"
+}

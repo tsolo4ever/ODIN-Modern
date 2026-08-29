@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-29T06:33:46.994392Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_path": "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md",
+    "summary": "Phased plan for strict ODIN v1.x parsing, all legacy codecs and bitmap restore, native all-block writer/compression, UI migration, compatibility matrix, and ODINC retirement.",
+    "title": "Native Python ODIN Container Compatibility and Compression"
+  },
+  "prefix": "active",
+  "record_id": "plan-29e345d288afb6012daed94256a27747",
+  "record_type": "plan",
+  "request_fingerprint": "a8fd8707ca26eaab97ff218529494ccd8f4092182239b628edfe9588ca019b81",
+  "schema_version": 2,
+  "session_id": "14894a83-4df8-42cc-bf20-ec410a9228d3"
+}

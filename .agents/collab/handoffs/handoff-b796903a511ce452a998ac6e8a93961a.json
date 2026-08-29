@@ -1,0 +1,28 @@
+{
+  "created_at": "2026-08-16T07:24:57.367925Z",
+  "data": {
+    "acknowledgement_requested": true,
+    "agent_name": "Codex",
+    "blockers": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "git_base": "",
+    "git_head": "",
+    "next_steps": [],
+    "open_questions": [],
+    "reason": "",
+    "relevant_paths": [],
+    "status": "ready",
+    "summary": "Guarded Single Flash software is implemented and automated validation passed. No baseline or physical write was performed. Ready for user-attended Phase 4 disposable fixed-disk validation; changes remain uncommitted and unpushed.",
+    "target_agent_label": "",
+    "target_reader_id": "",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "validation_checkpoint_ids": []
+  },
+  "prefix": "active",
+  "record_id": "handoff-b796903a511ce452a998ac6e8a93961a",
+  "record_type": "handoff",
+  "request_fingerprint": "fed8485765f1f4e33cc958d4d8bb8ac9ddf1a14205b25af8c5adb13ab4dafdc5",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

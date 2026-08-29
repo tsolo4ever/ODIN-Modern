@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-08-16T06:53:56.204499Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "OdinM_py/guarded_flash_safety.py",
+      "OdinM_py/scripts/test_guarded_flash_safety.py",
+      "Implementations/python-guarded-single-flash-plan.md"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "Implementations/python-guarded-single-flash-plan.md"
+    },
+    "scope": "Add stable physical disk fingerprinting, live Windows system-storage classification, additive protected baseline persistence, and backend eligibility/revalidation gates with focused tests.",
+    "title": "Implement guarded single flash Phase 1"
+  },
+  "prefix": "active",
+  "record_id": "task-287d2a0f42c54e59afeeebd533e624af",
+  "record_type": "task",
+  "request_fingerprint": "580301df3e4e09c8064248b2d7e07f39311812e1b49935879d70090ffb64243e",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-08-16T07:39:09.854055Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "OdinM_py/partition_reader.py",
+      "OdinM_py/scripts/test_partition_target_verify.py",
+      "Implementations/python-guarded-single-flash-plan.md"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "Implementations/python-guarded-single-flash-plan.md"
+    },
+    "scope": "Fix the Phase 4 hardware-test ERROR_INVALID_PARAMETER by making physical-disk partition-table reads sector aligned, add regression coverage, and record the hardware finding. Do not write to hardware.",
+    "title": "Fix sector-aligned guarded partition reads"
+  },
+  "prefix": "active",
+  "record_id": "task-a52b7662b78d14e4128e69a050416353",
+  "record_type": "task",
+  "request_fingerprint": "3fb2fad70bb7ab0e1cf9b14fd122c005c9ef3920aef8417ed241c8d7a6fb4bac",
+  "schema_version": 2,
+  "session_id": "1afdac2f-acd9-448b-a8ad-b8be4eb15113"
+}

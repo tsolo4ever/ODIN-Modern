@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-29T05:11:40.656989Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-ec322901ad49714801fa93ac9e2b73e2",
+    "revision_number": 2,
+    "summary": "Keep Auto hash/configure disabled; add manifest-owned SHA-256 hashes for exact sector-addressed source ranges plus encoded members and target readback verification; force raw/all blocks whenever the operator identifies approved gaming software."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-7b613af170143cb93e0fba23a5477380",
+  "record_type": "plan_revision",
+  "request_fingerprint": "255d2c5243da26b69eb2083d61f60c939ab758fb05ef972c5bda8e3fe5c43ab6",
+  "schema_version": 2,
+  "session_id": "a2b55cf4-a77d-4eb0-8ce2-bdc5f40882a3"
+}

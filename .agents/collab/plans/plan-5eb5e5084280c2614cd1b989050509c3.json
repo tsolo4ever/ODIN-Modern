@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-15T05:31:41.442388Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_path": "Implementations/python-bounded-raw-imaging-plan.md",
+    "summary": "Add Python-native MBR bounded-raw capture that skips trailing unallocated space, enumerates all physical disks for read-only Make Image, and preserves removable-only flash safety.",
+    "title": "Python Bounded Raw Imaging"
+  },
+  "prefix": "ref",
+  "record_id": "plan-5eb5e5084280c2614cd1b989050509c3",
+  "record_type": "plan",
+  "request_fingerprint": "f974f614b298628533ca56d946f2d9afc44c9e203eac357e7c2f76c8dac37f2d",
+  "schema_version": 2,
+  "session_id": "10b04b44-7ec7-4c61-a161-107600ffa674"
+}

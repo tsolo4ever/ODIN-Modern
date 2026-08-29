@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-08-29T07:30:10.636850Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      ".gitignore",
+      "githooks",
+      "github-workflows",
+      ".githooks",
+      ".github/workflows",
+      "Implementations/Agent_Collab_Repository_Hooks_And_Workflow_20260829.md"
+    ],
+    "plan_link": null,
+    "scope": "Move the supplied Git hooks and GitHub Actions workflow into their repository-standard locations, configure only this clone to use the hook path, preserve the existing coordination ignore rules, validate, and commit separately from ODIN application work.",
+    "title": "Make Agent Collab hooks and workflow repository-specific"
+  },
+  "prefix": "active",
+  "record_id": "task-66da80e907e0ec3cc470637c02f51519",
+  "record_type": "task",
+  "request_fingerprint": "ea429d4469874088e7f8337ab2c292b70cd6593f477afabbc6d888d2b4ee5c78",
+  "schema_version": 2,
+  "session_id": "ce8dfd10-c480-48c0-9c09-d35b7747cb35"
+}

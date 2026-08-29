@@ -1,0 +1,20 @@
+{
+  "created_at": "2026-08-29T06:34:29.654441Z",
+  "data": {
+    "handoff_id": "handoff-5f17f928c9262f2ea0cd9b1ba17fde5f",
+    "linked_validation": false,
+    "recovered": false,
+    "released_claims": [
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md"
+    ],
+    "signed_out_at": "2026-08-29T06:34:29.648302Z",
+    "task_id": "task-fced03ee8265a0309c99ed625fc759bd",
+    "warnings": []
+  },
+  "prefix": "active",
+  "record_id": "finalization-dabea982a53ed687c69108ba3bdbe4b4",
+  "record_type": "finalization",
+  "request_fingerprint": "75c984789e4751f00ef9fef59bb150f0c8f1aa0bb463a13f518511f6fb6bd2ae",
+  "schema_version": 2,
+  "session_id": "14894a83-4df8-42cc-bf20-ec410a9228d3"
+}

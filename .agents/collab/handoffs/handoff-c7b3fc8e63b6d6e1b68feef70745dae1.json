@@ -1,0 +1,40 @@
+{
+  "created_at": "2026-08-29T07:50:46.058542Z",
+  "data": {
+    "acknowledgement_requested": true,
+    "agent_name": "Codex",
+    "blockers": [],
+    "completed_items": [
+      "Committed repository-specific coordination infrastructure as 4d90736",
+      "Verified five mutable directories are ignored and durable records remain trackable",
+      "Verified this clone uses .githooks while the global hook path remains unset"
+    ],
+    "evidence_links": [],
+    "git_base": "f73bbd8",
+    "git_head": "4d90736",
+    "next_steps": [],
+    "open_questions": [],
+    "reason": "Requested repository-local guard setup is complete",
+    "relevant_paths": [
+      ".githooks",
+      ".github/workflows/protect-coordination-records.yml",
+      ".gitignore",
+      ".gitattributes",
+      "Implementations/Agent_Collab_Repository_Hooks_And_Workflow_20260829.md"
+    ],
+    "status": "completed",
+    "summary": "ODIN-Modern now has repository-local Agent Collab hooks and GitHub workflow guards",
+    "target_agent_label": "",
+    "target_reader_id": "",
+    "task_id": "task-66da80e907e0ec3cc470637c02f51519",
+    "validation_checkpoint_ids": [
+      "checkpoint-2469daaa537d94297269f3c088efc858"
+    ]
+  },
+  "prefix": "active",
+  "record_id": "handoff-c7b3fc8e63b6d6e1b68feef70745dae1",
+  "record_type": "handoff",
+  "request_fingerprint": "2520a95b35fcd2c76e1ba19cb7b2063658b2c293ef2235da0c42d59cded3cc0e",
+  "schema_version": 2,
+  "session_id": "3a2d4003-337a-41ae-9ab5-0cc0adfaef22"
+}

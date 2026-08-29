@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-15T05:57:46.635645Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Phase 1 bounded raw capture implemented. Compact 21/21, engine 13/13, image 4/4 with two fixture skips, slot 17/17, target verify 8/8, manual verify 5/5, Ruff, compile, and PyInstaller passed. Live hardware capture pending. Artifact: OdinM_py/dist_phase1/OdinM_py.exe.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "ref",
+  "record_id": "checkpoint-d6ccdd8aec3edc837cd995101702adc6",
+  "record_type": "checkpoint",
+  "request_fingerprint": "af34d17a1ee877c74fad3bc558a1730f2b51085cf6b1e632467b3df055d12483",
+  "schema_version": 2,
+  "session_id": "2fe57575-9ba8-4199-885b-2615bf7024bf"
+}

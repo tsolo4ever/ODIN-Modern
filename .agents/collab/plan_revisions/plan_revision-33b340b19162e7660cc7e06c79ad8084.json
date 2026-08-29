@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-12T04:47:55.094234Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-80961d07c7520873314bc6b2f500a339",
+    "revision_number": 1,
+    "summary": "Implementation complete; added Disk Health roadmap framing and recorded validation evidence plus live-test requirement."
+  },
+  "prefix": "ref",
+  "record_id": "plan_revision-33b340b19162e7660cc7e06c79ad8084",
+  "record_type": "plan_revision",
+  "request_fingerprint": "2f851ab92ce22523d10684602524139cc45877afaa3bfd97f90c15572a7d67ca",
+  "schema_version": 2,
+  "session_id": "6318507c-cf3b-46ee-96e1-fa768e24194f"
+}

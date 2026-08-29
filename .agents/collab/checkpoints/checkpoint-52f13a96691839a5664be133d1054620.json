@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T07:14:21.487105Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Phase 3A backend validation passed: guarded preflight/restore 11/11, engine/default wiring 14/14, compile and diff checks; simulated disks only.",
+    "task_id": "task-6b915bd85e0e622edf2e4f94b519c70f"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-52f13a96691839a5664be133d1054620",
+  "record_type": "checkpoint",
+  "request_fingerprint": "e43a1f4a37723a9b16f2057cb57baf87fd651e3c379378ac0a83d7204ff5c8ae",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

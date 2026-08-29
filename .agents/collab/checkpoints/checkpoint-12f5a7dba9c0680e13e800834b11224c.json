@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-15T08:17:49.312117Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "completion",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Implemented bounded adaptive raw-read recovery and passed automated validation (29/29 recovery, 21/21 compact image, 13/13 wiring, 5/5 manual checks). PyInstaller build completed and the user moved the rebuilt EXE to its runtime directory. Live spare-drive and Roulette-drive retests remain.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "ref",
+  "record_id": "checkpoint-12f5a7dba9c0680e13e800834b11224c",
+  "record_type": "checkpoint",
+  "request_fingerprint": "10440cc9fc25ade22e04d6a9bad0609d50dde5b58d6005657e670f989c16a3a0",
+  "schema_version": 2,
+  "session_id": "73b33403-52fe-4c66-8ec9-46d98a32e784"
+}

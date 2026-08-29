@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-29T05:51:13.141023Z",
+  "data": {
+    "agent_name": "Operator (console)",
+    "body": "Approved.",
+    "decision": "adopted",
+    "plan_id": "plan-ec322901ad49714801fa93ac9e2b73e2",
+    "resolves_comment_ids": [],
+    "revision_id": "plan_revision-7b613af170143cb93e0fba23a5477380"
+  },
+  "prefix": "active",
+  "record_id": "plan_comment-b51cebf2f428b6cfa22b9906456dd322",
+  "record_type": "plan_comment",
+  "request_fingerprint": "d25ebd95f187f0fdec177f56ff351766c2d1efaa0f03b40beba4c55ccc548d43",
+  "schema_version": 2,
+  "session_id": "64fa2044-6314-4d3e-b6b6-ecc74e0ca76e"
+}

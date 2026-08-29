@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-08-16T06:32:06.710001Z",
+  "data": {
+    "label": "Repository agent instructions",
+    "path": "AGENTS.md",
+    "scope": "repository"
+  },
+  "prefix": "pinned",
+  "record_id": "document-b951327c37d8a1ed4d5ed18908681f6a",
+  "record_type": "document",
+  "schema_version": 1
+}

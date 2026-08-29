@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-29T07:07:16.883165Z",
+  "data": {
+    "agent_name": "Codex",
+    "body": "Human operator approved the written plan and Phase 1 implementation in chat on 2026-08-29.",
+    "decision": "adopted",
+    "plan_id": "plan-29e345d288afb6012daed94256a27747",
+    "resolves_comment_ids": [],
+    "revision_id": "plan-29e345d288afb6012daed94256a27747"
+  },
+  "prefix": "active",
+  "record_id": "plan_comment-044b4e1ac2cece04414ad8358617fe05",
+  "record_type": "plan_comment",
+  "request_fingerprint": "5103d8359fe3e022c419378cf7ec1c4d100ae478a9c162aeee461ea8df1a93cf",
+  "schema_version": 2,
+  "session_id": "ce8dfd10-c480-48c0-9c09-d35b7747cb35"
+}

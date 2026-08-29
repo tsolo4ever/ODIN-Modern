@@ -1,0 +1,24 @@
+{
+  "created_at": "2026-08-29T07:30:16.913114Z",
+  "data": {
+    "handoff_id": "handoff-90bdb9e8fad1d0534abedb75284f09a5",
+    "linked_validation": true,
+    "recovered": false,
+    "released_claims": [
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md",
+      "OdinM_py/odin_container.py",
+      "OdinM_py/partition_reader.py",
+      "OdinM_py/scripts/odin_img.py",
+      "OdinM_py/scripts/test_odin_container.py"
+    ],
+    "signed_out_at": "2026-08-29T07:30:16.906371Z",
+    "task_id": "task-fced03ee8265a0309c99ed625fc759bd",
+    "warnings": []
+  },
+  "prefix": "active",
+  "record_id": "finalization-7b18ef69a94c87d60931913bf0aacdcb",
+  "record_type": "finalization",
+  "request_fingerprint": "8b3ccc793d915ba07336263a58aaebffcb0101ca76fa2b1aa1642128008e94bc",
+  "schema_version": 2,
+  "session_id": "ce8dfd10-c480-48c0-9c09-d35b7747cb35"
+}

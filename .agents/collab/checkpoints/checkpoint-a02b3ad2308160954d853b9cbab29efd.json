@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-18T05:00:25.628271Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Implemented schema-2 ext4 used-block compact capture with 64 MiB buffer, read-only WSL source, omitted swap metadata, guarded minimum target capacity, and re-armed two-boot expansion. All 20 Python regression scripts, targeted Ruff/compile, real WSL e2image/fsck/resize wrapper, and loop-device expansion tests pass. Physical SSD capture/restore and unattended cabinet boots remain.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-a02b3ad2308160954d853b9cbab29efd",
+  "record_type": "checkpoint",
+  "request_fingerprint": "0c58ef18afdd23af5bf9f7392005f141c3b4de5c5ab01c583666ee1c636eafea",
+  "schema_version": 2,
+  "session_id": "c4c3745e-08a1-4062-8a36-301015fc4d8d"
+}

@@ -1,0 +1,40 @@
+{
+  "created_at": "2026-08-29T05:11:40.709504Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [
+      "Kept Auto hash/configure disabled for the archive-set profile",
+      "Specified SHA-256 hashes for exact absolute-LBA ranges and encoded archive members",
+      "Required target-sector readback verification after restore",
+      "Added a per-job approved-gaming-software question that forces raw/all blocks on Yes"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "Unallocated space has no byte-preservation claim",
+      "Recreated swap is verified by geometry, version, UUID, label, and header rather than copied-payload hashes"
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "decision",
+    "next_steps": [
+      "Obtain explicit approval before implementing the nine-path Phases 1 through 3 scope"
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/Implementations/General_Used_Block_Archive_Profile_20260828.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Used-block archives are not acceptable for approved gaming-software images"
+    ],
+    "summary": "General used-block archive integrity and approved-gaming eligibility gates revised.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-57c71f1d5d35e61a3aaa9bafb515f0e0",
+  "record_type": "checkpoint",
+  "request_fingerprint": "cfafe188ef4a5d80426373f0938eba600d7d9763020a5f3b1d96952c35ef7759",
+  "schema_version": 2,
+  "session_id": "a2b55cf4-a77d-4eb0-8ce2-bdc5f40882a3"
+}

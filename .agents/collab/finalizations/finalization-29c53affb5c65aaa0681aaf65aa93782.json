@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-08-16T07:25:04.038053Z",
+  "data": {
+    "handoff_id": "handoff-b796903a511ce452a998ac6e8a93961a",
+    "linked_validation": false,
+    "recovered": false,
+    "released_claims": [],
+    "signed_out_at": "2026-08-16T07:25:04.032364Z",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "warnings": []
+  },
+  "prefix": "active",
+  "record_id": "finalization-29c53affb5c65aaa0681aaf65aa93782",
+  "record_type": "finalization",
+  "request_fingerprint": "54f7af35704c7fadac5e69b9d5a3a6d8e9fcfdc834678b11efa6eb3b03c2b7b3",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

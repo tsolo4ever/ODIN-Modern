@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T07:07:32.310485Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "completion",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Guarded Single Flash Phase 2 UI and mutual-exclusion state completed and validated.",
+    "task_id": "task-7f7523128a57579fdf52a82c4a0a3823"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-6a633aa8f65288f4b7cd6e6639d9902a",
+  "record_type": "checkpoint",
+  "request_fingerprint": "16d69dee32faa5f46f67d8b49767f80b3c3573e759b1d16e3479cf9b6c1c7485",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

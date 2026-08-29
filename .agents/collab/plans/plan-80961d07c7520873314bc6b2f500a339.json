@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-12T04:16:58.462636Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_path": "Implementations/disk-imaging-reliability-plan.md",
+    "summary": "Approved fixes for raw-write refresh and truthful verification plus safe used-block backup/restore; records future Python-native and guarded disk-repair roadmap.",
+    "title": "Disk Imaging Reliability"
+  },
+  "prefix": "ref",
+  "record_id": "plan-80961d07c7520873314bc6b2f500a339",
+  "record_type": "plan",
+  "request_fingerprint": "9df9975ad5acb367de8852312376cfc33c6980abbe80c726b2167be5190aa72e",
+  "schema_version": 2,
+  "session_id": "6318507c-cf3b-46ee-96e1-fa768e24194f"
+}

@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-29T10:20:58.868137Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-29e345d288afb6012daed94256a27747",
+    "revision_number": 1,
+    "summary": "Recorded Phase 1 cross-implementation acceptance, the C++ logical-payload CRC correction, and Phase 2 synthetic guarded-restore completion with physical-media acceptance still pending."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-6288586a0db448ae8ab0c1b38720ffab",
+  "record_type": "plan_revision",
+  "request_fingerprint": "d37339d2b51c0ddfd3583841c562d32776073edd620cf7a067aef16f8470e7f5",
+  "schema_version": 2,
+  "session_id": "b6b2906e-55cc-412c-811e-6b7b71130eba"
+}

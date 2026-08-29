@@ -1,0 +1,37 @@
+{
+  "created_at": "2026-08-29T07:30:10.581350Z",
+  "data": {
+    "acknowledgement_requested": true,
+    "agent_name": "Codex",
+    "blockers": [],
+    "completed_items": [
+      "Implementation committed as f73bbd8",
+      "All local parser and guarded restore test suites passed"
+    ],
+    "evidence_links": [],
+    "git_base": "14cfa0f",
+    "git_head": "f73bbd8",
+    "next_steps": [
+      "Run operator-attended ODINC.exe verification against generated fixtures before closing the Phase 1 acceptance gate"
+    ],
+    "open_questions": [],
+    "reason": "Implementation complete; one attended compatibility oracle remains",
+    "relevant_paths": [
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md"
+    ],
+    "status": "ready",
+    "summary": "Native ODIN container Phase 1 committed and locally validated; attended ODINC oracle remains",
+    "target_agent_label": "",
+    "target_reader_id": "",
+    "task_id": "task-fced03ee8265a0309c99ed625fc759bd",
+    "validation_checkpoint_ids": [
+      "checkpoint-d65d8725ed201b542544df83a4798ab5"
+    ]
+  },
+  "prefix": "active",
+  "record_id": "handoff-90bdb9e8fad1d0534abedb75284f09a5",
+  "record_type": "handoff",
+  "request_fingerprint": "5f46c00eb9269319c17c9e2a1e5794603677b102c25a7f45cd1bf9d460c82f72",
+  "schema_version": 2,
+  "session_id": "ce8dfd10-c480-48c0-9c09-d35b7747cb35"
+}

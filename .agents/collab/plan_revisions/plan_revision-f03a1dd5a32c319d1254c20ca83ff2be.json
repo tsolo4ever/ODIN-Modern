@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-18T04:27:04.501223Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-48581965b765c0f92b9eff448a04c4de",
+    "revision_number": 1,
+    "summary": "Require capture of the full source prefix from LBA 0 through the ext4 start, preserving bootloader/alignment bytes while rewriting only omitted partition-table entries."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-f03a1dd5a32c319d1254c20ca83ff2be",
+  "record_type": "plan_revision",
+  "request_fingerprint": "4b6c57a7e0d6fe1636585b234b0cae66e0eb507087f6e026069049b1d12847eb",
+  "schema_version": 2,
+  "session_id": "75c0bce2-7588-49c1-a1ae-562b4af00b84"
+}

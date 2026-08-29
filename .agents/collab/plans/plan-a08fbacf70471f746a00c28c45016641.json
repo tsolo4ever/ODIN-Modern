@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-16T07:24:49.077104Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_path": "Implementations/python-guarded-single-flash-plan.md",
+    "summary": "Software phases complete and automated validation passed; disposable fixed-disk hardware validation remains user-attended.",
+    "title": "Python Guarded Single Flash"
+  },
+  "prefix": "active",
+  "record_id": "plan-a08fbacf70471f746a00c28c45016641",
+  "record_type": "plan",
+  "request_fingerprint": "c4cc4d3c1f8c8d1ef33945b72914c965748368ce0a890eb932e2c76f6d0e3e38",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

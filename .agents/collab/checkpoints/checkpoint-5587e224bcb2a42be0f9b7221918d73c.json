@@ -1,0 +1,39 @@
+{
+  "created_at": "2026-08-29T05:07:29.671172Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [
+      "Replaced blanket swap rejection with a strict standard-swap validation path",
+      "Added swap UUID, version, label, size, geometry, omission, restore, and verification requirements",
+      "Retained raw/all-block fallback for encrypted, active, unknown, or inconsistent swap"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "General profile preserves original partition geometry",
+      "Specialized Roulette profile remains distinct for root shrinking and first-boot expansion"
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "decision",
+    "next_steps": [
+      "Obtain operator approval before implementing Phases 1 through 3"
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/Implementations/General_Used_Block_Archive_Profile_20260828.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Swap payload omission is safe only when exact standard swap recreation is independently verified"
+    ],
+    "summary": "General used-block plan now supports verified standard swap recreation.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-5587e224bcb2a42be0f9b7221918d73c",
+  "record_type": "checkpoint",
+  "request_fingerprint": "f37ab7efc958a1a5b9450ace674431577ae9dbd4f233ae30d64bf922a4cb223e",
+  "schema_version": 2,
+  "session_id": "12e9ac73-f6ab-4f53-b9ce-a4e2de1cab4a"
+}

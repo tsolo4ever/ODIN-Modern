@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T07:22:15.692543Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Phase 3B integration validation passed: coordinator/UI 7/7, backend 11/11, mode 11/11, all ODIN Python suites passed; concurrent-volume test passed 6/6 with production raw_disk preloaded to work around its known import-order harness flaw.",
+    "task_id": "task-602759ebc06eaa488eb4cbe6e14210f1"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-5ca8aca8c93e06c74b8fb93f4ff49d3f",
+  "record_type": "checkpoint",
+  "request_fingerprint": "d94f08128bc31f49b60f9d3b6b7c4a0583b165f0976359202bc3b7c37d91646a",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

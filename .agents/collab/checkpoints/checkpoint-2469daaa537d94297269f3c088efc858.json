@@ -1,0 +1,74 @@
+{
+  "created_at": "2026-08-29T07:50:35.070103Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "sh -n .githooks/pre-commit",
+        "summary": "Pre-commit hook shell syntax passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "sh -n .githooks/post-commit",
+        "summary": "Post-commit hook shell syntax passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python YAML safe_load workflow",
+        "summary": "GitHub Actions workflow parsed as YAML"
+      },
+      {
+        "exit_code": 0,
+        "name": "git hook run pre-commit",
+        "summary": "Normal staged infrastructure paths passed the guard"
+      },
+      {
+        "exit_code": 1,
+        "name": "alternate-index force-staged session negative test",
+        "summary": "Expected rejection proved transient-state guard works"
+      },
+      {
+        "exit_code": 0,
+        "name": "git check-ignore transient and durable probes",
+        "summary": "Five mutable directories are ignored and durable checkpoint records remain trackable"
+      }
+    ],
+    "completed_items": [
+      "Moved hooks into .githooks and workflow into .github/workflows",
+      "Configured this clone only with core.hooksPath=.githooks",
+      "Ignored claims, locks, readers, sessions, and pin acknowledgements",
+      "Forced LF checkout for repository hook scripts",
+      "Committed the six-file infrastructure change as 4d90736"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "The user had already ignored claims and locks; sessions, readers, and pin_acknowledgements were the three missing mutable paths",
+      "The global core.hooksPath remains unset",
+      "The first bulk Agent Collab record auto-commit was deliberately skipped during the setup commit"
+    ],
+    "git_base": "f73bbd8",
+    "git_head": "4d90736",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [
+      ".gitattributes",
+      ".gitignore",
+      ".githooks/pre-commit",
+      ".githooks/post-commit",
+      ".github/workflows/protect-coordination-records.yml",
+      "Implementations/Agent_Collab_Repository_Hooks_And_Workflow_20260829.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Repository-specific Agent Collab hooks and workflow configured and validated",
+    "task_id": "task-66da80e907e0ec3cc470637c02f51519"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-2469daaa537d94297269f3c088efc858",
+  "record_type": "checkpoint",
+  "request_fingerprint": "d66bcf28fb28a76ebc1ae1ae27d3651fe75b6c4dd9313dad5836d202415d774e",
+  "schema_version": 2,
+  "session_id": "3a2d4003-337a-41ae-9ab5-0cc0adfaef22"
+}

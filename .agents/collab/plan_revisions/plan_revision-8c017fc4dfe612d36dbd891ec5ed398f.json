@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-18T04:59:43.480575Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-48581965b765c0f92b9eff448a04c4de",
+    "revision_number": 3,
+    "summary": "Recorded completed Python, schema-2, WSL e2fsprogs, script-hash, and loop-device validation; retained physical SSD restore and unattended cabinet boots as acceptance gates."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-8c017fc4dfe612d36dbd891ec5ed398f",
+  "record_type": "plan_revision",
+  "request_fingerprint": "0896f9a8bb43a1e19d16c56506269d845d5c332bf2671a2f33a087cb5bda006b",
+  "schema_version": 2,
+  "session_id": "c4c3745e-08a1-4062-8a36-301015fc4d8d"
+}

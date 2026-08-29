@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-08-18T05:01:01.048393Z",
+  "data": {
+    "handoff_id": "handoff-49fc5c7aa75b0c60e8d5e6ce89a29ac5",
+    "linked_validation": false,
+    "recovered": false,
+    "released_claims": [
+      "OdinM_py/Implementations/Ext4_Used_Block_Compact_Capture_20260817.md",
+      "OdinM_py/OdinM_py.spec",
+      "OdinM_py/compact_image.py",
+      "OdinM_py/ext4_compact_capture.py",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/pyimager_worker.py",
+      "OdinM_py/scripts/roulette_expand_storage.sh",
+      "OdinM_py/scripts/test_compact_image.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/scripts/test_roulette_expand_storage.sh",
+      "OdinM_py/ui/make_image_dialog.py"
+    ],
+    "signed_out_at": "2026-08-18T05:01:01.042211Z",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "warnings": []
+  },
+  "prefix": "active",
+  "record_id": "finalization-7f6e9f0dc6e71a067c24d50e1e2334e4",
+  "record_type": "finalization",
+  "request_fingerprint": "d7faf12d26129f9964ea43969ef8ea720e6f64cb9ef601410f69b0ea7138bdcb",
+  "schema_version": 2,
+  "session_id": "c4c3745e-08a1-4062-8a36-301015fc4d8d"
+}

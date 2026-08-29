@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T07:07:32.265102Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Phase 2 validation passed: mode/state 11/11, hidden Tk mode repaint smoke, Auto-Flash 13/13, slot stability 17/17, engine wiring 13/13; app.py is 996 lines.",
+    "task_id": "task-7f7523128a57579fdf52a82c4a0a3823"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-256ee195552ee91f703d429905ccd58b",
+  "record_type": "checkpoint",
+  "request_fingerprint": "05fa96ebb6c9d61b8b7fc62cd1ae7d6617d834385fd530e33aed005d3c288bbb",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

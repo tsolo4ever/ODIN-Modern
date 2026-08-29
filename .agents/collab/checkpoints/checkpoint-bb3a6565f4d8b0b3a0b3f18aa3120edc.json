@@ -1,0 +1,100 @@
+{
+  "created_at": "2026-08-29T06:27:06.104536Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "ruff format --check <changed Python paths>",
+        "summary": "All seven changed Python files are formatted."
+      },
+      {
+        "exit_code": 0,
+        "name": "ruff check <changed Python paths>",
+        "summary": "All changed Python files passed lint."
+      },
+      {
+        "exit_code": 0,
+        "name": "python -m py_compile <changed Python paths>",
+        "summary": "All changed Python files compiled."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_used_block_archive.py",
+        "summary": "7 of 7 archive safety tests passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore.py",
+        "summary": "13 of 13 guarded restore tests passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_engine_wiring.py",
+        "summary": "14 of 14 engine wiring tests passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore_integration.py",
+        "summary": "7 of 7 integration tests passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "mypy --follow-imports=skip used_block_archive.py",
+        "summary": "New archive module passed focused typing."
+      },
+      {
+        "exit_code": 0,
+        "name": "pyinstaller --noconfirm --clean OdinM_py.spec",
+        "summary": "Windows executable rebuilt successfully without launching it."
+      },
+      {
+        "exit_code": 0,
+        "name": "git diff --check",
+        "summary": "No whitespace errors; only line-ending conversion warnings."
+      }
+    ],
+    "completed_items": [
+      "Implemented strict manifest-backed used-block archive capture and restore",
+      "Added gaming-software raw-only gate and UI integration",
+      "Added exact allocated-range verification and omitted standard swap recreation",
+      "Updated implementation plan and project map"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "The current WSL distribution does not have the required Partclone adapters, so live capture/restore fails closed until they are installed.",
+      "No physical drive operation or application launch was performed during final validation."
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [
+      "Commit only the approved paths.",
+      "Run Phase 4 physical-media validation after Partclone prerequisites are deliberately installed."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/used_block_archive.py",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/pyimager_worker.py",
+      "OdinM_py/ui/make_image_dialog.py",
+      "OdinM_py/ui/image_options_dialog.py",
+      "OdinM_py/ui/guarded_single_flash.py",
+      "OdinM_py/scripts/test_used_block_archive.py",
+      "OdinM_py/Implementations/General_Used_Block_Archive_Profile_20260828.md",
+      "OdinM_py/Map.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Physical capture and restore remain unproven until Phase 4 hardware validation."
+    ],
+    "summary": "General used-block archive Phases 1-3 passed final static, regression, integration, and packaging checks.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-bb3a6565f4d8b0b3a0b3f18aa3120edc",
+  "record_type": "checkpoint",
+  "request_fingerprint": "6516863236472e3b0ee474856353758a507aab2eeda669855f32f0cbb2e3e133",
+  "schema_version": 2,
+  "session_id": "610bfb02-1473-4ae9-884f-b423f54f0d8f"
+}

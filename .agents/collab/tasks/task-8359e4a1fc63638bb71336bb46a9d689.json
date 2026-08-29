@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-29T10:04:16.953881Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/ui/guarded_single_flash.py",
+      "OdinM_py/odin_worker.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/scripts/test_guarded_restore_integration.py"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md"
+    },
+    "scope": "Complete the operator-attended Phase 1 ODINC fixture oracle without physical writes, update the native-container plan status, then implement Phase 2 native ODIN guarded restore through the existing protected single-target workflow.",
+    "title": "Native ODIN Phase 1 acceptance and Phase 2 guarded restore"
+  },
+  "prefix": "active",
+  "record_id": "task-8359e4a1fc63638bb71336bb46a9d689",
+  "record_type": "task",
+  "request_fingerprint": "b65410f45317645c4bb9663175c4fee74168224bbc75de040c9ee022e374658b",
+  "schema_version": 2,
+  "session_id": "62b33831-b52b-4e6f-9abf-c4eef581035d"
+}

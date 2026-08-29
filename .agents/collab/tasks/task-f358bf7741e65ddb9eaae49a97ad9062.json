@@ -1,0 +1,21 @@
+{
+  "created_at": "2026-08-16T07:22:31.304495Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "Implementations/python-guarded-single-flash-plan.md"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "Implementations/python-guarded-single-flash-plan.md"
+    },
+    "scope": "Record completed software phases, automated validation, and the remaining user-attended disposable-hardware validation boundary.",
+    "title": "Finalize guarded flash software plan status"
+  },
+  "prefix": "active",
+  "record_id": "task-f358bf7741e65ddb9eaae49a97ad9062",
+  "record_type": "task",
+  "request_fingerprint": "e2826535d0e6d38fb1f2ba03b8b8e0fe467719303bfa54b1897c74884a846769",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

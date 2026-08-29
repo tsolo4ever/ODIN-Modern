@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-19T03:31:10.360602Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Fresh validation passed: compile and Ruff, all 20 Python test scripts including compact 66/66, both WSL root loop-device suites, real synthetic ext4 checked/unchecked cleanup injection, actual Tk cleanup-control smoke test, clean PyInstaller 6.20 build, packaged asset inspection, and git diff check. Built EXE SHA-256 543ECAA36E11222BD9787F76A19DB03BD857A35F26A39419A093BAE8026821BD. No physical disks touched; remaining gates are disposable restore and unattended cabinet boot.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-214e752c9acedf0eead448f8654b457e",
+  "record_type": "checkpoint",
+  "request_fingerprint": "019ca9d9d8a69532eac752235a9edc401e8007e9e5e183b8bef38763809ee07f",
+  "schema_version": 2,
+  "session_id": "805de691-17d8-4409-9cdc-501d365c6850"
+}

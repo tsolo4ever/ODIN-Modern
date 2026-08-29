@@ -1,0 +1,25 @@
+{
+  "created_at": "2026-08-16T07:09:18.989378Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/config_manager.py",
+      "OdinM_py/scripts/test_engine_wiring.py",
+      "Implementations/python-guarded-single-flash-plan.md"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "Implementations/python-guarded-single-flash-plan.md"
+    },
+    "scope": "Phase 3A: strict raw, gzip, and compact image preflight; guarded fixed-disk write/flush/refresh/read-back verification backend; make PyImager the default engine.",
+    "title": "Implement guarded restore backend and preflight"
+  },
+  "prefix": "active",
+  "record_id": "task-6b915bd85e0e622edf2e4f94b519c70f",
+  "record_type": "task",
+  "request_fingerprint": "f08030993ba5da6b4a8fe8e5de35e79956fd21bd7d152d7e7ee6d9a463246bfb",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

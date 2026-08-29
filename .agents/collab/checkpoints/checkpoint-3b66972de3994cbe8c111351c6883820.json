@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T07:24:19.867608Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "completion",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Guarded flash static findings cleaned with no behavior change.",
+    "task_id": "task-9fb243fc812e2631989644b6ed167bb9"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-3b66972de3994cbe8c111351c6883820",
+  "record_type": "checkpoint",
+  "request_fingerprint": "cb65eb31f955ae00acfed887f9e0292ddd475a1644685e424fff12ea99d7a18e",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

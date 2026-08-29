@@ -1,0 +1,81 @@
+{
+  "created_at": "2026-08-29T07:29:06.811782Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "ruff format/check (four Python paths)",
+        "summary": "Formatting and lint passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "mypy --follow-imports=skip odin_container.py partition_reader.py scripts/odin_img.py",
+        "summary": "Static type checks passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_odin_container.py",
+        "summary": "13 of 13 native container tests passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore.py",
+        "summary": "13 of 13 guarded restore tests passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore_integration.py",
+        "summary": "7 of 7 integration tests passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_partition_target_verify.py",
+        "summary": "9 of 9 target verification tests passed"
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_engine_wiring.py",
+        "summary": "14 of 14 engine wiring tests passed"
+      }
+    ],
+    "completed_items": [
+      "Added strict read-only native ODIN v1.x parsing and decoding",
+      "Delegated existing inspection paths to the production parser",
+      "Added codec, bitmap, split-member, corruption, and compatibility tests",
+      "Committed the approved five-file implementation as f73bbd8"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "Read-only CRC of D:/cards/Old img/15.0.6.2.img matched stored CRC 71d3220f",
+      "No application launch, physical disk write, or media operation was performed"
+    ],
+    "git_base": "14cfa0f",
+    "git_head": "f73bbd8",
+    "kind": "validation",
+    "next_steps": [
+      "Run ODINC.exe -verify against generated fixtures when attended and safe",
+      "Continue with the separately requested repository-specific hook/workflow setup"
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md",
+      "OdinM_py/odin_container.py",
+      "OdinM_py/partition_reader.py",
+      "OdinM_py/scripts/odin_img.py",
+      "OdinM_py/scripts/test_odin_container.py"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Operator-attended ODINC.exe verification against generated fixtures remains pending"
+    ],
+    "summary": "Native ODIN container Phase 1 implementation committed and validated",
+    "task_id": "task-fced03ee8265a0309c99ed625fc759bd"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-d65d8725ed201b542544df83a4798ab5",
+  "record_type": "checkpoint",
+  "request_fingerprint": "910b03b47a6587734b1f31c063a048b9a87ba9d733d9e30850925387595e0629",
+  "schema_version": 2,
+  "session_id": "ce8dfd10-c480-48c0-9c09-d35b7747cb35"
+}

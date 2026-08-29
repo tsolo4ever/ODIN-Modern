@@ -1,0 +1,41 @@
+{
+  "created_at": "2026-08-29T04:57:49.525045Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [
+      "Inspected existing native ODIN used-block and specialized Ext4-plus-swap paths",
+      "Read-only checked the new-PAA image layout",
+      "Wrote and registered the phased implementation plan"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "New PAA is MBR with one FAT partition and one Linux Ext partition and no swap",
+      "Native ODIN used-block support relies on Windows allocation maps and does not establish Ext support",
+      "Current WSL has e2fsprogs but no unified Partclone adapter installed"
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "decision",
+    "next_steps": [
+      "Obtain operator approval before touching the nine-path implementation scope"
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/Implementations/General_Used_Block_Archive_Profile_20260828.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Capture without matching manifest-first restore support would create an unsafe one-way backup format",
+      "Physical validation must use an explicitly disposable target"
+    ],
+    "summary": "General used-block archive implementation scope documented; awaiting operator approval.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-beaae14e356c62febf21f51abddab6d1",
+  "record_type": "checkpoint",
+  "request_fingerprint": "7bf7ae13e7b322764a9d123df8b12c8da55aef524ee0bf1e766144c04c179581",
+  "schema_version": 2,
+  "session_id": "973f2cf2-0935-4bb4-ad80-00f9b6bf7f9f"
+}

@@ -1,0 +1,25 @@
+{
+  "created_at": "2026-08-16T07:15:47.247924Z",
+  "data": {
+    "agent_name": "Codex",
+    "expected_paths": [
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/ui/guarded_single_flash.py",
+      "OdinM_py/ui/main_window.py",
+      "OdinM_py/app.py",
+      "OdinM_py/scripts/test_guarded_restore_integration.py"
+    ],
+    "plan_link": {
+      "kind": "repository",
+      "target": "Implementations/python-guarded-single-flash-plan.md"
+    },
+    "scope": "Phase 3B: preflight and typed confirmation in guarded UI, cancellable restore coordinator, progress/result handling, and guarded worker integration tests.",
+    "title": "Integrate guarded restore into main window"
+  },
+  "prefix": "active",
+  "record_id": "task-602759ebc06eaa488eb4cbe6e14210f1",
+  "record_type": "task",
+  "request_fingerprint": "43be4fb032ad5b885b62916bf150746d9d0038b6e2fcd959e24c7b9b5ef5554a",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

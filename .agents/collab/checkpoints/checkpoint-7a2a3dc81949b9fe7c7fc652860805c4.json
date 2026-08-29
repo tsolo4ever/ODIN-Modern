@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T06:59:20.921575Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Validation passed: guarded safety 14/14, disk health 23/23, disk detection 7/7, compileall, diff check, and live read-only system/virtual classification.",
+    "task_id": "task-287d2a0f42c54e59afeeebd533e624af"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-7a2a3dc81949b9fe7c7fc652860805c4",
+  "record_type": "checkpoint",
+  "request_fingerprint": "60fba9b50954e5a016626bfa54a6a49401e55564fc3e0d34e84d2a36385907a9",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

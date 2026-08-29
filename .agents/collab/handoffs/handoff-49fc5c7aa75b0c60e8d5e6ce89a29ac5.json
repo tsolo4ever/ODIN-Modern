@@ -1,0 +1,28 @@
+{
+  "created_at": "2026-08-18T05:00:56.347579Z",
+  "data": {
+    "acknowledgement_requested": true,
+    "agent_name": "Codex",
+    "blockers": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "git_base": "",
+    "git_head": "",
+    "next_steps": [],
+    "open_questions": [],
+    "reason": "",
+    "relevant_paths": [],
+    "status": "ready",
+    "summary": "Commit 43fca90 implements ext4 used-block compact capture with 64 MiB buffer, schema-2 swap/root metadata, read-only WSL capture, strict guarded target sizing, and re-armed Roulette expansion. Worktree clean; all Python regressions, Ruff/compile, WSL staging/hash checks, and loop-device expansion pass. Next: create from disposable source SSD, guarded-restore to target, then observe both unattended cabinet boots. Not pushed.",
+    "target_agent_label": "",
+    "target_reader_id": "",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "validation_checkpoint_ids": []
+  },
+  "prefix": "active",
+  "record_id": "handoff-49fc5c7aa75b0c60e8d5e6ce89a29ac5",
+  "record_type": "handoff",
+  "request_fingerprint": "b21ab8ddad70344659a8ae6dcc66482802ed86ac8b6ef5f49b47151247630121",
+  "schema_version": 2,
+  "session_id": "c4c3745e-08a1-4062-8a36-301015fc4d8d"
+}

@@ -1,0 +1,17 @@
+{
+  "created_at": "2026-08-10T03:59:39.106869Z",
+  "data": {
+    "agent_name": "Agent Collab",
+    "expected_paths": [],
+    "plan_link": null,
+    "scope": "Coordination without an active task.",
+    "section_id": 1,
+    "title": "Misc"
+  },
+  "prefix": "ref",
+  "record_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+  "record_type": "task",
+  "request_fingerprint": "c81a74ba8df0988c77cd9484aaae13a99f66044f0d5f7233057579ae3c55e334",
+  "schema_version": 2,
+  "session_id": "d78cb7e6-0cec-5d4c-827c-80644bfe3c19"
+}

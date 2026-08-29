@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-08-29T05:07:29.620194Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-ec322901ad49714801fa93ac9e2b73e2",
+    "revision_number": 1,
+    "summary": "Allow only verified inactive unencrypted Linux swap v1, record UUID and exact geometry, omit payload, and recreate during guarded restore; fall back to raw for every unsupported swap case."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-c25f6c74951823bf9e67d0ce02d1bcd8",
+  "record_type": "plan_revision",
+  "request_fingerprint": "6c870278e0d97185ae1d6956cca1563819712e54b6dbd3accf3b530236fc350c",
+  "schema_version": 2,
+  "session_id": "12e9ac73-f6ab-4f53-b9ce-a4e2de1cab4a"
+}

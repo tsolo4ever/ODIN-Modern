@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-19T03:33:28.264381Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "completion",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "ODIN validated work committed in three logical commits: aea45cb expansion installer idempotence, 3205601 guarded image-before-target ordering, and 00c17f4 optional compact-image cleanup installer. Worktree is clean; not pushed.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-d9030d3fc05d1a70b3ccee48020f1ad8",
+  "record_type": "checkpoint",
+  "request_fingerprint": "47a94457a06a76cdaa3665c4bc69324d63cc8634d2ad337075d87425ff2c8e3e",
+  "schema_version": 2,
+  "session_id": "bce2f103-4239-458e-bd54-30227e2f612d"
+}

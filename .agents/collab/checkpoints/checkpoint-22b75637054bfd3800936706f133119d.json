@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-08-16T06:59:13.202873Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [],
+    "completed_items": [],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "completion",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [],
+    "resolves_checkpoint_ids": [],
+    "risks": [],
+    "summary": "Guarded Single Flash Phase 1 completed: 14/14 safety, 23/23 disk health, 7/7 disk detection, live read-only inventory classification passed; no hardware writes.",
+    "task_id": "task-287d2a0f42c54e59afeeebd533e624af"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-22b75637054bfd3800936706f133119d",
+  "record_type": "checkpoint",
+  "request_fingerprint": "dcafadfc4f19c3cb9934cc48aae813ea03d01770715e12038886cd012a322cb8",
+  "schema_version": 2,
+  "session_id": "4ed502f8-c22b-4bc0-9142-d9fdb22d3c3e"
+}

@@ -1,0 +1,85 @@
+{
+  "created_at": "2026-08-29T10:20:59.019567Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "MSBuild ODIN.sln Debug x64",
+        "summary": "Full solution built with 0 warnings and 0 errors."
+      },
+      {
+        "exit_code": 0,
+        "name": "Debug-x64/ODINTest.exe",
+        "summary": "86 enabled C++ tests passed; hardware tests remained disabled by configuration."
+      },
+      {
+        "exit_code": 0,
+        "name": "ODIN.exe -verify Python codec fixtures 0..5",
+        "summary": "None, zlib, BZip2, LZ4, LZ4-HC, and Zstd fixtures all verified."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore.py",
+        "summary": "18/18 guarded destructive-path simulations passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore_integration.py",
+        "summary": "7/7 UI/worker coordination checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_odin_container.py",
+        "summary": "13/13 container conformance checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "ruff format --check; ruff check; mypy",
+        "summary": "Changed Python paths are formatted, lint-clean, and typed."
+      },
+      {
+        "exit_code": 0,
+        "name": "pyinstaller --noconfirm --clean OdinM_py.spec",
+        "summary": "Package construction completed; optional frozen codec dependencies remain Phase 3A work."
+      }
+    ],
+    "completed_items": [
+      "Corrected C++ verify CRC selection after decompression",
+      "Validated Python-generated fixtures across all six legacy codec IDs with current C++ ODIN",
+      "Implemented fully preflighted native all-block and used-block guarded restore",
+      "Added split-source mutation, cancellation, short-write, and read-back mismatch simulations"
+    ],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [
+      "Run operator-attended physical restore acceptance on disposable media.",
+      "Do not begin Phase 3A writer work until the next phase review."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "src/ODIN/OdinManager.cpp",
+      "OdinM_py/odin_worker.py",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/ui/guarded_single_flash.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Physical disposable-target restores required by the Phase 2 exit gate remain operator-attended and were not run.",
+      "The current system-Python PyInstaller environment lacks optional lz4 and zstandard packages; frozen codec packaging remains Phase 3A."
+    ],
+    "summary": "Native ODIN Phase 1 oracle and Phase 2 synthetic guarded restore passed.",
+    "task_id": "task-8359e4a1fc63638bb71336bb46a9d689"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-38b152acb5a55cd0c871fb1dd26bc4a0",
+  "record_type": "checkpoint",
+  "request_fingerprint": "df7f663bdaf59f22f38db771ce90bdd4b2517ad248ca742a739c919f0588c6b2",
+  "schema_version": 2,
+  "session_id": "b6b2906e-55cc-412c-811e-6b7b71130eba"
+}
