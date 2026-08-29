@@ -1,0 +1,101 @@
+name: Protect coordination records
+
+# `.agents/` is append-only working history written by Agent Collab on the
+# operator's machine — coordination records, never code. It is committed
+# directly (see 8473a34), not authored through pull requests. A PR that adds,
+# edits, or deletes anything under `.agents/` is therefore either an accident
+# (`git add .` sweeping local state into a branch) or an attempt to rewrite
+# history that other agents treat as evidence. Both are rejected here.
+#
+# This job also protects itself: without that, a PR can delete the guard in the
+# same change that violates it. Drop the `.github/workflows/` entry from
+# PROTECTED below if you'd rather allow workflow edits by PR.
+#
+# NOTE: failing this job only *blocks merge* if it is marked a required status
+# check in the branch protection rules for the target branch.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  reject-protected-paths:
+    name: Reject changes to protected paths
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes under protected paths
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Pathspecs, not a regex — avoids matching e.g. "docs/.agents-notes.md".
+          PROTECTED=('.agents' '.agents/**' '.github/workflows' '.github/workflows/**')
+
+          violations="$(git diff --name-only --diff-filter=ACDMRT \
+            "$BASE_SHA" "$HEAD_SHA" -- "${PROTECTED[@]}")"
+
+          {
+            echo 'files<<VIOLATIONS_EOF'
+            echo "$violations"
+            echo 'VIOLATIONS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -n "$violations" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pass
+        if: steps.detect.outputs.found == 'false'
+        run: echo "No protected paths touched."
+
+      - name: Comment and fail
+        if: steps.detect.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          FILES: ${{ steps.detect.outputs.files }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo '**Rejected — this PR modifies protected paths.**'
+            echo
+            echo '`.agents/` is append-only coordination history written by Agent'
+            echo 'Collab on the operator machine, and `.github/workflows/` holds the'
+            echo 'guard enforcing that. Neither is authored through pull requests.'
+            echo
+            echo 'Offending paths:'
+            echo
+            echo '```'
+            echo "$FILES"
+            echo '```'
+            echo
+            echo 'To fix: drop these paths from the branch, e.g.'
+            echo
+            echo '```sh'
+            echo 'git rm -r --cached .agents'
+            echo 'git commit -m "Remove coordination records from PR"'
+            echo '```'
+            echo
+            echo 'If the records themselves need committing, do it directly on the'
+            echo 'operator machine as its own commit — not as part of a PR.'
+          } > comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file comment.md
+
+          echo "::error::PR modifies protected paths; see the PR comment."
+          exit 1

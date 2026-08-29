@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# Auto-commit Agent Collab coordination records as their own chore commit.
+#
+# Enable once per clone (same setting the pre-commit hook needs):
+#     git config core.hooksPath .githooks
+#
+# Coordination records accumulate constantly while agents work. Committing them
+# by hand means remembering; committing them alongside feature work means every
+# real commit carries unrelated session churn. This does neither: after any
+# commit, records that changed are captured in a separate `chore(agents):`
+# commit that references the commit it follows.
+#
+# Deliberately NOT --no-verify. The chore commit runs through pre-commit, so a
+# *modified* immutable record fails loudly here instead of being quietly
+# preserved. That check is the point, not an obstacle.
+#
+# Skip a single commit with:
+#     SKIP_AGENT_CHORE=1 git commit ...
+
+set -eu
+
+# --- guards ---------------------------------------------------------------
+
+# Our own nested commit re-enters this hook; stop immediately.
+[ "${AGENT_COLLAB_CHORE:-}" = "1" ] && exit 0
+[ "${SKIP_AGENT_CHORE:-}" = "1" ] && exit 0
+
+# Hook env leaks into nested git invocations and would corrupt them.
+unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX 2>/dev/null || true
+
+git_dir="$(git rev-parse --git-dir)"
+
+# Mid-sequence commits (rebase, merge, cherry-pick, bisect) are not natural
+# boundaries and amending history underneath them causes trouble.
+for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD BISECT_LOG; do
+  if [ -e "$git_dir/$marker" ]; then
+    exit 0
+  fi
+done
+
+# Detached HEAD usually means an inspection checkout, not ongoing work.
+git symbolic-ref --quiet HEAD >/dev/null 2>&1 || exit 0
+
+# --- is there anything to record? -----------------------------------------
+
+if [ -z "$(git status --porcelain -- .agents/collab)" ]; then
+  exit 0
+fi
+
+parent="$(git rev-parse --short HEAD)"
+subject="$(git log -1 --pretty=%s HEAD)"
+
+# --- commit them, without disturbing anything else -------------------------
+#
+# `git add` stages new and modified record files. `git commit --only` then
+# commits *just* those paths, leaving any other staged work untouched.
+
+AGENT_COLLAB_CHORE=1 git add -- .agents/collab
+
+if AGENT_COLLAB_CHORE=1 git commit --quiet --only \
+     -m "chore(agents): coordination records after ${parent}" \
+     -m "Follows ${parent} (${subject})." \
+     -- .agents/collab
+then
+  echo "post-commit: recorded coordination records after ${parent}."
+else
+  # Most likely the pre-commit hook rejected a modified immutable record.
+  # Undo our staging so the tree is exactly as the user left it, and be loud —
+  # post-commit's exit code is ignored by git, so this message is the only
+  # signal available.
+  AGENT_COLLAB_CHORE=1 git restore --staged -- .agents/collab 2>/dev/null || true
+  echo >&2
+  echo "post-commit: WARNING — coordination records were NOT committed." >&2
+  echo "  Your commit ${parent} succeeded; only the chore commit failed." >&2
+  echo "  Usually this means an immutable record was modified or deleted." >&2
+  echo "  Inspect with:  git status -- .agents/collab" >&2
+  echo >&2
+fi
+
+exit 0

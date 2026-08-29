@@ -3,7 +3,11 @@
 # ============================================================
 
 # --- Build output directories ---
-.agents/
+.agents/collab/locks
+.agents/collab/claims
+.agents/collab/sessions
+.agents/collab/readers
+.agents/collab/pin_acknowledgements
 Debug-Win32/
 Debug-x64/
 Release-Win32/

@@ -1,0 +1,99 @@
+#!/bin/sh
+#
+# Enforce append-only semantics on immutable Agent Collab record subtrees.
+#
+# Enable once per clone:
+#     git config core.hooksPath .githooks
+#
+# `.agents/collab/` mixes two kinds of state:
+#
+#   Immutable records — one file per event, written once, never revised.
+#   A modification or deletion is corruption or tampering, never normal
+#   operation. These are the coordination audit trail: agents cite them as
+#   evidence, reviews resolve against them, approvals live in them.
+#
+#   Mutable working state — sessions (heartbeat, sign-out), claims (set and
+#   release), readers (cursor advance), locks (transient). These change in
+#   place by design; blocking modification here would block ordinary use.
+#
+# This hook rejects M/D/R (and typechange) under the immutable set only.
+#
+# Scope note: this is a guardrail, not a security boundary. `--no-verify`
+# bypasses it and an agent can rewrite this file, since agents run as the
+# same user. It reliably catches the case that actually happens — a stray
+# `git add -A` staging a rewritten record — and does not pretend to stop a
+# determined process. Same bounded-trust model as the WebSocket token and
+# the filesystem ACL decision.
+#
+# Deliberate exception, for genuine repair (e.g. purging something committed
+# by mistake). Loud on purpose; it should appear in shell history:
+#     ALLOW_RECORD_REWRITE=1 git commit ...
+
+set -eu
+
+IMMUTABLE='.agents/collab/boards
+.agents/collab/checkpoints
+.agents/collab/handoffs
+.agents/collab/finalizations
+.agents/collab/tasks'
+
+# --- transient state that should not be committed at all -------------------
+
+TRANSIENT='.agents/collab/locks
+.agents/collab/claims
+.agents/collab/sessions
+.agents/collab/readers
+.agents/collab/pin_acknowledgements'
+
+staged_transient="$(git diff --cached --name-only -- $TRANSIENT || true)"
+if [ -n "$staged_transient" ]; then
+  echo "pre-commit: refusing to commit transient Agent Collab state." >&2
+  echo >&2
+  echo "$staged_transient" | sed 's/^/    /' >&2
+  echo >&2
+  echo "  Claims, locks, readers, sessions, and pin acknowledgements are mutable." >&2
+  echo "  Unstage them; these paths are ignored by this repository:" >&2
+  echo >&2
+  echo "      git restore --staged -- .agents/collab/claims .agents/collab/locks" >&2
+  echo "      git restore --staged -- .agents/collab/readers .agents/collab/sessions" >&2
+  echo "      git restore --staged -- .agents/collab/pin_acknowledgements" >&2
+  echo >&2
+  exit 1
+fi
+
+# --- append-only enforcement ----------------------------------------------
+
+if [ "${ALLOW_RECORD_REWRITE:-}" = "1" ]; then
+  echo "pre-commit: ALLOW_RECORD_REWRITE=1 — append-only check skipped." >&2
+  exit 0
+fi
+
+violations=''
+for dir in $IMMUTABLE; do
+  found="$(git diff --cached --name-status --diff-filter=MDRT -- "$dir" || true)"
+  if [ -n "$found" ]; then
+    violations="${violations}${found}
+"
+  fi
+done
+
+if [ -n "$(printf '%s' "$violations" | tr -d '[:space:]')" ]; then
+  echo "pre-commit: refusing to modify or delete immutable coordination records." >&2
+  echo >&2
+  printf '%s' "$violations" | sed '/^$/d; s/^/    /' >&2
+  echo >&2
+  echo "  These record types are append-only. New files are fine; changing or" >&2
+  echo "  removing an existing one destroys evidence other agents rely on." >&2
+  echo >&2
+  echo "  Restore them:" >&2
+  echo >&2
+  echo "      git restore --staged --worktree .agents/collab" >&2
+  echo >&2
+  echo "  If a rewrite is genuinely intended, state so explicitly:" >&2
+  echo >&2
+  echo "      ALLOW_RECORD_REWRITE=1 git commit ..." >&2
+  echo >&2
+  exit 1
+fi
+
+exit 0
