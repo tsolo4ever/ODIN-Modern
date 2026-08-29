@@ -9,8 +9,6 @@ from ttkbootstrap.constants import *
 
 _DISK_MODES = [
     ("All blocks", "-allBlocks"),
-    ("Used blocks (repair/archive only)", "-usedBlocks"),
-    ("VSS snapshot (repair/archive only)", "-makeSnapshot"),
 ]
 
 _COMPRESSIONS = [
@@ -25,7 +23,7 @@ _COMPRESSIONS = [
 def _flags_to_state(flags: list[str]) -> dict:
     state = {"disk_mode": "-allBlocks", "compression": "none", "split_mb": 0}
     for f in flags:
-        if f in ("-allBlocks", "-usedBlocks", "-makeSnapshot"):
+        if f == "-allBlocks":
             state["disk_mode"] = f
         elif f.startswith("-compression="):
             state["compression"] = f.split("=", 1)[1]
@@ -82,8 +80,8 @@ class ImageOptionsDialog(ttk.Toplevel):
         ttk.Label(
             dm_frame,
             text=(
-                "Used-block modes create an MBR plus partition-image set. "
-                "Do not use them for approved gaming firmware."
+                "ODINC backup is raw/all blocks. Use Make Image's General used-block "
+                "archive profile for approved repair/archive jobs."
             ),
             bootstyle="warning",
             wraplength=420,

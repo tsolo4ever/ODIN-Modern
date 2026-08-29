@@ -30,6 +30,11 @@ from ext4_compact_capture import (  # noqa: E402
     Ext4CompactCaptureCancelled,
     capture_ext4_compact,
 )
+from used_block_archive import (  # noqa: E402
+    UsedBlockArchiveCancelled,
+    archive_path,
+    capture_used_block_archive,
+)
 
 
 def randomize_disk_signature(disk_number: int, volumes=None) -> bytes:
@@ -66,6 +71,7 @@ class PyImagerWorker:
         sha1: bool = True,
         gzip_level: int | None = None,
         compact: bool = False,
+        used_block_archive: bool = False,
         expected_size: int = 0,
         expected_serial: str = "",
         cleanup_script: str | None = None,
@@ -77,6 +83,7 @@ class PyImagerWorker:
         self._sha1 = sha1
         self._gzip_level = gzip_level
         self._compact = compact
+        self._used_block_archive = used_block_archive
         self._expected_size = expected_size
         self._expected_serial = expected_serial.strip()
         self._cleanup_script = (cleanup_script or "").strip()
@@ -108,7 +115,10 @@ class PyImagerWorker:
 
     def _run(self):
         try:
-            meta = self._capture_compact() if self._compact else self._capture_raw()
+            if self._used_block_archive:
+                meta = self._capture_used_block_archive()
+            else:
+                meta = self._capture_compact() if self._compact else self._capture_raw()
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
             self._fire_log(f"pyimager failed: {type(exc).__name__}: {exc}")
             self._finish(CloneStatus.FAILED)
@@ -116,7 +126,9 @@ class PyImagerWorker:
 
         self.result = meta
         if meta.get("cancelled"):
-            if self._compact:
+            if self._used_block_archive:
+                self._fire_log("Stopped by user - temporary archive files removed.")
+            elif self._compact:
                 self._fire_log("Stopped by user - temporary compact-image files removed.")
             else:
                 self._fire_log("Stopped by user - partial image left on disk.")
@@ -124,9 +136,7 @@ class PyImagerWorker:
             return
 
         if meta["bytes_written"] != meta["region_length"]:
-            self._fire_log(
-                f"Short read: {meta['bytes_written']} of "
-                f"{meta['region_length']} bytes")
+            self._fire_log(f"Short read: {meta['bytes_written']} of {meta['region_length']} bytes")
             self._finish(CloneStatus.FAILED)
             return
 
@@ -134,8 +144,8 @@ class PyImagerWorker:
             # Not fatal - the image is complete and correctly aligned, but the
             # bad sectors were zero-filled, so say so loudly.
             self._fire_log(
-                f"WARNING: {meta['bad_sector_count']} unreadable sector(s) "
-                f"were zero-filled")
+                f"WARNING: {meta['bad_sector_count']} unreadable sector(s) were zero-filled"
+            )
 
         digest = meta["digests"].get("sha256", "")
         extra = ""
@@ -144,7 +154,8 @@ class PyImagerWorker:
             extra = f", gzip {pct:.0f}% of raw"
         self._fire_log(
             f"Imaged {meta['bytes_written']} bytes in {meta['duration_s']}s"
-            f"{extra}  sha256 {digest[:16]}…")
+            f"{extra}  sha256 {digest[:16]}…"
+        )
         self._finish(CloneStatus.DONE)
 
     def _capture_raw(self) -> dict:
@@ -205,6 +216,29 @@ class PyImagerWorker:
                     path.unlink()
                 except FileNotFoundError:
                     pass
+
+    def _capture_used_block_archive(self) -> dict:
+        output = archive_path(self._image)
+        try:
+            meta, _manifest = capture_used_block_archive(
+                self._disk,
+                output,
+                expected_size=self._expected_size,
+                expected_serial=self._expected_serial,
+                should_cancel=self._cancel.is_set,
+                on_progress=self._progress_percent,
+                on_log=self._fire_log,
+            )
+        except UsedBlockArchiveCancelled:
+            return {
+                "cancelled": True,
+                "bytes_written": 0,
+                "region_length": 0,
+                "bad_sector_count": 0,
+                "digests": {},
+            }
+        self._image = str(output)
+        return meta
 
     # ── callbacks (marshalled onto the Tk thread) ────────────────────────────
 
@@ -324,8 +358,8 @@ class PyImagerRestoreWorker:
 
         digest = meta["digests"].get("sha256", "")
         self._fire_log(
-            f"Flashed {meta['bytes_written']} bytes in {meta['duration_s']}s "
-            f"sha256 {digest[:16]}…")
+            f"Flashed {meta['bytes_written']} bytes in {meta['duration_s']}s sha256 {digest[:16]}…"
+        )
         self._finish(CloneStatus.DONE)
 
     # ── callbacks (marshalled onto the Tk thread) ────────────────────────────

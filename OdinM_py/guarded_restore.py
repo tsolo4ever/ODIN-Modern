@@ -11,6 +11,7 @@ import re
 import tempfile
 import threading
 import time
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,15 @@ from guarded_flash_safety import (
 from partition_reader import PartitionReadError, read_mbr_partitions_strict
 from hash_config import HashConfig
 from scripts import pyimager
+from used_block_archive import (
+    ARCHIVE_SUFFIX,
+    UsedBlockArchiveCancelled,
+    UsedBlockArchiveError,
+    extract_archive,
+    load_archive,
+    restore_partition_payloads,
+    verify_target_ranges,
+)
 
 
 CHUNK_BYTES = 8 << 20
@@ -71,9 +81,11 @@ class GuardedImagePlan:
     sha256: str
     temporary_source: bool = False
     manifest_path: Path | None = None
+    source_file_bytes: int = 0
+    archive_manifest: dict[str, Any] | None = None
 
     def cleanup(self) -> None:
-        if self.temporary_source:
+        if self.temporary_source and self.source_path.is_file():
             self.source_path.unlink(missing_ok=True)
 
     @property
@@ -132,7 +144,10 @@ def _configured_policy_checks(
     with disk_factory(raw_path) as target:
         for label, config, offset, length in regions:
             checks = {
-                "SHA-1": (bool(config.get("sha1_enabled")), str(config.get("sha1_value") or "").lower()),
+                "SHA-1": (
+                    bool(config.get("sha1_enabled")),
+                    str(config.get("sha1_value") or "").lower(),
+                ),
                 "SHA-256": (
                     bool(config.get("sha256_enabled")),
                     str(config.get("sha256_value") or "").lower(),
@@ -215,8 +230,14 @@ def _validate_partition_record(value: Any, label: str) -> dict[str, Any]:
         value,
         label,
         {
-            "number", "kind", "type_code", "start_lba", "sector_count",
-            "table_lba", "bootable", "type",
+            "number",
+            "kind",
+            "type_code",
+            "start_lba",
+            "sector_count",
+            "table_lba",
+            "bootable",
+            "type",
         },
     )
     _positive_int(record["number"], f"{label}.number")
@@ -296,17 +317,29 @@ def _validate_ext4_records(
         root["filesystem"],
         "filesystem",
         {
-            "partition_number", "uuid", "block_size", "original_start_lba",
-            "original_sector_count", "compact_sector_count", "minimum_blocks",
-            "buffer_bytes", "prefix_bytes", "type",
+            "partition_number",
+            "uuid",
+            "block_size",
+            "original_start_lba",
+            "original_sector_count",
+            "compact_sector_count",
+            "minimum_blocks",
+            "buffer_bytes",
+            "prefix_bytes",
+            "type",
         },
     )
     expansion = _require_object(
         root["expansion"],
         "expansion",
         {
-            "root_uuid", "swap_uuid", "swap_sector_count", "alignment_sectors",
-            "minimum_target_bytes", "installed_script_sha256", "armed",
+            "root_uuid",
+            "swap_uuid",
+            "swap_sector_count",
+            "alignment_sectors",
+            "minimum_target_bytes",
+            "installed_script_sha256",
+            "armed",
         },
     )
     omitted = root["omitted_partitions"]
@@ -325,9 +358,7 @@ def _validate_ext4_records(
         _validate_partition_record(item, f"source_layout.partitions[{index}]")
         for index, item in enumerate(source_layout["partitions"])
     ]
-    if len(source_partitions) != 2 or len(
-        {item["number"] for item in source_partitions}
-    ) != 2:
+    if len(source_partitions) != 2 or len({item["number"] for item in source_partitions}) != 2:
         raise GuardedImageError(
             "compact manifest source must contain exactly one root and one swap partition"
         )
@@ -341,18 +372,19 @@ def _validate_ext4_records(
         raise GuardedImageError("ext4 compact image must not contain an extended partition")
     image_root = _validate_partition_record(image_partitions[0], "layout.partitions[0]")
     for key in (
-        "partition_number", "block_size", "original_start_lba",
-        "original_sector_count", "compact_sector_count", "minimum_blocks",
-        "buffer_bytes", "prefix_bytes",
+        "partition_number",
+        "block_size",
+        "original_start_lba",
+        "original_sector_count",
+        "compact_sector_count",
+        "minimum_blocks",
+        "buffer_bytes",
+        "prefix_bytes",
     ):
         _positive_int(filesystem[key], f"filesystem.{key}")
-    for key in (
-        "partition_number", "original_start_lba", "sector_count"
-    ):
+    for key in ("partition_number", "original_start_lba", "sector_count"):
         _positive_int(swap[key], f"omitted_partitions[0].{key}")
-    for key in (
-        "swap_sector_count", "alignment_sectors", "minimum_target_bytes"
-    ):
+    for key in ("swap_sector_count", "alignment_sectors", "minimum_target_bytes"):
         _positive_int(expansion[key], f"expansion.{key}")
     if filesystem["type"] != "ext4" or swap["type"] != "linux-swap":
         raise GuardedImageError("compact manifest filesystem types are invalid")
@@ -372,8 +404,7 @@ def _validate_ext4_records(
         raise GuardedImageError("compact manifest ext4 buffer is not block aligned")
     compact_bytes = filesystem["compact_sector_count"] * sector_size
     expected_compact_bytes = (
-        filesystem["minimum_blocks"] * filesystem["block_size"]
-        + filesystem["buffer_bytes"]
+        filesystem["minimum_blocks"] * filesystem["block_size"] + filesystem["buffer_bytes"]
     )
     if compact_bytes != expected_compact_bytes:
         raise GuardedImageError("compact manifest ext4 minimum and buffer are inconsistent")
@@ -388,8 +419,8 @@ def _validate_ext4_records(
     if (
         image_root["start_lba"] != filesystem["original_start_lba"]
         or image_root["sector_count"] != filesystem["compact_sector_count"]
-        or capture_length != image_root["start_lba"] * sector_size
-        + image_root["sector_count"] * sector_size
+        or capture_length
+        != image_root["start_lba"] * sector_size + image_root["sector_count"] * sector_size
     ):
         raise GuardedImageError("compact manifest ext4 geometry is inconsistent")
     source_root = next(
@@ -414,10 +445,7 @@ def _validate_ext4_records(
     ):
         raise GuardedImageError("compact manifest source geometry is inconsistent")
     disk_sectors = disk_size // sector_size
-    if any(
-        item["start_lba"] + item["sector_count"] > disk_sectors
-        for item in source_partitions
-    ):
+    if any(item["start_lba"] + item["sector_count"] > disk_sectors for item in source_partitions):
         raise GuardedImageError("compact manifest source partition exceeds the source disk")
     if source_swap["kind"] == "logical":
         extended_start = source_layout["extended_start_lba"]
@@ -477,8 +505,15 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, i
         root_keys = {"schema_version", "format", "source", "capture", "layout"}
     elif ext4_compact:
         root_keys = {
-            "schema_version", "format", "source", "capture", "layout",
-            "source_layout", "filesystem", "omitted_partitions", "expansion",
+            "schema_version",
+            "format",
+            "source",
+            "capture",
+            "layout",
+            "source_layout",
+            "filesystem",
+            "omitted_partitions",
+            "expansion",
         }
         if "cleanup" in payload:
             root_keys.add("cleanup")
@@ -488,14 +523,29 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, i
     source = _require_object(
         root["source"],
         "source",
-        {"disk", "disk_size", "sector_size", "disk_signature", "vendor", "product", "serial", "removable"},
+        {
+            "disk",
+            "disk_size",
+            "sector_size",
+            "disk_signature",
+            "vendor",
+            "product",
+            "serial",
+            "removable",
+        },
     )
     capture = _require_object(
         root["capture"],
         "capture",
         {
-            "offset", "length", "saved_trailing_bytes", "bytes_written",
-            "bad_sector_count", "digests", "started_utc", "finished_utc",
+            "offset",
+            "length",
+            "saved_trailing_bytes",
+            "bytes_written",
+            "bad_sector_count",
+            "digests",
+            "started_utc",
+            "finished_utc",
         },
     )
     layout = _require_object(
@@ -507,8 +557,12 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, i
     sector_size = _positive_int(source["sector_size"], "source.sector_size")
     capture_length = _positive_int(capture["length"], "capture.length")
     bytes_written = _positive_int(capture["bytes_written"], "capture.bytes_written")
-    saved = _positive_int(capture["saved_trailing_bytes"], "capture.saved_trailing_bytes", allow_zero=True)
-    bad_sectors = _positive_int(capture["bad_sector_count"], "capture.bad_sector_count", allow_zero=True)
+    saved = _positive_int(
+        capture["saved_trailing_bytes"], "capture.saved_trailing_bytes", allow_zero=True
+    )
+    bad_sectors = _positive_int(
+        capture["bad_sector_count"], "capture.bad_sector_count", allow_zero=True
+    )
     if sector_size not in (512, 1024, 2048, 4096):
         raise GuardedImageError("compact manifest sector size is unsupported")
     if capture["offset"] != 0 or capture_length != bytes_written:
@@ -534,9 +588,7 @@ def _load_compact_manifest(path: Path) -> tuple[dict[str, Any], int, int, str, i
         raise GuardedImageError("compact manifest partition layout is invalid")
     required_capacity = capture_length
     if ext4_compact:
-        required_capacity = _validate_ext4_records(
-            root, disk_size, sector_size, capture_length
-        )
+        required_capacity = _validate_ext4_records(root, disk_size, sector_size, capture_length)
     return root, disk_size, capture_length, sha256.lower(), required_capacity
 
 
@@ -577,6 +629,30 @@ def preflight_image(
     log = on_log or (lambda _line: None)
     lower_name = path.name.casefold()
 
+    if lower_name.endswith(ARCHIVE_SUFFIX):
+        try:
+            manifest, digest, required_capacity = load_archive(path, target_capacity)
+        except UsedBlockArchiveError as exc:
+            raise GuardedImageError(str(exc)) from exc
+        boot_bytes = sum(item["length"] for item in manifest["boot"]["regions"])
+        used_bytes = boot_bytes + sum(
+            item["length"]
+            for partition in manifest["partitions"]
+            if partition["action"] == "restore"
+            for item in partition["ranges"]
+        )
+        log(f"Used-block archive validated: {used_bytes} exact source bytes, SHA-256 {digest}")
+        return GuardedImagePlan(
+            path,
+            path,
+            "used-block-archive",
+            used_bytes,
+            required_capacity,
+            digest,
+            source_file_bytes=path.stat().st_size,
+            archive_manifest=manifest,
+        )
+
     if lower_name.endswith(".compact.img"):
         manifest, disk_size, capture_length, recorded_sha, required_capacity = (
             _load_compact_manifest(path)
@@ -595,15 +671,23 @@ def preflight_image(
             )
         with path.open("rb") as stream:
             digest, read_bytes = _hash_stream(
-                stream, limit=capture_length, should_cancel=should_cancel,
-                on_progress=on_progress, phase="preflight",
+                stream,
+                limit=capture_length,
+                should_cancel=should_cancel,
+                on_progress=on_progress,
+                phase="preflight",
             )
         if digest != recorded_sha:
             raise GuardedImageError("compact image SHA-256 does not match its manifest")
         _validate_compact_layout(path, manifest, disk_size)
         log(f"Compact image validated: {read_bytes} bytes, SHA-256 {digest}")
         return GuardedImagePlan(
-            path, path, "compact", capture_length, required_capacity, digest,
+            path,
+            path,
+            "compact",
+            capture_length,
+            required_capacity,
+            digest,
             manifest_path=compact_manifest_path(path),
         )
 
@@ -614,7 +698,11 @@ def preflight_image(
         digest = hashlib.sha256()
         written = 0
         try:
-            with path.open("rb") as stored, gzip.GzipFile(fileobj=stored) as source, temporary_path.open("wb") as output:
+            with (
+                path.open("rb") as stored,
+                gzip.GzipFile(fileobj=stored) as source,
+                temporary_path.open("wb") as output,
+            ):
                 while True:
                     if should_cancel is not None and should_cancel():
                         raise GuardedImageError("image preflight was cancelled")
@@ -623,7 +711,9 @@ def preflight_image(
                         break
                     written += len(block)
                     if written > target_capacity:
-                        raise GuardedImageError("decompressed image is larger than the selected target")
+                        raise GuardedImageError(
+                            "decompressed image is larger than the selected target"
+                        )
                     output.write(block)
                     digest.update(block)
                     if on_progress:
@@ -648,21 +738,27 @@ def preflight_image(
     if size <= 0 or size % MIN_SECTOR_BYTES:
         raise GuardedImageError("raw image length is empty or not 512-byte aligned")
     if size > target_capacity:
-        raise GuardedImageError(f"image ({size} bytes) is larger than target ({target_capacity} bytes)")
+        raise GuardedImageError(
+            f"image ({size} bytes) is larger than target ({target_capacity} bytes)"
+        )
     with path.open("rb") as stream:
         digest, _ = _hash_stream(
-            stream, limit=size, should_cancel=should_cancel,
-            on_progress=on_progress, phase="preflight",
+            stream,
+            limit=size,
+            should_cancel=should_cancel,
+            on_progress=on_progress,
+            phase="preflight",
         )
     log(f"Raw image preflighted: {size} bytes, SHA-256 {digest}")
     return GuardedImagePlan(path, path, "raw", size, size, digest)
 
 
 def validate_source_unchanged(plan: GuardedImagePlan) -> None:
-    if not plan.source_path.is_file() or plan.source_path.stat().st_size != plan.write_bytes:
+    expected_size = plan.source_file_bytes or plan.write_bytes
+    if not plan.source_path.is_file() or plan.source_path.stat().st_size != expected_size:
         raise GuardedImageError("preflighted image source changed or disappeared")
     with plan.source_path.open("rb") as stream:
-        digest, _ = _hash_stream(stream, limit=plan.write_bytes)
+        digest, _ = _hash_stream(stream, limit=expected_size)
     if digest != plan.sha256:
         raise GuardedImageError("preflighted image source changed after validation")
 
@@ -679,9 +775,7 @@ def validate_ready_to_write(
     kwargs = {"inventory_provider": inventory_provider}
     if image_disk_provider is not None:
         kwargs["image_disk_provider"] = image_disk_provider
-    decision = revalidate_target(
-        expected, store, image_path=str(plan.original_path), **kwargs
-    )
+    decision = revalidate_target(expected, store, image_path=str(plan.original_path), **kwargs)
     if not decision.eligible:
         raise GuardedRestoreError("target revalidation failed: " + "; ".join(decision.reasons))
     if decision.disk.size_bytes < plan.required_capacity:
@@ -733,13 +827,30 @@ def restore_and_verify(
     if confirmed_disk_number != expected.disk_number:
         raise GuardedRestoreError("typed confirmation does not match the selected disk number")
     decision = validate_ready_to_write(
-        plan, expected, store, inventory_provider=inventory_provider,
+        plan,
+        expected,
+        store,
+        inventory_provider=inventory_provider,
         image_disk_provider=image_disk_provider,
     )
     current = decision.disk
     log = on_log or (lambda _line: None)
     progress = on_progress or (lambda _phase, _done, _total: None)
     raw_path = current.raw_device_path
+
+    if plan.image_format == "used-block-archive":
+        return _restore_used_block_archive(
+            plan,
+            current,
+            disk_factory=disk_factory,
+            volume_locker=volume_locker,
+            flush_disk=flush_disk,
+            partition_waiter=partition_waiter,
+            should_cancel=should_cancel,
+            on_progress=progress,
+            on_log=log,
+            started=started,
+        )
 
     with disk_factory(raw_path) as probe:
         if probe.size != current.size_bytes or probe.size < plan.required_capacity:
@@ -760,7 +871,9 @@ def restore_and_verify(
                     break
                 block = source.read(min(CHUNK_BYTES, plan.write_bytes - bytes_written))
                 if not block:
-                    raise GuardedRestoreError("short source read during write", target_not_trusted=True)
+                    raise GuardedRestoreError(
+                        "short source read during write", target_not_trusted=True
+                    )
                 written = target.write(block)
                 if written != len(block):
                     raise GuardedRestoreError("short target write", target_not_trusted=True)
@@ -768,7 +881,9 @@ def restore_and_verify(
                 progress("write", bytes_written, plan.write_bytes)
             flush_disk(target)
             if not cancelled and not target.update_properties():
-                raise GuardedRestoreError("Windows disk-property refresh failed", target_not_trusted=True)
+                raise GuardedRestoreError(
+                    "Windows disk-property refresh failed", target_not_trusted=True
+                )
     except GuardedRestoreError:
         raise
     except Exception as exc:
@@ -780,7 +895,12 @@ def restore_and_verify(
 
     if cancelled:
         return GuardedRestoreResult(
-            bytes_written, plan.sha256, "", False, True, bytes_written > 0,
+            bytes_written,
+            plan.sha256,
+            "",
+            False,
+            True,
+            bytes_written > 0,
             time.monotonic() - started,
         )
     if bytes_written != plan.write_bytes:
@@ -801,18 +921,27 @@ def restore_and_verify(
         while verified_bytes < plan.write_bytes:
             if should_cancel is not None and should_cancel():
                 return GuardedRestoreResult(
-                    bytes_written, plan.sha256, target_hash.hexdigest(), False, True, True,
+                    bytes_written,
+                    plan.sha256,
+                    target_hash.hexdigest(),
+                    False,
+                    True,
+                    True,
                     time.monotonic() - started,
                 )
             block = target.read(min(CHUNK_BYTES, plan.write_bytes - verified_bytes))
             if not block:
-                raise GuardedRestoreError("short target read during verification", target_not_trusted=True)
+                raise GuardedRestoreError(
+                    "short target read during verification", target_not_trusted=True
+                )
             target_hash.update(block)
             verified_bytes += len(block)
             progress("verify", verified_bytes, plan.write_bytes)
     target_digest = target_hash.hexdigest()
     if verified_bytes != plan.write_bytes or target_digest != plan.sha256:
-        raise GuardedRestoreError("mandatory target read-back SHA-256 mismatch", target_not_trusted=True)
+        raise GuardedRestoreError(
+            "mandatory target read-back SHA-256 mismatch", target_not_trusted=True
+        )
     log(f"Mandatory read-back verification passed: SHA-256 {target_digest}")
     if not _configured_policy_checks(
         plan,
@@ -824,13 +953,155 @@ def restore_and_verify(
         on_log=log,
     ):
         return GuardedRestoreResult(
-            bytes_written, plan.sha256, target_digest, True, True, True,
+            bytes_written,
+            plan.sha256,
+            target_digest,
+            True,
+            True,
+            True,
             time.monotonic() - started,
         )
     return GuardedRestoreResult(
-        bytes_written, plan.sha256, target_digest, True, False, False,
+        bytes_written,
+        plan.sha256,
+        target_digest,
+        True,
+        False,
+        False,
         time.monotonic() - started,
     )
+
+
+def _restore_used_block_archive(
+    plan: GuardedImagePlan,
+    current: DiskIdentity,
+    *,
+    disk_factory: Callable[..., Any],
+    volume_locker: Callable[..., list[Any]],
+    flush_disk: Callable[[Any], None],
+    partition_waiter: Callable[[str], None],
+    should_cancel: Callable[[], bool] | None,
+    on_progress: Callable[[str, int, int], None],
+    on_log: Callable[[str], None],
+    started: float,
+) -> GuardedRestoreResult:
+    manifest = plan.archive_manifest
+    if manifest is None:
+        raise GuardedRestoreError("used-block archive manifest is unavailable")
+    raw_path = current.raw_device_path
+    cancel = should_cancel or (lambda: False)
+    changed = False
+    locked: list[Any] = []
+    extracted = Path(tempfile.mkdtemp(prefix="odinm-used-block-restore-"))
+    shutil.rmtree(extracted)
+    try:
+        if cancel():
+            return GuardedRestoreResult(
+                0, plan.sha256, "", False, True, False, time.monotonic() - started
+            )
+        extract_archive(plan.source_path, extracted, manifest)
+        boot = manifest["boot"]
+        boot_bytes = sum(item["length"] for item in boot["regions"])
+        with disk_factory(raw_path) as probe:
+            if probe.size != current.size_bytes or probe.size < plan.required_capacity:
+                raise GuardedRestoreError("target capacity changed before archive restore")
+            if probe.sector_size != 512:
+                raise GuardedRestoreError(
+                    "used-block archive restore requires 512-byte target sectors"
+                )
+
+        locked = volume_locker(_drive_letters(current.mounted_volumes), on_log=on_log)
+        with (
+            (extracted / boot["member"]).open("rb") as source,
+            disk_factory(raw_path, write=True) as target,
+        ):
+            written = 0
+            for region in boot["regions"]:
+                source.seek(region["member_offset"])
+                target.seek(region["offset"])
+                remaining = region["length"]
+                while remaining:
+                    if cancel():
+                        return GuardedRestoreResult(
+                            written,
+                            plan.sha256,
+                            "",
+                            False,
+                            True,
+                            changed,
+                            time.monotonic() - started,
+                        )
+                    block = source.read(min(CHUNK_BYTES, remaining))
+                    if not block:
+                        raise GuardedRestoreError(
+                            "short MBR-layout read during archive restore",
+                            target_not_trusted=changed,
+                        )
+                    count = target.write(block)
+                    if count != len(block):
+                        raise GuardedRestoreError("short MBR-layout write", target_not_trusted=True)
+                    changed = True
+                    written += count
+                    remaining -= count
+                    on_progress("write", written, plan.write_bytes)
+            flush_disk(target)
+            if not target.update_properties():
+                raise GuardedRestoreError(
+                    "Windows disk-property refresh failed", target_not_trusted=True
+                )
+        for volume in locked:
+            volume.unlock()
+            volume.close()
+        locked = []
+        partition_waiter(raw_path)
+        restore_partition_payloads(
+            raw_path,
+            manifest,
+            extracted,
+            should_cancel=should_cancel,
+            on_progress=lambda pct: on_progress(
+                "write",
+                boot_bytes + int((plan.write_bytes - boot_bytes) * pct / 100),
+                plan.write_bytes,
+            ),
+            on_log=on_log,
+        )
+        changed = True
+        partition_waiter(raw_path)
+        with disk_factory(raw_path) as target:
+            target_digest, verified_bytes = verify_target_ranges(
+                target,
+                manifest,
+                should_cancel=cancel,
+                on_progress=lambda pct: on_progress("verify", pct, 100),
+            )
+        if target_digest != manifest["range_hashes"]["canonical_sha256"]:
+            raise GuardedRestoreError(
+                "mandatory allocated-range SHA-256 mismatch", target_not_trusted=True
+            )
+        on_log(f"Mandatory boot and allocated-range read-back passed: SHA-256 {target_digest}")
+        return GuardedRestoreResult(
+            verified_bytes,
+            plan.sha256,
+            target_digest,
+            True,
+            False,
+            False,
+            time.monotonic() - started,
+        )
+    except UsedBlockArchiveCancelled:
+        return GuardedRestoreResult(
+            0, plan.sha256, "", False, True, changed, time.monotonic() - started
+        )
+    except GuardedRestoreError:
+        raise
+    except Exception as exc:
+        raise GuardedRestoreError(str(exc), target_not_trusted=changed) from exc
+    finally:
+        for volume in locked:
+            volume.unlock()
+            volume.close()
+        shutil.rmtree(extracted, ignore_errors=True)
 
 
 class GuardedRestoreWorker:

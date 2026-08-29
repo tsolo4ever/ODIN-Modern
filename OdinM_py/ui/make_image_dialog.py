@@ -35,21 +35,30 @@ from hash_log import HashLog
 from hash_worker import HashStatus, HashWorker
 from partition_reader import get_image_hash_region
 from pyimager_worker import PyImagerWorker
+from used_block_archive import (
+    UsedBlockArchiveError,
+    archive_path,
+    discover_used_block_source,
+    gaming_answer_action,
+)
 
 ENGINE_ODINC = "ODINC.exe  (ODIN container image)"
+ENGINE_PY_GENERAL = "pyimager  (general used-block archive)"
 ENGINE_PY_COMPACT = "pyimager  (ext4 used blocks, omit swap)"
 ENGINE_PY = "pyimager  (raw .img, built in)"
 ENGINE_PY_GZ = "pyimager  (gzip-compressed .img.gz)"
-ENGINE_LABELS = [ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ, ENGINE_ODINC]
+ENGINE_LABELS = [ENGINE_PY_GENERAL, ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ, ENGINE_ODINC]
 
 ENGINE_HINTS = {
     ENGINE_ODINC: "ODIN container format. Options… sets backup flags.",
+    ENGINE_PY_GENERAL: "MBR archive for FAT16/FAT32, NTFS, Ext2/3/4, and "
+    "standard inactive swap. Not for approved gaming software.",
     ENGINE_PY_COMPACT: "MBR Linux disks only. Preserves the boot prefix, compacts "
-                       "ext4 with 64 MiB free, and records omitted swap metadata.",
+    "ext4 with 64 MiB free, and records omitted swap metadata.",
     ENGINE_PY: "Plain dd-style image, no header. Real progress, per-sector "
-               "retry, SHA-256 while reading.",
+    "retry, SHA-256 while reading.",
     ENGINE_PY_GZ: "Same as raw but gzip-compressed; hashes still describe the "
-                  "uncompressed disk bytes.",
+    "uncompressed disk bytes.",
 }
 
 
@@ -259,7 +268,11 @@ class MakeImageDialog(ttk.Toplevel):
 
     @property
     def _use_pyimager(self) -> bool:
-        return self._engine in (ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ)
+        return self._engine in (ENGINE_PY_GENERAL, ENGINE_PY_COMPACT, ENGINE_PY, ENGINE_PY_GZ)
+
+    @property
+    def _general_archive_mode(self) -> bool:
+        return self._engine == ENGINE_PY_GENERAL
 
     @property
     def _compact_mode(self) -> bool:
@@ -273,10 +286,14 @@ class MakeImageDialog(ttk.Toplevel):
         # Raw vs gzip is a pyimager-only detail with no equivalent in the
         # app-wide setting - both map back to the same "pyimager" engine.
         self._config.set_engine(ENGINE_PYIMAGER if self._use_pyimager else ENGINE_ODIN)
-        if self._compact_mode:
+        if self._compact_mode or self._general_archive_mode:
             self._auto_var.set(False)
             self._auto_check.configure(state=DISABLED)
-            self._cleanup_frame.grid()
+            if self._compact_mode:
+                self._cleanup_frame.grid()
+            else:
+                self._clear_cleanup_selection()
+                self._cleanup_frame.grid_remove()
         elif self._use_pyimager:
             self._auto_check.configure(state=NORMAL)
             self._clear_cleanup_selection()
@@ -290,13 +307,24 @@ class MakeImageDialog(ttk.Toplevel):
         path = self._output_var.get().strip()
         if not path:
             return
+        if self._general_archive_mode:
+            if not path.lower().endswith(".odin-archive"):
+                for suffix in (".compact.img", ".img", ".gz"):
+                    if path.lower().endswith(suffix):
+                        path = path[: -len(suffix)]
+                        break
+                self._output_var.set(path + ".odin-archive")
+            return
+        if path.lower().endswith(".odin-archive"):
+            path = path[: -len(".odin-archive")] + ".img"
+            self._output_var.set(path)
         if self._compact_mode:
             if not path.lower().endswith(".compact.img"):
                 root, _ext = os.path.splitext(path)
                 self._output_var.set(root + ".compact.img")
             return
         if path.lower().endswith(".compact.img"):
-            path = path[:-len(".compact.img")] + ".img"
+            path = path[: -len(".compact.img")] + ".img"
             self._output_var.set(path)
         wants_gz = self._engine == ENGINE_PY_GZ
         has_gz = path.lower().endswith(".gz")
@@ -306,7 +334,10 @@ class MakeImageDialog(ttk.Toplevel):
             self._output_var.set(path[:-3])
 
     def _browse_output(self):
-        if self._compact_mode:
+        if self._general_archive_mode:
+            default_ext = ".odin-archive"
+            types = [("ODIN used-block archive", "*.odin-archive"), ("All files", "*.*")]
+        elif self._compact_mode:
             default_ext = ".compact.img"
             types = [("Bounded raw image", "*.compact.img"), ("All files", "*.*")]
         elif self._engine == ENGINE_PY_GZ:
@@ -314,13 +345,14 @@ class MakeImageDialog(ttk.Toplevel):
             types = [("Gzipped raw image", "*.img.gz *.gz"), ("All files", "*.*")]
         elif self._engine == ENGINE_PY:
             default_ext = ".img"
-            types = [("Raw disk image", "*.img *.bin"),
-                     ("Gzipped raw image", "*.img.gz *.gz"),
-                     ("All files", "*.*")]
+            types = [
+                ("Raw disk image", "*.img *.bin"),
+                ("Gzipped raw image", "*.img.gz *.gz"),
+                ("All files", "*.*"),
+            ]
         else:
             default_ext = ".img"
-            types = [("ODIN image", "*.img *.odin *.bin"),
-                     ("All files", "*.*")]
+            types = [("ODIN image", "*.img *.odin *.bin"), ("All files", "*.*")]
         last_output_dir = self._config.get_last_output_dir()
         path = filedialog.asksaveasfilename(
             title="Save image as",
@@ -332,7 +364,9 @@ class MakeImageDialog(ttk.Toplevel):
         if not path:
             return
         path = os.path.abspath(path)
-        if self._compact_mode and not path.lower().endswith(".compact.img"):
+        if self._general_archive_mode:
+            path = str(archive_path(path))
+        elif self._compact_mode and not path.lower().endswith(".compact.img"):
             root, _ext = os.path.splitext(path)
             path = root + ".compact.img"
         self._output_var.set(path)
@@ -457,7 +491,9 @@ class MakeImageDialog(ttk.Toplevel):
                 return
             output = os.path.join(last_output_dir, output)
         output = os.path.abspath(output)
-        if self._compact_mode and not output.lower().endswith(".compact.img"):
+        if self._general_archive_mode:
+            output = str(archive_path(output))
+        elif self._compact_mode and not output.lower().endswith(".compact.img"):
             root, _ext = os.path.splitext(output)
             output = root + ".compact.img"
         self._output_var.set(output)
@@ -465,9 +501,7 @@ class MakeImageDialog(ttk.Toplevel):
         cleanup_script = None
         if self._compact_mode and self._cleanup_var.get():
             cleanup_script = os.path.abspath(
-                os.path.expanduser(
-                    os.path.expandvars(self._cleanup_path_var.get().strip())
-                )
+                os.path.expanduser(os.path.expandvars(self._cleanup_path_var.get().strip()))
             )
             try:
                 parse_cleanup_installer(cleanup_script)
@@ -493,6 +527,26 @@ class MakeImageDialog(ttk.Toplevel):
         ):
             self._status("Backup cancelled.", "warning")
             return
+        if self._general_archive_mode:
+            gaming_answer = messagebox.askyesnocancel(
+                "Approved gaming software?",
+                "Is this approved gaming software?\n\n"
+                "Yes requires a raw/all-blocks image. No continues with the general "
+                "used-block archive. Cancel stops without changing the selection.",
+                parent=self,
+            )
+            gaming_action = gaming_answer_action(gaming_answer)
+            if gaming_action == "cancel":
+                self._status("Backup cancelled.", "warning")
+                return
+            if gaming_action == "raw":
+                self._engine_var.set(ENGINE_PY)
+                self._on_engine_change()
+                self._status(
+                    "Approved gaming software requires raw/all blocks. Engine changed to raw; review the output name and start again.",
+                    "warning",
+                )
+                return
         if self._compact_mode and not messagebox.askyesno(
             "Create ext4 compact image?",
             "This MBR-only mode preserves the complete boot prefix, copies allocated "
@@ -515,6 +569,41 @@ class MakeImageDialog(ttk.Toplevel):
             except Ext4CompactCaptureError as exc:
                 self._status(str(exc), "danger")
                 return
+        if self._general_archive_mode:
+            try:
+                self._status("Running read-only filesystem and adapter preflight…", "info")
+                self.update_idletasks()
+                discovery = discover_used_block_source(
+                    drive.disk_number,
+                    expected_size=drive.size_bytes,
+                    expected_serial=drive.hw_serial,
+                )
+            except UsedBlockArchiveError as exc:
+                self._status(str(exc), "danger")
+                return
+            partition_lines = []
+            for item in discovery["partitions"]:
+                size_gib = item["size_bytes"] / (1 << 30)
+                partition_lines.append(
+                    f"P{item['number']}: {item['filesystem']}  {size_gib:.2f} GiB  "
+                    f"{item['adapter']}  {item['uuid']}"
+                )
+            summary = (
+                f"Source: Disk {drive.disk_number}, {drive.source_display}\n"
+                f"Partclone: {discovery['partclone_version']}\n\n"
+                + "\n".join(partition_lines)
+                + "\n\nOutput: "
+                + output
+                + "\n\nThis is a repair/archive image, not approved byte-for-byte gaming firmware. "
+                "Publish only after every member and exact source range validates. Continue?"
+            )
+            if not messagebox.askyesno(
+                "Confirm general used-block archive",
+                summary,
+                parent=self,
+            ):
+                self._status("Backup cancelled.", "warning")
+                return
         if self._used_block_mode and not messagebox.askyesno(
             "Create repair/archive image set?",
             "This mode creates an MBR plus partition-image set. It is not a "
@@ -528,11 +617,11 @@ class MakeImageDialog(ttk.Toplevel):
         if self._compact_mode:
             manifest = compact_manifest_path(output)
             existing = [str(path) for path in (output, manifest) if os.path.exists(path)]
+        elif self._general_archive_mode:
+            existing = [output] if os.path.exists(output) else []
         if os.path.exists(output) or existing:
             conflict_text = (
-                "\n".join(os.path.basename(path) for path in existing)
-                if existing
-                else output
+                "\n".join(os.path.basename(path) for path in existing) if existing else output
             )
             overwrite = messagebox.askyesno(
                 "Overwrite image?",
@@ -568,6 +657,7 @@ class MakeImageDialog(ttk.Toplevel):
                 on_done=self._on_backup_done,
                 sha1=True,
                 compact=self._compact_mode,
+                used_block_archive=self._general_archive_mode,
                 expected_size=drive.size_bytes,
                 expected_serial=drive.hw_serial,
                 cleanup_script=cleanup_script,
@@ -632,6 +722,21 @@ class MakeImageDialog(ttk.Toplevel):
                     self._status(
                         f"Ext4 compact image complete; omitted swap and saved "
                         f"{saved:.2f} GiB. Keep the image and manifest together.",
+                        "success",
+                    )
+                self._finish_buttons()
+                return
+            if self._general_archive_mode:
+                if not os.path.isfile(self._output_path):
+                    self._set_step(0, "failed")
+                    self._status("Used-block capture finished without its archive.", "danger")
+                else:
+                    result = getattr(self._worker, "result", None) or {}
+                    stored = int(result.get("stored_bytes", 0)) / (1 << 30)
+                    self._progress_var.set(100)
+                    self._status(
+                        f"General used-block archive complete ({stored:.2f} GiB stored). "
+                        "Restore only through Guarded Single Flash.",
                         "success",
                     )
                 self._finish_buttons()

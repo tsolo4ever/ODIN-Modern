@@ -170,7 +170,9 @@ class GuardedSingleFlashFrame(ttk.Frame):
             return
         try:
             if not self._store.load():
-                self.append_log("[Protection] Scan System Hardware before listing targets.", warning=True)
+                self.append_log(
+                    "[Protection] Scan System Hardware before listing targets.", warning=True
+                )
                 return
         except ProtectedStoreError as exc:
             self.append_log(f"[Protection] {exc}", warning=True)
@@ -230,7 +232,10 @@ class GuardedSingleFlashFrame(ttk.Frame):
         )
         self._prepare_button.grid(row=0, column=2, padx=(0, 8), pady=6)
         self._stop_button = ttk.Button(
-            image, text="Stop", bootstyle="danger-outline", command=self._stop_restore,
+            image,
+            text="Stop",
+            bootstyle="danger-outline",
+            command=self._stop_restore,
             state=DISABLED,
         )
         self._stop_button.grid(row=0, column=3, padx=(0, 8), pady=6)
@@ -248,13 +253,16 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._target_combo.grid(row=0, column=1, sticky=EW, pady=6)
         self._target_combo.bind("<<ComboboxSelected>>", self._select_target)
         self._refresh_button = ttk.Button(
-            target, text="Refresh Targets", bootstyle="warning-outline", command=self.refresh_targets
+            target,
+            text="Refresh Targets",
+            bootstyle="warning-outline",
+            command=self.refresh_targets,
         )
         self._refresh_button.grid(row=0, column=2, padx=8, pady=6)
         self._target_detail = ttk.StringVar(value="No eligible fixed disk selected.")
-        ttk.Label(
-            target, textvariable=self._target_detail, justify=LEFT, wraplength=760
-        ).grid(row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 6))
+        ttk.Label(target, textvariable=self._target_detail, justify=LEFT, wraplength=760).grid(
+            row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 6)
+        )
 
         log_frame = ttk.LabelFrame(self, text="Guarded Log")
         log_frame.grid(row=4, column=0, sticky=NSEW)
@@ -264,7 +272,9 @@ class GuardedSingleFlashFrame(ttk.Frame):
         header.grid(row=0, column=0, sticky=EW, padx=4, pady=4)
         self._status_var = ttk.StringVar(value="Guarded mode inactive.")
         ttk.Label(header, textvariable=self._status_var).pack(side=LEFT, fill=X, expand=YES)
-        ttk.Button(header, text="Copy All", command=self._copy_log, width=9).pack(side=RIGHT, padx=4)
+        ttk.Button(header, text="Copy All", command=self._copy_log, width=9).pack(
+            side=RIGHT, padx=4
+        )
         self._log_toggle = ttk.Button(header, text="Collapse", command=self._toggle_log, width=9)
         self._log_toggle.pack(side=RIGHT)
         self._log_box = ScrolledText(log_frame, height=9, state=tk.DISABLED, wrap=tk.WORD)
@@ -374,7 +384,9 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._set_restore_active()
         self._on_prepare_flash(disk, plan)
 
-    def _start_job(self, status: str, operation: Callable[[], object], done: Callable[[object], None]) -> None:
+    def _start_job(
+        self, status: str, operation: Callable[[], object], done: Callable[[object], None]
+    ) -> None:
         self._set_busy(True)
         self._set_status(status)
 
@@ -427,7 +439,8 @@ class GuardedSingleFlashFrame(ttk.Frame):
             parent=self.winfo_toplevel(),
             title="Select image for this guarded attempt",
             filetypes=[
-                ("Disk images", "*.img *.compact.img"),
+                ("Supported images", "*.img *.compact.img *.odin-archive"),
+                ("Used-block archives", "*.odin-archive"),
                 ("Compact images", "*.compact.img"),
                 ("All files", "*.*"),
             ],
