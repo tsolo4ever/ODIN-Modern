@@ -11,42 +11,21 @@ import os
 import struct
 from dataclasses import dataclass
 
+from odin_container import (
+    BitmapScheme,
+    CompressionScheme,
+    OdinFormatError,
+    OdinHeader,
+    read_header as read_odin_header,
+)
 from raw_disk import open_binary_reader
 
 SECTOR_SIZE = 512
 MBR_SIG_OFFSET = 510
 MBR_PART_OFFSET = 446  # start of 4 x 16-byte partition entries
 
-# ODIN .img file header constants
-# GUID {1d4d7b73-fa01-40e1-b094-5267d8fa0be7} in Windows mixed-endian byte order
-_ODIN_MAGIC = bytes(
-    [
-        0x73,
-        0x7B,
-        0x4D,
-        0x1D,  # Data1 LE
-        0x01,
-        0xFA,  # Data2 LE
-        0xE1,
-        0x40,  # Data3 LE
-        0xB0,
-        0x94,
-        0x52,
-        0x67,
-        0xD8,
-        0xFA,
-        0x0B,
-        0xE7,  # Data4
-    ]
-)
-# TDiskImageFileHeader layout (MSVC /Zp8, 128 bytes total):
-#   GUID(16) + WORD(2) + WORD(2) + DWORD*8(32) + pad(4) + UINT64*9(72) = 128
-# dataOffset is the 5th UINT64 field (index [15] after unpack)
-_ODIN_HDR_FMT = "<16sHHIIIIIIII4xQQQQQQQQQ"
-_ODIN_HDR_SIZE = struct.calcsize(_ODIN_HDR_FMT)  # 128
-_ODIN_NO_COMPRESSION = 0
-_ODIN_NO_BITMAP = 0  # volumeBitmapEncodingScheme == 0 → all-blocks (raw sectors)
-# == 1 → used-blocks (packed cluster data, not raw sectors)
+_ODIN_NO_COMPRESSION = int(CompressionScheme.NONE)
+_ODIN_NO_BITMAP = int(BitmapScheme.ALL_BLOCKS)
 
 # Maps compressionScheme header value → -compression= CLI flag
 _COMPRESSION_FLAG: dict[int, str] = {
@@ -113,11 +92,14 @@ class ImageHashRegion:
     is_odin: bool
     compression_scheme: int = _ODIN_NO_COMPRESSION
     volume_bitmap_scheme: int = _ODIN_NO_BITMAP
+    split_member_count: int = 0
 
     @property
     def is_raw_supported(self) -> bool:
         """True when the image file can be hashed (uncompressed at file level)."""
-        return not self.is_odin or self.compression_scheme == _ODIN_NO_COMPRESSION
+        return not self.is_odin or (
+            self.compression_scheme == _ODIN_NO_COMPRESSION and self.split_member_count == 0
+        )
 
     @property
     def is_disk_verifiable(self) -> bool:
@@ -127,23 +109,15 @@ class ImageHashRegion:
         return not self.is_odin or (
             self.compression_scheme == _ODIN_NO_COMPRESSION
             and self.volume_bitmap_scheme == _ODIN_NO_BITMAP
+            and self.split_member_count == 0
         )
 
 
 def _odin_data_offset(image_path: str) -> int:
     """Return the byte offset where raw disk data begins in an ODIN .img file.
-    Returns 0 if the file is not an ODIN image (treat as raw disk image)."""
-    try:
-        with open(image_path, "rb") as f:
-            header = f.read(_ODIN_HDR_SIZE)
-        if len(header) < _ODIN_HDR_SIZE:
-            return 0
-        if header[:16] != _ODIN_MAGIC:
-            return 0
-        fields = struct.unpack_from(_ODIN_HDR_FMT, header)
-        return int(fields[15])  # dataOffset
-    except OSError:
-        return 0
+    Returns 0 if the file is not an ODIN image; malformed ODIN input fails closed."""
+    header = read_odin_header(image_path)
+    return header.data_offset if header is not None else 0
 
 
 def get_image_hash_region(image_path: str) -> ImageHashRegion | None:
@@ -154,21 +128,20 @@ def get_image_hash_region(image_path: str) -> ImageHashRegion | None:
     """
     try:
         file_size = os.path.getsize(image_path)
-        with open(image_path, "rb") as f:
-            header = f.read(_ODIN_HDR_SIZE)
-    except OSError:
+        header = read_odin_header(image_path)
+    except (OSError, OdinFormatError):
         return None
 
-    if len(header) < _ODIN_HDR_SIZE or header[:16] != _ODIN_MAGIC:
+    if header is None:
         return ImageHashRegion(offset=0, size=file_size, is_odin=False)
 
-    fields = struct.unpack_from(_ODIN_HDR_FMT, header)
-    compression_scheme = int(fields[3])
-    volume_bitmap_scheme = int(fields[5])  # 0=no bitmap (all-blocks), 1=used-blocks
-    data_offset = int(fields[15])
-    data_size = int(fields[16])
-    used_size = int(fields[17])
-    volume_size = int(fields[18])
+    compression_scheme = header.compression_scheme
+    volume_bitmap_scheme = header.volume_bitmap_encoding_scheme
+    data_offset = header.data_offset
+    data_size = header.data_size
+    used_size = header.used_size
+    volume_size = header.volume_size
+    file_size = header.file_size
 
     if data_offset < 0 or data_offset > file_size:
         return None
@@ -184,6 +157,7 @@ def get_image_hash_region(image_path: str) -> ImageHashRegion | None:
         is_odin=True,
         compression_scheme=compression_scheme,
         volume_bitmap_scheme=volume_bitmap_scheme,
+        split_member_count=header.file_count,
     )
 
 
@@ -230,13 +204,11 @@ def get_image_compression_flag(image_path: str) -> str:
     Reads the ODIN header and maps compressionScheme to a CLI flag.
     Returns 'none' for raw images, unreadable files, or unknown schemes."""
     try:
-        with open(image_path, "rb") as f:
-            header = f.read(_ODIN_HDR_SIZE)
-        if len(header) < _ODIN_HDR_SIZE or header[:16] != _ODIN_MAGIC:
+        header = read_odin_header(image_path)
+        if header is None:
             return "none"
-        fields = struct.unpack_from(_ODIN_HDR_FMT, header)
-        return _COMPRESSION_FLAG.get(int(fields[3]), "none")
-    except OSError:
+        return _COMPRESSION_FLAG.get(header.compression_scheme, "none")
+    except (OSError, OdinFormatError):
         return "none"
 
 
@@ -253,9 +225,15 @@ def read_mbr_partitions_strict(image_path: str) -> list[PartitionInfo]:
     PartitionInfo.offset is always a file-absolute byte offset ready for
     use directly in HashWorker(offset=...).
     """
-    data_offset = _odin_data_offset(image_path)
     entries: list[PartitionInfo] = []
     try:
+        header: OdinHeader | None = read_odin_header(image_path)
+        if header is not None and (not header.is_raw_sectors or header.file_count > 0):
+            raise PartitionReadError(
+                "Compressed, used-block, or split ODIN images do not expose one direct "
+                "file offset; use native ODIN logical preflight."
+            )
+        data_offset = header.data_offset if header is not None else 0
         with open_binary_reader(image_path) as f:
             f.seek(data_offset + MBR_SIG_OFFSET)
             signature = f.read(2)
@@ -295,6 +273,8 @@ def read_mbr_partitions_strict(image_path: str) -> list[PartitionInfo]:
                 )
     except PartitionReadError:
         raise
+    except OdinFormatError as exc:
+        raise PartitionReadError(str(exc)) from exc
     except OSError as exc:
         raise PartitionReadError(str(exc)) from exc
     if not entries:

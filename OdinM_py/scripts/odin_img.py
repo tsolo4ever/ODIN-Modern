@@ -1,53 +1,32 @@
-"""Read-only access to an ODIN .img file as if it were a raw disk.
-
-ODIN prepends a 128-byte TDiskImageFileHeader (plus, here, a 4-byte CRC32) so
-the MBR lives at dataOffset+0, not byte 0. This module parses that header and
-exposes a file-like window over any partition, with the peek() that
-ext4.Volume expects.
-
-Opens the image 'rb' only.
-"""
+"""Inspect raw disks and validated ODIN v1.x image containers read-only."""
 
 import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-SECTOR = 512
-_ODIN_MAGIC = bytes.fromhex("737b4d1d01fae140b0945267d8fa0be7")
-# GUID(16) WORD*2 DWORD*8 pad(4) UINT64*9 = 128 bytes under MSVC /Zp8
-_HDR_FMT = "<16sHHIIIIIIII4xQQQQQQQQQ"
-_HDR_SIZE = struct.calcsize(_HDR_FMT)
-assert _HDR_SIZE == 128, _HDR_SIZE
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-_FIELDS = [
-    "guid", "versionMajor", "versionMinor", "compressionScheme", "verifyScheme",
-    "volumeBitmapEncodingScheme", "volumeType", "fileCount", "clusterSize",
-    "verifyLength", "commentLength", "volumeBitmapOffset", "volumeBitmapLength",
-    "verifyOffset", "commentOffset", "dataOffset", "dataSize", "usedSize",
-    "volumeSize", "fileSize",
-]
+from odin_container import (  # noqa: E402
+    CompressionScheme,
+    OdinHeader,
+    OdinImage,
+    read_header as _read_odin_header,
+)
+
+SECTOR = 512
 
 _TYPE_NAMES = {
-    0x00: "empty", 0x05: "Extended", 0x0B: "FAT32", 0x0C: "FAT32 LBA",
-    0x07: "NTFS/exFAT", 0x82: "Linux swap", 0x83: "Linux", 0xEE: "GPT protective",
+    0x00: "empty",
+    0x05: "Extended",
+    0x0B: "FAT32",
+    0x0C: "FAT32 LBA",
+    0x07: "NTFS/exFAT",
+    0x82: "Linux swap",
+    0x83: "Linux",
+    0xEE: "GPT protective",
 }
-
-
-@dataclass
-class OdinHeader:
-    data_offset: int
-    data_size: int
-    volume_size: int
-    compression: int
-    bitmap_scheme: int
-    version: tuple
-    raw: dict
-
-    @property
-    def is_raw_sectors(self) -> bool:
-        """True only when the payload is uncompressed, all-blocks sector data."""
-        return self.compression == 0 and self.bitmap_scheme == 0
 
 
 @dataclass
@@ -68,36 +47,32 @@ class Partition:
 
     def file_offset(self, hdr: "OdinHeader | None") -> int:
         """Byte offset in the FILE. `hdr` is None for raw (headerless) images."""
+        if hdr is not None and (not hdr.is_raw_sectors or hdr.file_count > 0):
+            raise ValueError(
+                "compressed, used-block, or split ODIN partitions do not have one direct "
+                "file offset"
+            )
         return (hdr.data_offset if hdr else 0) + self.lba_start * SECTOR
 
 
 def read_header(path) -> OdinHeader | None:
-    """Parse the ODIN header, or None if the file is a plain raw image."""
-    with open(path, "rb") as f:
-        blob = f.read(_HDR_SIZE)
-    if len(blob) < _HDR_SIZE or blob[:16] != _ODIN_MAGIC:
-        return None
-    vals = struct.unpack(_HDR_FMT, blob)
-    raw = dict(zip(_FIELDS, vals))
-    return OdinHeader(
-        data_offset=raw["dataOffset"],
-        data_size=raw["dataSize"],
-        volume_size=raw["volumeSize"],
-        compression=raw["compressionScheme"],
-        bitmap_scheme=raw["volumeBitmapEncodingScheme"],
-        version=(raw["versionMajor"], raw["versionMinor"]),
-        raw=raw,
-    )
+    """Return the production parser's validated header, or None for raw input."""
+    return _read_odin_header(path)
 
 
 def read_partitions(path, hdr: OdinHeader | None) -> list[Partition]:
-    base = hdr.data_offset if hdr else 0
-    with open(path, "rb") as f:
-        f.seek(base)
-        mbr = f.read(SECTOR)
+    if hdr is not None and (not hdr.is_raw_sectors or hdr.file_count > 0):
+        with OdinImage.open(path) as image:
+            mbr = image.read_logical(0, SECTOR)
+        location = "logical volume offset 0"
+    else:
+        base = hdr.data_offset if hdr else 0
+        with open(path, "rb") as f:
+            f.seek(base)
+            mbr = f.read(SECTOR)
+        location = f"file offset {base}"
     if mbr[510:512] != b"\x55\xaa":
-        raise ValueError(f"no MBR signature at file offset {base} "
-                         f"(got {mbr[510:512].hex()})")
+        raise ValueError(f"no MBR signature at {location} (got {mbr[510:512].hex()})")
     parts = []
     for i in range(4):
         e = mbr[446 + i * 16 : 446 + (i + 1) * 16]
@@ -118,6 +93,12 @@ class ImageWindow:
     """
 
     def __init__(self, path, offset: int, length: int):
+        header = read_header(path)
+        if header is not None and (not header.is_raw_sectors or header.file_count > 0):
+            raise ValueError(
+                "random filesystem windows over compressed/used-block/split ODIN images "
+                "require the later native restore/spool phase"
+            )
         self._f = open(path, "rb")
         self._base = offset
         self._len = length
@@ -168,37 +149,45 @@ class ImageWindow:
 
 def describe(path):
     path = Path(path)
-    fsize = path.stat().st_size
     hdr = read_header(path)
+    fsize = hdr.file_size if hdr is not None else path.stat().st_size
     print(f"{path}")
     print(f"  file size      : {fsize} ({fsize / (1 << 30):.3f} GiB)")
     if hdr is None:
         print("  format         : raw (no ODIN header)")
     else:
         print(f"  format         : ODIN v{hdr.version[0]}.{hdr.version[1]}")
-        print(f"  compression    : {hdr.compression} "
-              f"({'none' if hdr.compression == 0 else 'COMPRESSED'})")
-        print(f"  bitmap scheme  : {hdr.bitmap_scheme} "
-              f"({'all-blocks / raw sectors' if hdr.bitmap_scheme == 0 else 'USED-BLOCKS (packed!)'})")
+        compression_name = CompressionScheme(hdr.compression).name.lower()
+        print(f"  compression    : {hdr.compression} ({compression_name})")
+        bitmap_name = (
+            "all-blocks / raw sectors" if hdr.bitmap_scheme == 0 else "USED-BLOCKS (packed!)"
+        )
+        print(f"  bitmap scheme  : {hdr.bitmap_scheme} ({bitmap_name})")
         print(f"  dataOffset     : {hdr.data_offset}")
         print(f"  dataSize       : {hdr.data_size}")
-        print(f"  volumeSize     : {hdr.volume_size} "
-              f"({hdr.volume_size // SECTOR} sectors)")
-        print(f"  header fileSize: {hdr.raw['fileSize']}  "
-              f"(actual {fsize}, trailing {fsize - hdr.raw['fileSize']} B)")
+        print(f"  volumeSize     : {hdr.volume_size} ({hdr.volume_size // SECTOR} sectors)")
+        print(f"  header fileSize: {hdr.raw['fileSize']} (validated logical size {fsize})")
         print(f"  raw sectors ok : {hdr.is_raw_sectors}")
     parts = read_partitions(path, hdr)
     print(f"  partitions     : {len(parts)}")
     for p in parts:
-        print(f"    [{p.index}] type=0x{p.ptype:02X} ({p.type_name:12s}) "
-              f"lba={p.lba_start:<10d} sectors={p.sectors:<11d} "
-              f"size={p.size / (1 << 20):8.1f} MiB  file_off={p.file_offset(hdr)}"
-              + ("  [boot]" if p.bootable else ""))
+        location = (
+            f"file_off={p.file_offset(hdr)}"
+            if hdr is None or (hdr.is_raw_sectors and hdr.file_count == 0)
+            else f"logical_off={p.lba_start * SECTOR}"
+        )
+        print(
+            f"    [{p.index}] type=0x{p.ptype:02X} ({p.type_name:12s}) "
+            f"lba={p.lba_start:<10d} sectors={p.sectors:<11d} "
+            f"size={p.size / (1 << 20):8.1f} MiB  {location}" + ("  [boot]" if p.bootable else "")
+        )
     return hdr, parts
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8")
     for arg in sys.argv[1:]:
         describe(arg)
         print()
