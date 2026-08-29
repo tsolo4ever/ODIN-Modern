@@ -403,7 +403,10 @@ void COdinManager::WaitToCompleteOperation(IWaitCallback* callback)
       callback->OnThreadTerminated();
       if (--threadCount == 0)  {       
         ATLTRACE(" All worker threads are terminated now\n");
-        if (fReadThread) 
+        if (fIsRestoring && !fTargetImage && fWriteThread)
+          // Verify mode checks the logical payload after optional decompression.
+          fVerifyCrc32 = fWriteThread->GetCrc32();
+        else if (fReadThread)
           fVerifyCrc32 = fReadThread->GetCrc32();
         callback->OnFinished();
         Terminate(); // work is finished
