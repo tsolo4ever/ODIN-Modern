@@ -173,6 +173,18 @@ class SlotWidget(ttk.Frame):
         self._progress_var.set(pct)
         self._pct_var.set(f"{pct}%")
 
+    def set_phase(self, phase: str):
+        labels = {
+            "preflight": "Preflight",
+            "source_check": "Source Check",
+            "write": "Writing",
+            "verify": "Verifying",
+            "policy": "Part Hash",
+        }
+        self._status_lbl.configure(
+            text=labels.get(phase, phase.title()[:9]), bootstyle="info-inverse"
+        )
+
     def set_speed(self, speed_str: str):
         self._speed_var.set(speed_str)
 

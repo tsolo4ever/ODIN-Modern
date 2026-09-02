@@ -2,8 +2,10 @@
 
 import ctypes
 import ctypes.wintypes as wintypes
+import io
 import sys
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 import app as app_module  # noqa: E402
 import hash_config as hash_config_module  # noqa: E402
+import partition_reader as partition_reader_module  # noqa: E402
 import raw_disk as raw_disk_module  # noqa: E402
 from clone_worker import CloneStatus  # noqa: E402
 from hash_worker import HashStatus  # noqa: E402
@@ -336,6 +339,33 @@ def test_strict_partition_reader_preserves_invalid_mbr_reason():
             raise AssertionError("invalid MBR should raise PartitionReadError")
 
 
+def test_strict_partition_reader_treats_physical_device_path_as_raw():
+    payload = bytearray(512)
+    payload[446] = 0x80
+    payload[450] = 0x0B
+    payload[454:458] = (2048).to_bytes(4, "little")
+    payload[458:462] = (4096).to_bytes(4, "little")
+    payload[510:512] = b"\x55\xaa"
+    real_open = partition_reader_module.open_binary_reader
+    real_header = partition_reader_module.read_odin_header
+    partition_reader_module.open_binary_reader = lambda _path: nullcontext(
+        io.BytesIO(payload)
+    )
+    partition_reader_module.read_odin_header = lambda _path: (_ for _ in ()).throw(
+        AssertionError("physical devices must skip ODIN header detection")
+    )
+    try:
+        partitions = partition_reader_module.read_mbr_partitions_strict(
+            r"\\.\PhysicalDrive3"
+        )
+    finally:
+        partition_reader_module.open_binary_reader = real_open
+        partition_reader_module.read_odin_header = real_header
+    assert len(partitions) == 1
+    assert partitions[0].offset == 2048 * 512
+    assert partitions[0].size == 4096 * 512
+
+
 def test_raw_physical_reader_aligns_small_partition_reads():
     payload = bytes(index % 251 for index in range(8192))
     reader = _raw_reader(payload, sector_size=4096)
@@ -360,6 +390,7 @@ if __name__ == "__main__":
         test_explicit_disk_level_verification_is_preserved,
         test_saving_hash_scopes_keeps_whole_disk_and_partitions_exclusive,
         test_strict_partition_reader_preserves_invalid_mbr_reason,
+        test_strict_partition_reader_treats_physical_device_path_as_raw,
         test_raw_physical_reader_aligns_small_partition_reads,
     ]
     for test in tests:

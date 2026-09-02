@@ -56,6 +56,12 @@ class _FakeConfig:
     def get_show_flash_widget(self):
         return False
 
+    def get_keep_completed_disks_locked(self):
+        return True
+
+    def set_keep_completed_disks_locked(self, _value):
+        pass
+
     def get_engine(self):
         return self._engine
 
@@ -162,7 +168,7 @@ check("slot0 completely untouched by slot1's removal",
 check("slot0's drive record untouched", app._drives[0].disk_number, 2)
 
 print("\nonce the grace period genuinely expires, the return-watch stops")
-expire_jobs = {i: fn for i, fn in scheduled.items()}
+expire_jobs = dict(scheduled.items())
 # Find and fire slot 1's scheduled _expire_lock call directly.
 app._expire_lock(1, 3)
 check("slot1's lock released", app._locked_disk_nums.get(1), None)

@@ -225,6 +225,8 @@ def _restore(
     cancel=None,
     protected=False,
     partition_waiter=None,
+    randomize_signature=False,
+    retain_volume_locks=False,
 ):
     disk = _disk()
     storage = storage if storage is not None else bytearray(disk.size_bytes)
@@ -249,6 +251,8 @@ def _restore(
         flush_disk=lambda _target: events.append("flush"),
         partition_waiter=partition_waiter or (lambda _path: events.append("partition-ready")),
         should_cancel=cancel,
+        randomize_signature=randomize_signature,
+        retain_volume_locks=retain_volume_locks,
     )
     return result, storage, events
 
@@ -359,6 +363,9 @@ def test_source_change_after_preflight_is_rejected():
         image = Path(folder) / "raw.img"
         _raw(image)
         plan = restore.preflight_image(image, 4096)
+        progress = []
+        restore.validate_source_unchanged(plan, on_progress=lambda *event: progress.append(event))
+        assert progress[-1] == ("source_check", 1024, 1024)
         image.write_bytes(b"X" * 1024)
         try:
             restore.validate_source_unchanged(plan)
@@ -540,11 +547,35 @@ def test_success_requires_flush_refresh_and_matching_readback():
             "open-read",
             "open-write",
             "flush",
-            "unlock",
-            "close",
             "partition-ready",
             "open-read",
+            "unlock",
+            "close",
         ]
+
+
+def test_floor_copy_randomizes_signature_and_retains_lock_until_release():
+    with tempfile.TemporaryDirectory() as folder:
+        image = Path(folder) / "raw.img"
+        source = _raw(image)
+        plan = restore.preflight_image(image, 4096)
+        result, storage, events = _restore(
+            plan,
+            folder,
+            randomize_signature=True,
+            retain_volume_locks=True,
+        )
+        assert result.verified
+        assert result.signature_randomized
+        assert len(result.retained_volume_locks) == 1
+        assert storage[:0x1B8] == source[:0x1B8]
+        assert storage[0x1B8:0x1BC] != source[0x1B8:0x1BC]
+        assert storage[0x1BC : len(source)] == source[0x1BC:]
+        assert "unlock" not in events
+        assert "close" not in events
+
+        restore.release_volume_locks(result.retained_volume_locks)
+        assert events[-2:] == ["unlock", "close"]
 
 
 def test_bad_confirmation_and_protected_target_never_open_a_disk():

@@ -18,7 +18,7 @@ from odin_container import (
     OdinHeader,
     read_header as read_odin_header,
 )
-from raw_disk import open_binary_reader
+from raw_disk import is_physical_drive_path, open_binary_reader
 
 SECTOR_SIZE = 512
 MBR_SIG_OFFSET = 510
@@ -227,7 +227,9 @@ def read_mbr_partitions_strict(image_path: str) -> list[PartitionInfo]:
     """
     entries: list[PartitionInfo] = []
     try:
-        header: OdinHeader | None = read_odin_header(image_path)
+        header: OdinHeader | None = (
+            None if is_physical_drive_path(image_path) else read_odin_header(image_path)
+        )
         if header is not None and (not header.is_raw_sectors or header.file_count > 0):
             raise PartitionReadError(
                 "Compressed, used-block, or split ODIN images do not expose one direct "

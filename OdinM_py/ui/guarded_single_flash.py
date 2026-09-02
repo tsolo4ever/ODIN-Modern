@@ -1,4 +1,4 @@
-"""Main-window panel for one explicitly selected fixed-disk flash target."""
+"""Main-window panel for one explicitly selected physical-disk flash target."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from guarded_restore import GuardedImagePlan, preflight_image
 
 
 MODE_MULTI = "Multi Flash - Removable Drives"
-MODE_GUARDED = "Guarded Single Flash - Fixed Drive"
+MODE_GUARDED = "Guarded Single Flash - Physical Drive"
 IMAGE_PLACEHOLDER = "Ex. Roulette HD"
 
 
@@ -144,9 +144,9 @@ class GuardedSingleFlashFrame(ttk.Frame):
 
     def confirm_disk_number(self, disk: DiskIdentity, summary: str) -> bool:
         entered = simpledialog.askstring(
-            "Confirm Guarded Fixed-Disk Flash",
+            "Confirm Guarded Physical-Disk Flash",
             summary
-            + "\n\nThis will overwrite the selected fixed disk. "
+            + "\n\nThis will overwrite the selected physical disk. "
             + f"Type its disk number ({disk.disk_number}) to continue:",
             parent=self.winfo_toplevel(),
         )
@@ -259,7 +259,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
             command=self.refresh_targets,
         )
         self._refresh_button.grid(row=0, column=2, padx=8, pady=6)
-        self._target_detail = ttk.StringVar(value="No eligible fixed disk selected.")
+        self._target_detail = ttk.StringVar(value="No eligible physical disk selected.")
         ttk.Label(target, textvariable=self._target_detail, justify=LEFT, wraplength=760).grid(
             row=1, column=0, columnspan=3, sticky=EW, padx=8, pady=(0, 6)
         )
@@ -278,6 +278,14 @@ class GuardedSingleFlashFrame(ttk.Frame):
         self._log_toggle = ttk.Button(header, text="Collapse", command=self._toggle_log, width=9)
         self._log_toggle.pack(side=RIGHT)
         self._log_box = ScrolledText(log_frame, height=9, state=tk.DISABLED, wrap=tk.WORD)
+        colors = ttk.Style().colors
+        self._log_box.configure(
+            background=getattr(colors, "inputbg", colors.bg),
+            foreground=getattr(colors, "inputfg", colors.fg),
+            insertbackground=getattr(colors, "inputfg", colors.fg),
+            selectbackground=getattr(colors, "selectbg", colors.primary),
+            selectforeground=getattr(colors, "selectfg", colors.fg),
+        )
         self._log_box.grid(row=1, column=0, sticky=NSEW, padx=4, pady=(0, 4))
         self._log_box.bind("<Control-a>", self._select_all_log)
         self._show_placeholder()
@@ -331,18 +339,18 @@ class GuardedSingleFlashFrame(ttk.Frame):
                 self.append_log(
                     f"[Target] EXCLUDED {decision.disk.description}: {'; '.join(decision.reasons)}"
                 )
-        self._set_status(f"{len(eligible)} eligible fixed-disk target(s). Select exactly one.")
+        self._set_status(f"{len(eligible)} eligible physical-disk target(s). Select exactly one.")
 
     def _select_target(self, _event=None) -> None:
         disk = self._target_by_display.get(self._target_var.get())
         self.state.selected_disk = disk
-        self._target_detail.set(disk.description if disk else "No eligible fixed disk selected.")
+        self._target_detail.set(disk.description if disk else "No eligible physical disk selected.")
 
     def _prepare_flash(self) -> None:
         disk = self.state.selected_disk
         image_path = self.image_path
         if disk is None:
-            self.append_log("[Guarded] Select one eligible fixed-disk target.", warning=True)
+            self.append_log("[Guarded] Select one eligible physical-disk target.", warning=True)
             return
         if not image_path or not os.path.isfile(image_path):
             self.append_log("[Guarded] Browse to an existing image for this attempt.", warning=True)
@@ -476,7 +484,7 @@ class GuardedSingleFlashFrame(ttk.Frame):
     def _clear_target(self) -> None:
         self.state.selected_disk = None
         self._target_var.set("")
-        self._target_detail.set("No eligible fixed disk selected.")
+        self._target_detail.set("No eligible physical disk selected.")
 
     def _set_baseline_state(self, exists: bool, ready: bool) -> None:
         self._baseline_exists = exists

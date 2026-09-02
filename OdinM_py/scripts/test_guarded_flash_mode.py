@@ -49,7 +49,7 @@ def _bare_app(*, multi_active: bool = True):
 
 def test_mode_labels_are_explicit_and_guarded_placeholder_is_not_a_path():
     assert MODE_MULTI == "Multi Flash - Removable Drives"
-    assert MODE_GUARDED == "Guarded Single Flash - Fixed Drive"
+    assert MODE_GUARDED == "Guarded Single Flash - Physical Drive"
     assert IMAGE_PLACEHOLDER == "Ex. Roulette HD"
     state = GuardedSessionState()
     state.enter()

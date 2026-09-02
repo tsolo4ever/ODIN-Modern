@@ -14,6 +14,7 @@ DEFAULTS = {
     "verify_after_clone": "false",
     "stop_on_verify_fail": "false",
     "show_flash_widget": "true",
+    "keep_completed_disks_locked": "true",
     "max_drive_gb": "8",
     # How many removable disks get considered for a slot at all, per
     # refresh - beyond this, extras are excluded the same way an oversized
@@ -89,6 +90,12 @@ class ConfigManager:
     def get_show_flash_widget(self) -> bool:
         return self._cfg["settings"].get("show_flash_widget", "true").lower() == "true"
 
+    def get_keep_completed_disks_locked(self) -> bool:
+        return (
+            self._cfg["settings"].get("keep_completed_disks_locked", "true").lower()
+            == "true"
+        )
+
     def get_max_drive_gb(self) -> int:
         try:
             return int(self._cfg["settings"].get("max_drive_gb", "8"))
@@ -147,6 +154,10 @@ class ConfigManager:
 
     def set_show_flash_widget(self, v: bool):
         self._cfg["settings"]["show_flash_widget"] = "true" if v else "false"
+        self._save()
+
+    def set_keep_completed_disks_locked(self, v: bool):
+        self._cfg["settings"]["keep_completed_disks_locked"] = "true" if v else "false"
         self._save()
 
     def set_engine(self, value: str):

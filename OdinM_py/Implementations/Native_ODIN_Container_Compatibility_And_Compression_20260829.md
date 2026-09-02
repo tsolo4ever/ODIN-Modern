@@ -301,6 +301,8 @@ evidence.
 
 Expected paths:
 
+- `OdinM_py/app.py`
+- `OdinM_py/guarded_flash_safety.py`
 - `OdinM_py/guarded_restore.py`
 - `OdinM_py/ui/guarded_single_flash.py`
 - `OdinM_py/odin_worker.py` (new, final name may follow existing worker naming)
@@ -320,6 +322,19 @@ Work:
 5. Add mandatory target read-back using the strategy recorded at preflight.
 6. Add synthetic tests for every codec, used-block seeks, split boundaries,
    source changes, cancellation, short writes, and verification mismatch.
+7. Auto-route native ODIN containers and manifest-backed image formats through
+   the same preflight/write/read-back implementation from Multi Flash, while
+   preserving Multi Flash's confirmed removable-slot boundary.
+8. Require partition-scoped configured hashes for native Multi Flash, verify
+   them before success, then randomize the MBR disk signature. Never use a
+   post-randomization whole-disk hash as acceptance evidence because sector 0
+   is intentionally changed.
+9. Add a persisted `Keep completed disks locked until removed` Multi Flash
+   option, enabled by default for floor-firmware copying. Perform the verified
+   disk-signature change while the original volume locks are still owned, then
+   retain those lock handles after success until physical removal or application
+   shutdown. When enabled, route supported raw and container images through the
+   same guarded native lifecycle so the setting has one safety meaning.
 
 Exit gate:
 
@@ -335,6 +350,38 @@ written during automated validation. PyInstaller construction succeeds, but
 the current system-Python packaging environment does not contain optional
 `lz4` or `zstandard`; bundling and frozen-executable codec self-tests remain
 the explicit Phase 3A dependency/package gate.
+
+Physical acceptance finding recorded 2026-08-30: the first disposable USB
+target was correctly rejected by legacy Multi Flash before writing because
+that path treated the 200-byte ODIN container header as raw payload. Guarded
+Single Flash then rejected the same target solely because Windows classified
+it as removable. The guarded mode now admits both removable and fixed local
+physical disks while retaining system-storage, virtual-device,
+protected-baseline, stable-identity, image-host, revalidation, typed-confirm,
+capacity, write, and mandatory read-back gates. A subsequent native restore
+wrote the correctly aligned payload, but released the FAT32 volume lock before
+read-back. Windows immediately changed FAT allocation entries in partition 1,
+causing the mandatory full-stream and configured partition hash checks to fail
+closed. Read-only samples proved the MBR and sampled partition-2 ranges still
+matched the source, and both configured partition hashes were independently
+confirmed against the source image. The all-block restore now retains every
+volume lock through partition-table refresh, mandatory read-back, and configured
+hash-policy verification. The focused restore suites pass 18/18 and 10/10;
+operator-attended physical retry remains pending.
+
+The physical retry then passed the full 7,969,177,600-byte payload SHA-256 and
+both SHA-1/SHA-256 checks for partitions 1 and 2. The later signature operation
+failed because it attempted to reacquire E: after the verified restore released
+its original lock and Windows had already opened the FAT32 volume. The retained-
+lock option above therefore includes moving signature randomization inside the
+existing verified lock window. The option, native all-block routing, retained
+lock ownership, removal cleanup, and a distinct Source Check progress phase are
+implemented. Focused validation passes 19/19 restore, 11/11 integration, 10/10
+partition-target, and 14/14 safety checks. Used-block/WSL restore is rejected
+before writing while retained-lock mode is enabled because that workflow must
+temporarily transfer disk ownership to WSL. Another all-block physical retry is
+required to prove in-lock signature randomization and lock retention through
+physical removal.
 
 ### Phase 3A - Native ODIN writer and codecs
 

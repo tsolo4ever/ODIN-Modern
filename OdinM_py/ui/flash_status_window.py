@@ -106,6 +106,19 @@ class FlashStatusWindow(ttk.Toplevel):
         self._ensure_row(idx)
         self._rows[idx]["pct"].configure(text=f"{pct}%")
 
+    def set_phase(self, idx: int, phase: str):
+        self._ensure_row(idx)
+        labels = {
+            "preflight": "Preflight",
+            "source_check": "Source Check",
+            "write": "Writing",
+            "verify": "Verifying",
+            "policy": "Part Hash",
+        }
+        self._rows[idx]["status"].configure(
+            text=labels.get(phase, phase.title()[:9]), bootstyle="info-inverse"
+        )
+
     def set_speed(self, idx: int, speed_str: str):
         self._ensure_row(idx)
         self._rows[idx]["speed"].configure(text=speed_str)

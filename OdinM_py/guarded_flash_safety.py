@@ -422,8 +422,6 @@ def evaluate_inventory(
             reasons.append("Windows system-storage classification is incomplete")
         if disk.system_reasons:
             reasons.append("protected Windows storage: " + ", ".join(disk.system_reasons))
-        if disk.removable:
-            reasons.append("removable disks belong in Multi Flash")
         if disk.is_virtual or not disk.device_path:
             reasons.append("target is virtual or cannot be proven as a local physical device")
         if disk.stable_key is None:

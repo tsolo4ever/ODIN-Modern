@@ -61,6 +61,12 @@ class _FakeConfig:
     def get_show_flash_widget(self):
         return False
 
+    def get_keep_completed_disks_locked(self):
+        return True
+
+    def set_keep_completed_disks_locked(self, _value):
+        pass
+
     def get_engine(self):
         return self._engine
 

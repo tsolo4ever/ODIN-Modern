@@ -217,6 +217,9 @@ class MainWindow(ttk.Frame):
     def set_slot_progress(self, idx: int, pct: int):
         self._slots[idx].set_progress(pct)
 
+    def set_slot_phase(self, idx: int, phase: str):
+        self._slots[idx].set_phase(phase)
+
     def set_slot_status(self, idx: int, status: CloneStatus, offer_verify: bool = False):
         self._slots[idx].set_status(status, offer_verify=offer_verify)
 
@@ -447,10 +450,14 @@ class MainWindow(ttk.Frame):
     def _build_settings(self):
         frame = ttk.LabelFrame(self, text="Settings")  # type: ignore[attr-defined]
         frame.grid(row=4, column=0, sticky=EW, pady=(0, 4))
+        primary = ttk.Frame(frame)
+        primary.pack(fill=X)
+        secondary = ttk.Frame(frame)
+        secondary.pack(fill=X)
 
         self._auto_clone_var = ttk.BooleanVar(value=self._config.get_auto_clone())
         ttk.Checkbutton(
-            frame,
+            primary,
             text="Auto-clone on device insertion",
             variable=self._auto_clone_var,
             bootstyle="round-toggle",
@@ -459,7 +466,7 @@ class MainWindow(ttk.Frame):
 
         self._verify_after_var = ttk.BooleanVar(value=self._config.get_verify_after_clone())
         ttk.Checkbutton(
-            frame,
+            primary,
             text="Verify target disk hash after clone",
             variable=self._verify_after_var,
             bootstyle="round-toggle",
@@ -468,7 +475,7 @@ class MainWindow(ttk.Frame):
 
         self._stop_on_fail_var = ttk.BooleanVar(value=self._config.get_stop_on_verify_fail())
         ttk.Checkbutton(
-            frame,
+            primary,
             text="Stop all on verification failure",
             variable=self._stop_on_fail_var,
             bootstyle="round-toggle",
@@ -479,11 +486,24 @@ class MainWindow(ttk.Frame):
 
         self._flash_widget_var = ttk.BooleanVar(value=self._config.get_show_flash_widget())
         ttk.Checkbutton(
-            frame,
+            secondary,
             text="Show flash widget",
             variable=self._flash_widget_var,
             bootstyle="round-toggle",
             command=self._toggle_flash_widget,
+        ).pack(side=LEFT, padx=(0, 12), pady=6)
+
+        self._keep_completed_locked_var = ttk.BooleanVar(
+            value=self._config.get_keep_completed_disks_locked()
+        )
+        ttk.Checkbutton(
+            secondary,
+            text="Keep completed disks locked until removed",
+            variable=self._keep_completed_locked_var,
+            bootstyle="round-toggle",
+            command=lambda: self._config.set_keep_completed_disks_locked(
+                bool(self._keep_completed_locked_var.get())
+            ),
         ).pack(side=LEFT, padx=(0, 12), pady=6)
 
     def _build_log(self):
@@ -494,6 +514,14 @@ class MainWindow(ttk.Frame):
         frame.columnconfigure(0, weight=1)
 
         self._log_box = ScrolledText(frame, height=10, state=tk.DISABLED, wrap=tk.WORD)
+        colors = ttk.Style().colors
+        self._log_box.configure(
+            background=getattr(colors, "inputbg", colors.bg),
+            foreground=getattr(colors, "inputfg", colors.fg),
+            insertbackground=getattr(colors, "inputfg", colors.fg),
+            selectbackground=getattr(colors, "selectbg", colors.primary),
+            selectforeground=getattr(colors, "selectfg", colors.fg),
+        )
         self._log_box.grid(row=0, column=0, sticky=NSEW)
 
     # ── private ───────────────────────────────────────────────────────────────

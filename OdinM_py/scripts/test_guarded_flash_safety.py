@@ -1,4 +1,4 @@
-"""Focused checks for guarded fixed-disk protection and revalidation."""
+"""Focused checks for guarded physical-disk protection and revalidation."""
 
 from __future__ import annotations
 
@@ -117,11 +117,11 @@ def test_missing_and_duplicate_stable_identity_are_rejected():
     assert all(not item.eligible for item in safety.evaluate_inventory(duplicate, []))
 
 
-def test_removable_virtual_and_image_host_disks_are_rejected():
+def test_removable_is_eligible_but_virtual_and_image_host_disks_are_rejected():
     removable = _disk(removable=True)
     virtual = _disk(bus_type=15, bus_name="File-backed virtual")
     image_host = _disk()
-    assert not safety.evaluate_inventory([removable], [])[0].eligible
+    assert safety.evaluate_inventory([removable], [])[0].eligible
     assert not safety.evaluate_inventory([virtual], [])[0].eligible
     assert not safety.evaluate_inventory([image_host], [], image_disk_number=3)[0].eligible
 

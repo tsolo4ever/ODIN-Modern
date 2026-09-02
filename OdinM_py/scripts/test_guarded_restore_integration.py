@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 
@@ -22,7 +23,11 @@ from guarded_restore import (  # noqa: E402
     GuardedRestoreError,
     GuardedRestoreResult,
     GuardedRestoreWorker,
+    MultiFlashNativeRestoreWorker,
+    require_partition_hash_policy,
+    requires_native_restore,
 )
+from odin_container import ODIN_MAGIC  # noqa: E402
 from ui.guarded_single_flash import GuardedSingleFlashFrame  # noqa: E402
 
 
@@ -110,6 +115,130 @@ def test_worker_failure_preserves_the_untrusted_target_signal():
         assert worker.status == CloneStatus.FAILED
         assert isinstance(worker.error, GuardedRestoreError)
         assert worker.error.target_not_trusted
+
+
+def test_multi_flash_routes_native_and_manifest_backed_images():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        odin_image = root / "field.img"
+        odin_image.write_bytes(ODIN_MAGIC)
+        assert requires_native_restore(odin_image)
+        assert requires_native_restore(root / "capture.odin-archive")
+        assert requires_native_restore(root / "capture.compact.img")
+        assert not requires_native_restore(root / "plain.img")
+
+
+def test_multi_flash_requires_partition_hashes_before_signature_change():
+    class Config:
+        def __init__(self, enabled):
+            self.enabled = enabled
+
+        def get_enabled_partitions(self, _path):
+            return self.enabled
+
+    partition = {
+        "sha1_enabled": False,
+        "sha1_value": "",
+        "sha256_enabled": True,
+        "sha256_value": "a" * 64,
+    }
+    assert require_partition_hash_policy(
+        "field.img", hash_config_provider=lambda: Config({1: partition})
+    ) == (1,)
+    for enabled in ({}, {0: partition}):
+        try:
+            require_partition_hash_policy(
+                "field.img", hash_config_provider=lambda value=enabled: Config(value)
+            )
+        except GuardedRestoreError as exc:
+            assert "partition" in str(exc)
+        else:
+            raise AssertionError("unsafe whole-disk or missing hash policy was accepted")
+
+
+def test_multi_flash_native_worker_preflights_then_restores_and_verifies():
+    with tempfile.TemporaryDirectory() as folder:
+        source = Path(folder) / "field.img"
+        plan = _plan(source)
+        disk = replace(_disk(), removable=True, bus_type=7, bus_name="USB")
+        events = []
+        done = []
+
+        def target_provider(number, image_path, _store, **identity):
+            assert number == disk.disk_number
+            assert image_path == str(source)
+            assert identity["expected_size"] == disk.size_bytes
+            return disk
+
+        def preflight_provider(image_path, capacity, **callbacks):
+            assert image_path == str(source)
+            assert capacity == disk.size_bytes
+            callbacks["on_progress"]("preflight", 512, 512)
+            return plan
+
+        def restore_provider(received_plan, received_disk, _store, **callbacks):
+            assert received_plan is plan
+            assert received_disk is disk
+            callbacks["on_progress"]("write", 512, 512)
+            callbacks["on_progress"]("verify", 512, 512)
+            return GuardedRestoreResult(512, "a" * 64, "a" * 64, True, False, False, 0.1)
+
+        worker = MultiFlashNativeRestoreWorker(
+            ImmediateRoot(),
+            disk.disk_number,
+            str(source),
+            lambda percent: events.append(("progress", percent)),
+            lambda line: events.append(("log", line)),
+            done.append,
+            expected_size=disk.size_bytes,
+            expected_serial=disk.serial,
+            expected_model=disk.model,
+            store=ProtectedHardwareStore(Path(folder) / "protected.json"),
+            target_provider=target_provider,
+            partition_policy_provider=lambda _path: (1,),
+            preflight_provider=preflight_provider,
+            restore_provider=restore_provider,
+        )
+        worker.start()
+        worker._thread.join(timeout=2)
+        assert worker.status == CloneStatus.DONE
+        assert worker.result is not None and worker.result.verified
+        assert done == [CloneStatus.DONE]
+        assert ("log", "Preflight started.") in events
+        assert ("log", "Source Check started.") in events
+        assert ("log", "Verify started.") in events
+
+
+def test_retained_lock_mode_rejects_used_block_before_write():
+    with tempfile.TemporaryDirectory() as folder:
+        source = Path(folder) / "field.img"
+        plan = replace(_plan(source), image_format="odin-used-block")
+        disk = replace(_disk(), removable=True, bus_type=7, bus_name="USB")
+        restored = []
+        done = []
+
+        worker = MultiFlashNativeRestoreWorker(
+            ImmediateRoot(),
+            disk.disk_number,
+            str(source),
+            lambda _percent: None,
+            lambda _line: None,
+            done.append,
+            expected_size=disk.size_bytes,
+            expected_serial=disk.serial,
+            expected_model=disk.model,
+            retain_volume_locks=True,
+            store=ProtectedHardwareStore(Path(folder) / "protected.json"),
+            target_provider=lambda *_args, **_kwargs: disk,
+            partition_policy_provider=lambda _path: (1,),
+            preflight_provider=lambda *_args, **_kwargs: plan,
+            restore_provider=lambda *_args, **_kwargs: restored.append(True),
+        )
+        worker.start()
+        worker._thread.join(timeout=2)
+        assert worker.status == CloneStatus.FAILED
+        assert done == [CloneStatus.FAILED]
+        assert not restored
 
 
 def test_configured_whole_image_policy_hash_runs_after_mandatory_verify():

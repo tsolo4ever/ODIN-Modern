@@ -31,6 +31,7 @@ from guarded_flash_safety import (
     DiskIdentity,
     EligibilityDecision,
     ProtectedHardwareStore,
+    list_guarded_candidates,
     query_windows_storage_inventory,
     revalidate_target,
 )
@@ -121,6 +122,139 @@ class GuardedRestoreResult:
     cancelled: bool
     target_not_trusted: bool
     elapsed_seconds: float
+    signature_randomized: bool = False
+    retained_volume_locks: tuple[Any, ...] = ()
+
+
+def release_volume_locks(volumes: tuple[Any, ...] | list[Any]) -> None:
+    for volume in volumes:
+        try:
+            volume.unlock()
+        except OSError:
+            pass
+        try:
+            volume.close()
+        except OSError:
+            pass
+
+
+def _randomize_locked_disk_signature(
+    raw_path: str,
+    *,
+    disk_factory: Callable[..., Any],
+    flush_disk: Callable[[Any], None],
+) -> bytes:
+    with disk_factory(raw_path, write=True) as target:
+        target.seek(0)
+        sector = target.read(MIN_SECTOR_BYTES)
+        if len(sector) != MIN_SECTOR_BYTES:
+            raise GuardedRestoreError(
+                f"short MBR read before signature change ({len(sector)}/{MIN_SECTOR_BYTES})",
+                target_not_trusted=True,
+            )
+        signature = os.urandom(4)
+        while signature == b"\x00\x00\x00\x00":
+            signature = os.urandom(4)
+        patched = sector[:0x1B8] + signature + sector[0x1BC:]
+        target.seek(0)
+        if target.write(patched) != len(patched):
+            raise GuardedRestoreError("short MBR signature write", target_not_trusted=True)
+        flush_disk(target)
+        if not target.update_properties():
+            raise GuardedRestoreError(
+                "Windows disk-property refresh failed after signature change",
+                target_not_trusted=True,
+            )
+    return signature
+
+
+def requires_native_restore(image_path: str | os.PathLike[str]) -> bool:
+    """Return whether Multi Flash must use the native guarded image reader."""
+
+    path = Path(image_path)
+    name = path.name.casefold()
+    return (
+        has_odin_magic(path)
+        or name.endswith(ARCHIVE_SUFFIX)
+        or name.endswith(".compact.img")
+    )
+
+
+def resolve_multi_flash_target(
+    disk_number: int,
+    image_path: str,
+    store: ProtectedHardwareStore,
+    *,
+    expected_size: int = 0,
+    expected_serial: str = "",
+    expected_model: str = "",
+    inventory_provider: Callable[[], list[DiskIdentity]] = query_windows_storage_inventory,
+) -> DiskIdentity:
+    """Resolve one confirmed removable slot into a guarded disk snapshot."""
+
+    decisions = list_guarded_candidates(
+        store,
+        image_path=image_path,
+        inventory_provider=inventory_provider,
+    )
+    matches = [decision for decision in decisions if decision.disk.disk_number == disk_number]
+    if len(matches) != 1:
+        raise GuardedRestoreError("confirmed Multi Flash disk is missing or duplicated")
+    decision = matches[0]
+    if not decision.eligible:
+        raise GuardedRestoreError(
+            "confirmed Multi Flash disk is no longer eligible: " + "; ".join(decision.reasons)
+        )
+    disk = decision.disk
+    if disk.bus_type not in {7, 12, 13}:
+        raise GuardedRestoreError("Multi Flash target is no longer on a USB, SD, or MMC bus")
+    if expected_size > 0 and disk.size_bytes != expected_size:
+        raise GuardedRestoreError("Multi Flash target capacity changed before preflight")
+    if expected_serial and disk.serial.strip().casefold() != expected_serial.strip().casefold():
+        raise GuardedRestoreError("Multi Flash target serial changed before preflight")
+    if expected_model:
+        expected_name = " ".join(expected_model.strip().casefold().split())
+        model_names = {
+            " ".join(disk.model.strip().casefold().split()),
+            " ".join(f"{disk.manufacturer} {disk.model}".strip().casefold().split()),
+        }
+        if expected_name not in model_names:
+            raise GuardedRestoreError("Multi Flash target model changed before preflight")
+    return disk
+
+
+def require_partition_hash_policy(
+    image_path: str,
+    *,
+    hash_config_provider: Callable[[], Any] = HashConfig,
+) -> tuple[int, ...]:
+    """Require reusable partition hashes before Multi Flash changes sector 0."""
+
+    enabled = hash_config_provider().get_enabled_partitions(image_path)
+    if 0 in enabled:
+        raise GuardedRestoreError(
+            "native Multi Flash requires partition hashes; whole-disk hashes become "
+            "invalid after the MBR disk signature is randomized"
+        )
+    partitions = []
+    for number, config in sorted(enabled.items()):
+        if number <= 0:
+            continue
+        has_value = bool(
+            (config.get("sha1_enabled") and config.get("sha1_value"))
+            or (config.get("sha256_enabled") and config.get("sha256_value"))
+        )
+        if not has_value:
+            raise GuardedRestoreError(
+                f"no enabled hash value exists for configured partition {number}"
+            )
+        partitions.append(number)
+    if not partitions:
+        raise GuardedRestoreError(
+            "native Multi Flash requires at least one configured partition hash "
+            "before it can randomize the MBR disk signature"
+        )
+    return tuple(partitions)
 
 
 def _configured_policy_checks(
@@ -794,12 +928,21 @@ def preflight_image(
     return GuardedImagePlan(path, path, "raw", size, size, digest)
 
 
-def validate_source_unchanged(plan: GuardedImagePlan) -> None:
+def validate_source_unchanged(
+    plan: GuardedImagePlan,
+    *,
+    on_progress: Callable[[str, int, int], None] | None = None,
+) -> None:
     expected_size = plan.source_file_bytes or plan.write_bytes
     if not plan.source_path.is_file() or plan.source_path.stat().st_size != expected_size:
         raise GuardedImageError("preflighted image source changed or disappeared")
     with plan.source_path.open("rb") as stream:
-        digest, _ = _hash_stream(stream, limit=expected_size)
+        digest, _ = _hash_stream(
+            stream,
+            limit=expected_size,
+            on_progress=on_progress,
+            phase="source_check",
+        )
     if digest != plan.sha256:
         raise GuardedImageError("preflighted image source changed after validation")
     if plan.odin_source is not None:
@@ -816,8 +959,9 @@ def validate_ready_to_write(
     *,
     inventory_provider: Callable[[], list[DiskIdentity]] = query_windows_storage_inventory,
     image_disk_provider: Callable[[str], int] | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> EligibilityDecision:
-    validate_source_unchanged(plan)
+    validate_source_unchanged(plan, on_progress=on_progress)
     if image_disk_provider is not None:
         decision = revalidate_target(
             expected,
@@ -879,8 +1023,12 @@ def restore_and_verify(
     should_cancel: Callable[[], bool] | None = None,
     on_progress: Callable[[str, int, int], None] | None = None,
     on_log: Callable[[str], None] | None = None,
+    randomize_signature: bool = False,
+    retain_volume_locks: bool = False,
 ) -> GuardedRestoreResult:
     started = time.monotonic()
+    log = on_log or (lambda _line: None)
+    progress = on_progress or (lambda _phase, _done, _total: None)
     if confirmed_disk_number != expected.disk_number:
         raise GuardedRestoreError("typed confirmation does not match the selected disk number")
     decision = validate_ready_to_write(
@@ -889,10 +1037,9 @@ def restore_and_verify(
         store,
         inventory_provider=inventory_provider,
         image_disk_provider=image_disk_provider,
+        on_progress=progress,
     )
     current = decision.disk
-    log = on_log or (lambda _line: None)
-    progress = on_progress or (lambda _phase, _done, _total: None)
     raw_path = current.raw_device_path
 
     if plan.image_format == "used-block-archive":
@@ -955,92 +1102,106 @@ def restore_and_verify(
                 raise GuardedRestoreError(
                     "Windows disk-property refresh failed", target_not_trusted=True
                 )
-    except GuardedRestoreError:
-        raise
-    except Exception as exc:
-        raise GuardedRestoreError(str(exc), target_not_trusted=bytes_written > 0) from exc
-    finally:
-        for volume in locked:
-            volume.unlock()
-            volume.close()
 
-    if cancelled:
-        return GuardedRestoreResult(
-            bytes_written,
-            plan.sha256,
-            "",
-            False,
-            True,
-            bytes_written > 0,
-            time.monotonic() - started,
-        )
-    if bytes_written != plan.write_bytes:
-        raise GuardedRestoreError("write length was incomplete", target_not_trusted=True)
+        if cancelled:
+            return GuardedRestoreResult(
+                bytes_written,
+                plan.sha256,
+                "",
+                False,
+                True,
+                bytes_written > 0,
+                time.monotonic() - started,
+            )
+        if bytes_written != plan.write_bytes:
+            raise GuardedRestoreError("write length was incomplete", target_not_trusted=True)
 
-    try:
-        partition_waiter(raw_path)
-    except GuardedRestoreError:
-        raise
-    except Exception as exc:
-        raise GuardedRestoreError(
-            f"partition table did not become readable: {exc}", target_not_trusted=True
-        ) from exc
-    target_hash = hashlib.sha256()
-    verified_bytes = 0
-    with disk_factory(raw_path) as target:
-        target.seek(0)
-        while verified_bytes < plan.write_bytes:
-            if should_cancel is not None and should_cancel():
-                return GuardedRestoreResult(
-                    bytes_written,
-                    plan.sha256,
-                    target_hash.hexdigest(),
-                    False,
-                    True,
-                    True,
-                    time.monotonic() - started,
-                )
-            block = target.read(min(CHUNK_BYTES, plan.write_bytes - verified_bytes))
-            if not block:
-                raise GuardedRestoreError(
-                    "short target read during verification", target_not_trusted=True
-                )
-            target_hash.update(block)
-            verified_bytes += len(block)
-            progress("verify", verified_bytes, plan.write_bytes)
-    target_digest = target_hash.hexdigest()
-    if verified_bytes != plan.write_bytes or target_digest != plan.sha256:
-        raise GuardedRestoreError(
-            "mandatory target read-back SHA-256 mismatch", target_not_trusted=True
-        )
-    log(f"Mandatory read-back verification passed: SHA-256 {target_digest}")
-    if not _configured_policy_checks(
-        plan,
-        raw_path,
-        disk_factory=disk_factory,
-        hash_config_provider=hash_config_provider,
-        should_cancel=should_cancel,
-        on_progress=progress,
-        on_log=log,
-    ):
+        try:
+            partition_waiter(raw_path)
+        except GuardedRestoreError:
+            raise
+        except Exception as exc:
+            raise GuardedRestoreError(
+                f"partition table did not become readable: {exc}", target_not_trusted=True
+            ) from exc
+        target_hash = hashlib.sha256()
+        verified_bytes = 0
+        with disk_factory(raw_path) as target:
+            target.seek(0)
+            while verified_bytes < plan.write_bytes:
+                if should_cancel is not None and should_cancel():
+                    return GuardedRestoreResult(
+                        bytes_written,
+                        plan.sha256,
+                        target_hash.hexdigest(),
+                        False,
+                        True,
+                        True,
+                        time.monotonic() - started,
+                    )
+                block = target.read(min(CHUNK_BYTES, plan.write_bytes - verified_bytes))
+                if not block:
+                    raise GuardedRestoreError(
+                        "short target read during verification", target_not_trusted=True
+                    )
+                target_hash.update(block)
+                verified_bytes += len(block)
+                progress("verify", verified_bytes, plan.write_bytes)
+        target_digest = target_hash.hexdigest()
+        if verified_bytes != plan.write_bytes or target_digest != plan.sha256:
+            raise GuardedRestoreError(
+                "mandatory target read-back SHA-256 mismatch", target_not_trusted=True
+            )
+        log(f"Mandatory read-back verification passed: SHA-256 {target_digest}")
+        if not _configured_policy_checks(
+            plan,
+            raw_path,
+            disk_factory=disk_factory,
+            hash_config_provider=hash_config_provider,
+            should_cancel=should_cancel,
+            on_progress=progress,
+            on_log=log,
+        ):
+            return GuardedRestoreResult(
+                bytes_written,
+                plan.sha256,
+                target_digest,
+                True,
+                True,
+                True,
+                time.monotonic() - started,
+            )
+        signature_randomized = False
+        if randomize_signature:
+            _randomize_locked_disk_signature(
+                raw_path,
+                disk_factory=disk_factory,
+                flush_disk=flush_disk,
+            )
+            signature_randomized = True
+            log("Disk signature randomized while the verified volume lock remained held.")
+        retained_locks: tuple[Any, ...] = ()
+        if retain_volume_locks:
+            retained_locks = tuple(locked)
+            locked = []
+            log("Completed target remains locked until physical removal or application exit.")
         return GuardedRestoreResult(
             bytes_written,
             plan.sha256,
             target_digest,
             True,
-            True,
-            True,
+            False,
+            False,
             time.monotonic() - started,
+            signature_randomized,
+            retained_locks,
         )
-    return GuardedRestoreResult(
-        bytes_written,
-        plan.sha256,
-        target_digest,
-        True,
-        False,
-        False,
-        time.monotonic() - started,
-    )
+    except GuardedRestoreError:
+        raise
+    except Exception as exc:
+        raise GuardedRestoreError(str(exc), target_not_trusted=bytes_written > 0) from exc
+    finally:
+        release_volume_locks(locked)
 
 
 def _restore_odin_used_blocks(
@@ -1353,6 +1514,168 @@ class GuardedRestoreWorker:
     def _progress(self, phase: str, done: int, total: int) -> None:
         percent = int(done * 100 / total) if total else 0
         self._call(self._on_progress, phase, percent)
+
+    def _call(self, callback, *args) -> None:
+        try:
+            self._root.after(0, callback, *args)
+        except Exception:
+            pass
+
+
+class MultiFlashNativeRestoreWorker:
+    """Run native guarded preflight/restore for one confirmed removable slot."""
+
+    def __init__(
+        self,
+        root,
+        disk_number: int,
+        image_path: str,
+        on_progress: Callable[[int], None],
+        on_log: Callable[[str], None],
+        on_done: Callable[[CloneStatus], None],
+        *,
+        on_phase: Callable[[str], None] | None = None,
+        expected_size: int = 0,
+        expected_serial: str = "",
+        expected_model: str = "",
+        randomize_signature: bool = True,
+        retain_volume_locks: bool = False,
+        store: ProtectedHardwareStore | None = None,
+        target_provider: Callable[..., DiskIdentity] = resolve_multi_flash_target,
+        partition_policy_provider: Callable[[str], tuple[int, ...]] = (
+            require_partition_hash_policy
+        ),
+        preflight_provider: Callable[..., GuardedImagePlan] = preflight_image,
+        restore_provider: Callable[..., GuardedRestoreResult] = restore_and_verify,
+    ):
+        self._root = root
+        self._disk_number = disk_number
+        self._image_path = image_path
+        self._expected_size = expected_size
+        self._expected_serial = expected_serial
+        self._expected_model = expected_model
+        self._randomize_signature = randomize_signature
+        self._retain_volume_locks = retain_volume_locks
+        self._store = store or ProtectedHardwareStore()
+        self._target_provider = target_provider
+        self._partition_policy_provider = partition_policy_provider
+        self._preflight_provider = preflight_provider
+        self._restore_provider = restore_provider
+        self._on_progress = on_progress
+        self._on_phase = on_phase
+        self._on_log = on_log
+        self._on_done = on_done
+        self._cancel = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_phase = ""
+        self.status = CloneStatus.IDLE
+        self.result: GuardedRestoreResult | None = None
+        self.error: Exception | None = None
+        self._retained_volume_locks: list[Any] = []
+
+    @property
+    def has_retained_locks(self) -> bool:
+        return bool(self._retained_volume_locks)
+
+    def release_retained_locks(self) -> None:
+        locks = self._retained_volume_locks
+        self._retained_volume_locks = []
+        release_volume_locks(locks)
+
+    def start(self) -> None:
+        if self.status == CloneStatus.RUNNING:
+            return
+        self.status = CloneStatus.RUNNING
+        self._cancel.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._cancel.set()
+
+    def _run(self) -> None:
+        plan: GuardedImagePlan | None = None
+        try:
+            partitions = self._partition_policy_provider(self._image_path)
+            self._fire_log(
+                "Required partition verification configured for: "
+                + ", ".join(str(number) for number in partitions)
+            )
+            disk = self._target_provider(
+                self._disk_number,
+                self._image_path,
+                self._store,
+                expected_size=self._expected_size,
+                expected_serial=self._expected_serial,
+                expected_model=self._expected_model,
+            )
+            self._fire_log(f"Target revalidated: {disk.description}")
+            plan = self._preflight_provider(
+                self._image_path,
+                disk.size_bytes,
+                should_cancel=self._cancel.is_set,
+                on_progress=self._progress,
+                on_log=self._fire_log,
+            )
+            if self._cancel.is_set():
+                self.status = CloneStatus.STOPPED
+                return
+            self._fire_log(f"Preflight passed: {plan.summary}")
+            if self._retain_volume_locks and plan.image_format in {
+                "odin-used-block",
+                "used-block-archive",
+            }:
+                raise GuardedRestoreError(
+                    "Keep completed disks locked requires a complete-disk/all-block "
+                    "image; used-block restore must release Windows ownership for WSL"
+                )
+            self._progress("source_check", 0, 0)
+            self.result = self._restore_provider(
+                plan,
+                disk,
+                self._store,
+                confirmed_disk_number=disk.disk_number,
+                should_cancel=self._cancel.is_set,
+                on_progress=self._progress,
+                on_log=self._fire_log,
+                randomize_signature=self._randomize_signature,
+                retain_volume_locks=self._retain_volume_locks,
+            )
+            self._retained_volume_locks = list(self.result.retained_volume_locks)
+            self.status = (
+                CloneStatus.STOPPED if self.result.cancelled else CloneStatus.DONE
+            )
+            if self.result.verified:
+                self._fire_log(
+                    f"Native restore wrote and verified {self.result.bytes_written} bytes."
+                )
+        except Exception as exc:
+            self.error = exc
+            unsafe = bool(getattr(exc, "target_not_trusted", False))
+            if self._cancel.is_set() and not unsafe:
+                self.status = CloneStatus.STOPPED
+                self._fire_log("Native restore cancelled before the target changed.")
+            else:
+                self.status = CloneStatus.FAILED
+                suffix = " Target may be partial or unverified." if unsafe else ""
+                self._fire_log(f"Native restore failed: {type(exc).__name__}: {exc}.{suffix}")
+        finally:
+            if plan is not None:
+                plan.cleanup()
+            self._call(self._on_done, self.status)
+
+    def _progress(self, phase: str, done: int, total: int) -> None:
+        if phase != self._last_phase:
+            self._last_phase = phase
+            if self._on_phase is not None:
+                self._call(self._on_phase, phase)
+            self._call(self._on_progress, 0)
+            self._fire_log(f"{phase.replace('_', ' ').title()} started.")
+        percent = int(done * 100 / total) if total else 0
+        self._call(self._on_progress, percent)
+
+    def _fire_log(self, line: str) -> None:
+        self._call(self._on_log, line)
 
     def _call(self, callback, *args) -> None:
         try:

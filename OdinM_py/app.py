@@ -21,7 +21,11 @@ from drive_manager import (
     is_disk_removable,
 )
 from hash_worker import HashStatus, HashWorker
-from guarded_restore import GuardedRestoreCoordinator
+from guarded_restore import (
+    GuardedRestoreCoordinator,
+    MultiFlashNativeRestoreWorker,
+    requires_native_restore,
+)
 from partition_reader import get_image_hash_region
 from partition_waiter import PartitionTableWaiter
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
@@ -73,7 +77,9 @@ class OdinMApp:
 
         # Drive slots: letter → slot index mapping
         self._drives: list[DriveInfo | None] = [None] * NUM_SLOTS
-        self._workers: dict[int, CloneWorker | PyImagerRestoreWorker] = {}
+        self._workers: dict[
+            int, CloneWorker | PyImagerRestoreWorker | MultiFlashNativeRestoreWorker
+        ] = {}
         self._queue: list[int] = []  # slot indices waiting to start
         # slot → deque of (timestamp, pct) samples for rolling speed window
         self._speed_samples: dict[int, deque] = {}
@@ -160,6 +166,12 @@ class OdinMApp:
         active_verifiers = any(w.status == HashStatus.RUNNING for w in self._verify_workers.values())
         if active_workers or active_verifiers or self._queue or self._partition_waiters:
             return False, "Stop all Multi Flash writes, queued work, and verification first."
+        if any(
+            isinstance(worker, MultiFlashNativeRestoreWorker)
+            and worker.has_retained_locks
+            for worker in self._workers.values()
+        ):
+            return False, "Remove completed Multi Flash disks before entering guarded mode."
         return True, ""
 
     def _enter_guarded_mode(self):
@@ -306,6 +318,9 @@ class OdinMApp:
                     on_return=lambda i=idx, dn=disk_number: self._on_slot_disk_returned(i, dn),
                 )
         w = self._workers.get(idx)
+        if isinstance(w, MultiFlashNativeRestoreWorker) and w.has_retained_locks:
+            w.release_retained_locks()
+            self._window.log(f"[Slot {idx + 1}] Retained volume lock released after removal.")
         verifier = self._verify_workers.get(idx)
         if verifier is not None and verifier.status == HashStatus.RUNNING:
             self._window.log(f"[Slot {idx + 1}] Drive removed during verification — aborting.")
@@ -475,6 +490,16 @@ class OdinMApp:
         if drive is None:
             self._window.log(f"[Error] Slot {idx + 1} has no drive.")
             return
+        existing = self._workers.get(idx)
+        if (
+            isinstance(existing, MultiFlashNativeRestoreWorker)
+            and existing.has_retained_locks
+        ):
+            self._window.log(
+                f"[Error] Slot {idx + 1} is holding a completed disk locked — "
+                "remove it before starting another flash."
+            )
+            return
         if not is_disk_removable(drive.disk_number):
             self._window.log(
                 f"[Error] Slot {idx + 1} (Disk {drive.disk_number}) is not a removable drive — aborted."
@@ -512,12 +537,25 @@ class OdinMApp:
             return
         image = self._window.image_path
         size_bytes = drive.size_bytes
+        keep_completed_locked = self._config.get_keep_completed_disks_locked()
+        use_native_restore = requires_native_restore(image) or keep_completed_locked
+        phase_state = {"name": "native-start" if use_native_restore else "legacy"}
         self._speed_samples[idx] = deque(maxlen=6)  # 6 points = 5 intervals
+
+        def _on_phase(phase: str, i: int = idx):
+            phase_state["name"] = phase
+            self._speed_samples[i] = deque(maxlen=6)
+            self._window.set_slot_phase(i, phase)
+            self._window.set_slot_speed(i, "")
+            self._window.set_slot_eta(i, "")
+            self._flash_set_phase(i, phase)
+            self._flash_set_speed(i, "")
+            self._flash_set_eta(i, "")
 
         def _on_progress(pct: int, i: int = idx, sz: int = size_bytes):
             self._window.set_slot_progress(i, pct)
             self._flash_set_progress(i, pct)
-            if pct > 0 and sz > 0:
+            if pct > 0 and sz > 0 and phase_state["name"] in {"legacy", "write"}:
                 samples = self._speed_samples.get(i)
                 if samples is not None:
                     samples.append((time.time(), pct))
@@ -541,7 +579,22 @@ class OdinMApp:
             self._on_worker_done(i, status)
 
         use_pyimager = self._config.use_pyimager()
-        if use_pyimager:
+        if use_native_restore:
+            worker = MultiFlashNativeRestoreWorker(
+                root=self._root,
+                disk_number=drive.disk_number,
+                image_path=image,
+                on_progress=_on_progress,
+                on_log=_on_log,
+                on_done=_on_done,
+                on_phase=_on_phase,
+                expected_size=drive.size_bytes,
+                expected_serial=drive.hw_serial,
+                expected_model=drive.model,
+                randomize_signature=True,
+                retain_volume_locks=keep_completed_locked,
+            )
+        elif use_pyimager:
             worker = PyImagerRestoreWorker(
                 root=self._root,
                 disk_number=drive.disk_number,
@@ -564,7 +617,11 @@ class OdinMApp:
         self._workers[idx] = worker
         self._window.set_slot_status(idx, CloneStatus.RUNNING)
         self._flash_set_status(idx, CloneStatus.RUNNING)
-        engine = "pyimager" if use_pyimager else "ODINC"
+        engine = (
+            "native verified restore"
+            if use_native_restore
+            else "pyimager" if use_pyimager else "ODINC"
+        )
         self._window.log(
             f"[Slot {idx + 1}] Starting clone ({engine}) → {drive.target_path}  ({drive.display})"
         )
@@ -692,8 +749,14 @@ class OdinMApp:
         drive = self._drives[idx]
         if drive is not None and status == CloneStatus.DONE:
             self._finished_disk_nums.add(drive.disk_number)
-        auto_verify = self._config.get_verify_after_clone()
-        offer_verify = status == CloneStatus.DONE and not auto_verify
+        worker = self._workers.get(idx)
+        native_verified = bool(
+            isinstance(worker, MultiFlashNativeRestoreWorker)
+            and worker.result is not None
+            and worker.result.verified
+        )
+        auto_verify = self._config.get_verify_after_clone() and not native_verified
+        offer_verify = status == CloneStatus.DONE and not auto_verify and not native_verified
         self._window.set_slot_status(idx, status, offer_verify=offer_verify)
         self._flash_set_status(idx, status)
         label = {
@@ -705,7 +768,22 @@ class OdinMApp:
         if status == CloneStatus.DONE:
             self._window.set_slot_progress(idx, 100)
             self._flash_set_progress(idx, 100)
-            if auto_verify:
+            if native_verified:
+                self._window.log(
+                    f"[Slot {idx + 1}] Mandatory native read-back verification passed."
+                )
+                if worker.result.signature_randomized:
+                    self._window.log(
+                        f"[Slot {idx + 1}] Disk signature randomized under the verified lock."
+                    )
+                else:
+                    self._fix_disk_signature(idx)
+                if worker.has_retained_locks:
+                    self._window.log(
+                        f"[Slot {idx + 1}] Completed disk remains locked — pull it now."
+                    )
+                drain_now = True
+            elif auto_verify:
                 drain_now = not self._start_target_verify(idx)
             else:
                 # Signature fix is deferred until a verify actually runs (see
@@ -1018,6 +1096,9 @@ class OdinMApp:
 
     def _flash_set_progress(self, idx: int, pct: int):
         call_flash_widget(self._flash_widget, "set_progress", idx, pct)
+
+    def _flash_set_phase(self, idx: int, phase: str):
+        call_flash_widget(self._flash_widget, "set_phase", idx, phase)
 
     def _flash_set_speed(self, idx: int, speed: str):
         call_flash_widget(self._flash_widget, "set_speed", idx, speed)
