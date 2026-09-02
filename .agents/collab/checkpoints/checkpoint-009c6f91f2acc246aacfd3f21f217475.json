@@ -1,0 +1,49 @@
+{
+  "created_at": "2026-08-30T07:27:53.399220Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "venv python -m PyInstaller --noconfirm --clean OdinM_py.spec",
+        "summary": "One-file elevated executable built successfully."
+      },
+      {
+        "exit_code": 0,
+        "name": "pyi-archive_viewer codec inspection",
+        "summary": "LZ4 frame extension and Zstandard C/CFFI backends are present in the executable."
+      }
+    ],
+    "completed_items": [
+      "Overwrote dist/OdinM_py.exe with current approved source",
+      "Packaged LZ4 and Zstandard native modules from the ODIN virtual environment"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "Packaged SHA-256 CF062C381FDEA9F1E9B2F422EC05F7E1196D8DA4D66E9BE35BFAD6E35D2E318E."
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [
+      "Operator launches dist/OdinM_py.exe and performs the disposable-drive retained-lock retry."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/dist/OdinM_py.exe",
+      "OdinM_py/OdinM_py.spec"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "PyInstaller emitted its known Python 3.14 Tcl zipfs discovery warning; operator launch remains the frozen-GUI smoke test."
+    ],
+    "summary": "Rebuilt packaged OdinM_py working copy with ODIN virtual-environment codecs; left application closed for operator test.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-009c6f91f2acc246aacfd3f21f217475",
+  "record_type": "checkpoint",
+  "request_fingerprint": "55936183fe0dfa6e886f8ffc5adf80501117b98c031b6cbd65847ca226de749d",
+  "schema_version": 2,
+  "session_id": "30606b79-b3db-4000-8bd8-4e75be9d1732"
+}

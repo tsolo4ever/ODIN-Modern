@@ -1,0 +1,76 @@
+{
+  "created_at": "2026-08-30T06:54:24.637631Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore.py",
+        "summary": "19 of 19 guarded restore checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_restore_integration.py",
+        "summary": "11 of 11 native integration checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_partition_target_verify.py",
+        "summary": "10 of 10 partition target checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts/test_guarded_flash_safety.py",
+        "summary": "14 of 14 protected target safety checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "all scripts/test_*.py direct suites",
+        "summary": "All 23 script suites passed after updating one stale mode-label assertion."
+      },
+      {
+        "exit_code": 0,
+        "name": "ruff check and compileall",
+        "summary": "Affected Python files pass Ruff and byte compilation."
+      }
+    ],
+    "completed_items": [
+      "Retain verified Multi Flash volume locks until physical removal",
+      "Randomize the MBR disk signature inside the verified lock window",
+      "Report actual Source Check progress between preflight and write",
+      "Keep used-block WSL restore fail-closed when retained-lock mode is enabled"
+    ],
+    "evidence_links": [],
+    "findings": [],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [
+      "Complete one operator-attended restore to the disposable removable disk and physically remove it after the retained-lock success message."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/app.py",
+      "OdinM_py/config_manager.py",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/ui/main_window.py",
+      "OdinM_py/ui/slot_widget.py",
+      "OdinM_py/ui/flash_status_window.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/scripts/test_guarded_restore_integration.py",
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Physical acceptance is not complete until the in-lock signature change and removal cleanup are observed on real media."
+    ],
+    "summary": "Approved retained-lock and progress changes pass automated validation; updated source GUI launched for disposable-media retry.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-11480c836a5ce971e0f93dc0294514b7",
+  "record_type": "checkpoint",
+  "request_fingerprint": "19b37a63f5c26283ebebb2f221cfea07e2fe76ea3b0b4a454ce3781b7aa044d7",
+  "schema_version": 2,
+  "session_id": "30606b79-b3db-4000-8bd8-4e75be9d1732"
+}

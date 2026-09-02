@@ -1,0 +1,66 @@
+{
+  "created_at": "2026-08-31T05:49:20.898480Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": "Python 3.12 ttkbootstrap root smoke test",
+        "summary": "Tk 8.6.15 and ttkbootstrap created and destroyed a window."
+      },
+      {
+        "exit_code": 0,
+        "name": "venv python -m PyInstaller --noconfirm --clean OdinM_py.spec",
+        "summary": "One-file elevated executable built successfully with Python 3.12.10."
+      },
+      {
+        "exit_code": 0,
+        "name": "all scripts/test_*.py direct suites",
+        "summary": "All 23 direct suites passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "ruff check and compileall on changed Python paths",
+        "summary": "Scoped lint and byte compilation passed."
+      }
+    ],
+    "completed_items": [
+      "Installed Python 3.12.10 user-scoped and recreated repository .venv",
+      "Reinstalled runtime, codec, test, lint, and PyInstaller dependencies",
+      "Added explicit Python 3.12 venv rule to AGENTS.md",
+      "Rebuilt dist/OdinM_py.exe from the Python 3.12 venv"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "The failed Python 3.14 build contained ttkbootstrap but omitted Tcl/Tk data because Tcl/Tk was zipfs-backed.",
+      "The Python 3.12 build contains _tcl_data/init.tcl, _tk_data/tk.tcl, ttkbootstrap, LZ4, and Zstandard.",
+      "New executable SHA-256 is 62DE1F6EB0DB9B3652CA36F0D7388822BC5F0B11CE2162E15416BD4F1D67EBF7."
+    ],
+    "git_base": "",
+    "git_head": "",
+    "kind": "validation",
+    "next_steps": [
+      "When operator returns, launch dist/OdinM_py.exe and approve UAC for the frozen GUI smoke test.",
+      "After GUI launch passes, perform attended Guarded Single Flash test on the identified disposable Disk 4."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "AGENTS.md",
+      "OdinM_py/dist/OdinM_py.exe",
+      "OdinM_py/OdinM_py.spec"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Frozen GUI launch still needs an operator-approved UAC prompt.",
+      "No physical disk write has started."
+    ],
+    "summary": "Recreated ODIN venv on Python 3.12, rebuilt frozen executable with Tcl/Tk and codecs, and passed all direct suites.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-bff51f764301ae8d52f2dfae3ec4b5f0",
+  "record_type": "checkpoint",
+  "request_fingerprint": "8f476ea92e43172846ba1dc34fc5b40686511aaeddaca26b514fcdff836ac837",
+  "schema_version": 2,
+  "session_id": "5fb52752-6984-4789-be03-fc3aa7b68ac6"
+}
