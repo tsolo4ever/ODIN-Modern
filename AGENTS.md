@@ -28,12 +28,24 @@ Zero errors required. Warnings are acceptable.
 |---|---|---|
 | `src/ODIN/` | C++17 / WTL | Core imaging engine + GUI |
 | `src/ODINC/` | C++ | Thin console launcher — re-invokes odin.exe |
-| `OdinM_py/` | Python 3.11 | Multi-drive flash UI (ttkbootstrap) |
+| `OdinM_py/` | Python 3.12 | Multi-drive flash UI (ttkbootstrap) |
 | `src/zlib-1.3.2/` | C | zlib built as part of solution |
 | `src/libbz2/` | C | bzip2 built as part of solution |
 | `lib/lz4_win64_v1_10_0/` | — | Pre-built LZ4 static lib |
 | `lib/zstd-v1.5.7-win64/` | — | Pre-built ZSTD static lib |
 | `lib/WTL10/` | — | WTL 10 headers |
+
+## Python environment
+
+- Read the component's declared Python version before installing dependencies,
+  testing, or packaging. Do not let the system-default `py` or `python`
+  silently choose a different interpreter.
+- `OdinM_py` uses a repository-local `.venv` created explicitly with Python
+  3.12: `py -3.12 -m venv .venv`.
+- Verify `.venv\Scripts\python.exe --version` before using the environment. If
+  an existing `.venv` uses the wrong interpreter, get permission before
+  replacing it, then reinstall the component's declared runtime and build
+  dependencies.
 
 ## Key rules
 
