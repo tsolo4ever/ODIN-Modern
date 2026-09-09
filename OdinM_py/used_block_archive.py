@@ -72,7 +72,8 @@ def gaming_answer_action(answer: bool | None) -> str:
     return "cancel"
 
 
-_FAT_TYPES = {0x04, 0x06, 0x0B, 0x0C, 0x0E}
+_EFI_SYSTEM_TYPE = 0xEF
+_FAT_TYPES = {0x04, 0x06, 0x0B, 0x0C, 0x0E, _EFI_SYSTEM_TYPE}
 _ADAPTERS = {
     "fat16": "partclone.fat",
     "fat32": "partclone.fat",
@@ -172,6 +173,10 @@ def _filesystem_kind(part_type: int, fstype: str, fsver: str) -> str:
     if part_type in _FAT_TYPES and fs in {"vfat", "fat", "fat16", "fat32"}:
         if "32" in version or part_type in {0x0B, 0x0C}:
             return "fat32"
+        if part_type == _EFI_SYSTEM_TYPE and "16" not in version:
+            raise UsedBlockArchiveError(
+                "EFI-system partition 0xEF must report FAT16 or FAT32 metadata."
+            )
         return "fat16"
     if part_type == 0x07 and fs == "ntfs":
         return "ntfs"

@@ -137,6 +137,27 @@ def test_approved_gaming_answer_always_redirects_to_raw():
     assert archive.gaming_answer_action(None) == "cancel"
 
 
+def test_mbr_efi_system_partition_requires_verified_fat():
+    assert archive._filesystem_kind(0xEF, "vfat", "FAT32") == "fat32"
+    assert archive._filesystem_kind(0xEF, "vfat", "FAT16") == "fat16"
+    for fstype, version in (("vfat", ""), ("ntfs", "3.1")):
+        try:
+            archive._filesystem_kind(0xEF, fstype, version)
+        except archive.UsedBlockArchiveError:
+            pass
+        else:
+            raise AssertionError(f"0xEF/{fstype}/{version or 'unknown'} was accepted")
+
+    with tempfile.TemporaryDirectory() as folder:
+        manifest = _archive(Path(folder) / "efi.odin-archive")
+        partition = manifest["partitions"][0]
+        partition["type_code"] = "0xEF"
+        partition["filesystem"] = "fat32"
+        partition["filesystem_version"] = "FAT32"
+        partition["adapter"] = "partclone.fat"
+        archive.validate_manifest(manifest)
+
+
 def test_domain_range_outside_partition_is_rejected():
     try:
         archive.parse_domain_ranges("0x0 0x400 +\n", partition_offset=0x200, partition_length=0x400)
