@@ -1,0 +1,77 @@
+{
+  "created_at": "2026-09-02T10:31:24.336179Z",
+  "data": {
+    "agent_name": "Codex ODIN commit recovery",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": ".venv Python 3.12 direct scripts/test_*.py suites",
+        "summary": "All 23 direct suites passed; image-validation fixture checks safely skipped because local fixtures were absent."
+      },
+      {
+        "exit_code": 0,
+        "name": ".venv python -m ruff check <20 changed Python files>",
+        "summary": "Scoped lint passed."
+      },
+      {
+        "exit_code": 0,
+        "name": ".venv python -m compileall -q <20 changed Python files>",
+        "summary": "All changed Python files byte-compiled."
+      },
+      {
+        "exit_code": 0,
+        "name": "MSBuild.exe ODIN.sln /p:Configuration=Debug /p:Platform=x64 /m /nologo",
+        "summary": "Debug x64 solution build passed with 0 warnings and 0 errors."
+      },
+      {
+        "exit_code": 0,
+        "name": "git diff --cached --check",
+        "summary": "Both explicit staged groups were whitespace-clean before commit."
+      }
+    ],
+    "completed_items": [
+      "Committed Python 3.12 repository environment guidance as f6942f6",
+      "Committed native guarded Multi Flash routing, retained lock lifecycle, partition hash policy, UI phases, tests, and plan update as c255e52",
+      "Kept local runtime and hardware inventory files out of commits"
+    ],
+    "evidence_links": [],
+    "findings": [
+      "Ruff format --check reports repository line-ending normalization on 18 files; no formatting rewrite was made.",
+      "Working tree now contains only machine-specific hash configuration, runtime INI state, and an untracked protected-hardware inventory."
+    ],
+    "git_base": "4fdc59f",
+    "git_head": "c255e52",
+    "kind": "validation",
+    "next_steps": [
+      "Review whether local runtime configurations should remain local or be deliberately sanitized.",
+      "Run operator-attended physical retry only with an explicitly disposable target."
+    ],
+    "open_questions": [],
+    "relevant_paths": [
+      "AGENTS.md",
+      "OdinM_py/Implementations/Native_ODIN_Container_Compatibility_And_Compression_20260829.md",
+      "OdinM_py/app.py",
+      "OdinM_py/guarded_restore.py",
+      "OdinM_py/config_manager.py",
+      "OdinM_py/partition_reader.py",
+      "OdinM_py/ui/main_window.py",
+      "OdinM_py/scripts/test_guarded_restore.py",
+      "OdinM_py/scripts/test_guarded_restore_integration.py",
+      "OdinM_py/scripts/test_partition_target_verify.py"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "No physical disk write, flash, restore, or application launch occurred.",
+      "Operator-attended physical acceptance remains separate from this commit recovery.",
+      "Branch is ahead of origin and was not pushed."
+    ],
+    "summary": "Committed Python 3.12 environment guidance and guarded native Multi Flash verification after full safe validation.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-e9347ad8e5860a1d33c7f8effbc0cb3e",
+  "record_type": "checkpoint",
+  "request_fingerprint": "777c9226300c69a6fe64eabb5aece24a6c008fd62c9bb7b81036acf75a0e497c",
+  "schema_version": 2,
+  "session_id": "cd8a3312-1668-44fb-bb19-c2445e0a9fa5"
+}

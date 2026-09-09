@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-09-09T06:15:39.286237Z",
+  "data": {
+    "agent_name": "Codex",
+    "plan_id": "plan-ec322901ad49714801fa93ac9e2b73e2",
+    "revision_number": 4,
+    "summary": "Recorded the approved dependency-gating follow-up, opt-in Debian/Ubuntu WSL installer, completed install, and software validation; physical Phase 4 remains open."
+  },
+  "prefix": "active",
+  "record_id": "plan_revision-9a42c834101651f64eb1fc23684fe9b2",
+  "record_type": "plan_revision",
+  "request_fingerprint": "97af1140069e5d19867bc99925fb5b856977515ec8dbeb0c51434d6d6fb7355e",
+  "schema_version": 2,
+  "session_id": "5e368042-307b-4c77-bd68-5e724d620509"
+}
