@@ -81,6 +81,18 @@ _ADAPTERS = {
     "ext3": "partclone.extfs",
     "ext4": "partclone.extfs",
 }
+REQUIRED_WSL_TOOLS = (
+    "partclone.fat",
+    "partclone.ntfs",
+    "partclone.extfs",
+    "partclone.restore",
+    "partclone.chkimg",
+    "blkid",
+    "lsblk",
+    "blockdev",
+    "mkswap",
+    "sync",
+)
 
 
 def archive_path(path: str | os.PathLike[str]) -> Path:
@@ -109,25 +121,44 @@ def _partclone_version() -> str:
     return line
 
 
-def check_prerequisites(*, expected_version: str = "") -> str:
+def missing_prerequisites() -> tuple[str, ...]:
+    """Return the required WSL commands that are not currently available."""
     if os.name != "nt":
         raise UsedBlockArchiveError("General used-block archives are available only on Windows.")
     script = (
-        "set -e\n"
-        "for tool in partclone.fat partclone.ntfs partclone.extfs partclone.restore "
-        "partclone.chkimg blkid lsblk blockdev mkswap sync; do\n"
-        '  command -v "$tool" >/dev/null\n'
-        "done\n"
+        "for tool in "
+        + " ".join(REQUIRED_WSL_TOOLS)
+        + "; do\n"
+        + '  command -v "$tool" >/dev/null 2>&1 || printf "%s\\n" "$tool"\n'
+        + "done\n"
     )
     try:
-        _run_wsl_script(script)
-        version = _partclone_version()
+        output = _run_wsl_script(script)
     except FileNotFoundError as exc:
         raise UsedBlockArchiveError("WSL is unavailable.") from exc
     except Exception as exc:
+        raise UsedBlockArchiveError("The WSL dependency check failed.") from exc
+    missing = tuple(line.strip() for line in output.splitlines() if line.strip())
+    unexpected = [tool for tool in missing if tool not in REQUIRED_WSL_TOOLS]
+    if unexpected:
+        raise UsedBlockArchiveError("The WSL dependency check returned unexpected output.")
+    return missing
+
+
+def check_prerequisites(*, expected_version: str = "") -> str:
+    missing = missing_prerequisites()
+    if missing:
         raise UsedBlockArchiveError(
-            "WSL must provide Partclone FAT, NTFS, Ext, restore/check tools, and mkswap."
-        ) from exc
+            "General used-block archive is unavailable. Missing WSL tools: "
+            + ", ".join(missing)
+            + ". Run scripts\\Install-UsedBlockDependencies.ps1 to install them."
+        )
+    try:
+        version = _partclone_version()
+    except UsedBlockArchiveError:
+        raise
+    except Exception as exc:
+        raise UsedBlockArchiveError("Partclone version detection failed.") from exc
     if expected_version and version != expected_version:
         raise UsedBlockArchiveError(
             f"Partclone version mismatch: archive requires {expected_version!r}, found {version!r}."

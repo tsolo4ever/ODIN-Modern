@@ -6,11 +6,27 @@ Approved and implemented through Phases 1-3 on 2026-08-29. Synthetic archive,
 tamper, range, capacity, gaming-gate, guarded restore, compact-image, and target
 safety regressions pass. Phase 4 remains operator-attended and is not complete.
 
-The current Ubuntu WSL instance does not contain the required Partclone
-adapters, so live FAT/NTFS/Ext adapter capture and disposable-disk restoration
-remain blocked by the documented prerequisite. The application fails closed
-before source attachment when those tools are absent and never downloads them
-during imaging.
+The default Ubuntu 26.04 WSL instance now contains all required commands and
+reports Partclone v0.3.44. Live FAT/NTFS/Ext capture, disposable-disk restore,
+and supervised boot validation remain Phase 4 operator-attended work. The
+application fails closed before source attachment if those tools later become
+unavailable and never downloads them during imaging.
+
+## Dependency availability follow-up (2026-09-09)
+
+The operator approved a bounded follow-up covering five paths: centralize the
+required WSL command inventory, disable Start as soon as the general archive
+profile is selected without those commands, add an explicit PowerShell
+installer, extend the headless engine-wiring test, and record the result here.
+
+The installer targets Debian/Ubuntu WSL only, names the exact distribution and
+APT packages, supports a read-only check and `-WhatIf`, and asks before running
+`apt-get update` or `apt-get install`. Imaging continues to fail closed and
+never installs or downloads dependencies itself.
+
+Implemented and software-validated on 2026-09-09. The installer added the
+missing Partclone commands to the default Ubuntu WSL instance after explicit
+operator confirmation; no source or target disk was attached by this step.
 
 ## Goal
 
@@ -46,9 +62,9 @@ approved gaming software is ineligible for this profile.
   layout: DOS/MBR, 512-byte sectors, a bootable 6 GiB EFI/FAT partition, a
   53.6 GiB Linux `0x83` partition, and no swap.
 - The local Ubuntu WSL environment has the proven e2fsprogs tools used by the
-  existing compact engine. A unified FAT/NTFS/Ext adapter such as Partclone is
-  not currently installed and must be treated as an explicit prerequisite or
-  packaged dependency, not downloaded during an imaging operation.
+  existing compact engine. Partclone was initially absent and was installed
+  only after explicit operator approval; it remains an external prerequisite,
+  never something downloaded during an imaging operation.
 
 ## Operator behavior
 

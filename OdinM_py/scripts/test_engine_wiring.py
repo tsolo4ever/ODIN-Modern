@@ -49,8 +49,9 @@ checks = []
 def check(name, got, want):
     ok = got == want
     checks.append(ok)
-    print(f"  [{'ok ' if ok else 'FAIL'}] {name}: {got!r}"
-          + ("" if ok else f"  (expected {want!r})"))
+    print(
+        f"  [{'ok ' if ok else 'FAIL'}] {name}: {got!r}" + ("" if ok else f"  (expected {want!r})")
+    )
 
 
 print("\ndefault engine (ODINC):")
@@ -76,6 +77,39 @@ print("\nswitch back to raw (extension should revert):")
 dlg._engine_var.set(mid.ENGINE_PY)
 dlg._on_engine_change()
 check("output raw", dlg._output_var.get(), "D:/cards/demo.img")
+
+print("\nmissing general-archive dependencies:")
+real_general_check = mid.check_general_archive_prerequisites
+
+
+def _missing_general_tools():
+    raise mid.UsedBlockArchiveError(
+        "General used-block archive is unavailable. Missing WSL tools: partclone.ntfs. "
+        "Run scripts\\Install-UsedBlockDependencies.ps1 to install them."
+    )
+
+
+mid.check_general_archive_prerequisites = _missing_general_tools
+dlg._engine_var.set(mid.ENGINE_PY_GENERAL)
+dlg._on_engine_change()
+check("Start gated", str(dlg._start_btn.cget("state")), "disabled")
+check(
+    "installer named",
+    "Install-UsedBlockDependencies.ps1" in dlg._engine_hint.cget("text"),
+    True,
+)
+
+print("\nswitching away clears the dependency gate:")
+dlg._engine_var.set(mid.ENGINE_PY)
+dlg._on_engine_change()
+check("Start restored", str(dlg._start_btn.cget("state")), "normal")
+
+print("\ninstalled general-archive dependencies:")
+mid.check_general_archive_prerequisites = lambda: "Partclone : test"
+dlg._engine_var.set(mid.ENGINE_PY_GENERAL)
+dlg._on_engine_change()
+check("Start available", str(dlg._start_btn.cget("state")), "normal")
+mid.check_general_archive_prerequisites = real_general_check
 
 print("\nback to ODINC:")
 dlg._engine_var.set(mid.ENGINE_ODINC)

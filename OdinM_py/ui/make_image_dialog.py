@@ -38,6 +38,7 @@ from pyimager_worker import PyImagerWorker
 from used_block_archive import (
     UsedBlockArchiveError,
     archive_path,
+    check_prerequisites as check_general_archive_prerequisites,
     discover_used_block_source,
     gaming_answer_action,
 )
@@ -82,6 +83,7 @@ class MakeImageDialog(ttk.Toplevel):
         self._poll_last_size = -1  # last seen file size (bytes)
         self._poll_stall_ticks = 0  # consecutive ticks with same size
         self._backup_drive_size = 0  # total drive bytes — used for progress %
+        self._general_archive_gate_active = False
 
         self._build()
 
@@ -280,7 +282,7 @@ class MakeImageDialog(ttk.Toplevel):
 
     def _on_engine_change(self, _event=None):
         """Keep the hint, the Options button and the output extension in step."""
-        self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""))
+        self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""), bootstyle="secondary")
         # ODINC backup flags are meaningless for the built-in imager.
         self._options_btn.configure(state=DISABLED if self._use_pyimager else NORMAL)
         # Raw vs gzip is a pyimager-only detail with no equivalent in the
@@ -302,6 +304,8 @@ class MakeImageDialog(ttk.Toplevel):
             self._clear_cleanup_selection()
             self._cleanup_frame.grid_remove()
             self._sync_backup_mode()
+
+        self._refresh_general_archive_gate()
 
         # Nudge the extension so the chosen engine and the filename agree.
         path = self._output_var.get().strip()
@@ -446,6 +450,36 @@ class MakeImageDialog(ttk.Toplevel):
             self._auto_check.configure(state=NORMAL)
             self._engine_hint.configure(text=ENGINE_HINTS.get(self._engine, ""))
 
+    def _operation_running(self) -> bool:
+        return bool(
+            self._backup_polling
+            or (self._worker and self._worker.status == CloneStatus.RUNNING)
+            or (self._hasher and self._hasher.status == HashStatus.RUNNING)
+        )
+
+    def _refresh_general_archive_gate(self) -> bool:
+        """Keep Start disabled while the selected profile lacks its WSL tools."""
+        was_gated = self._general_archive_gate_active
+        if not self._general_archive_mode:
+            self._general_archive_gate_active = False
+            if was_gated and not self._operation_running():
+                self._start_btn.configure(state=NORMAL)
+            return True
+        try:
+            check_general_archive_prerequisites()
+        except UsedBlockArchiveError as exc:
+            self._general_archive_gate_active = True
+            self._start_btn.configure(state=DISABLED)
+            self._engine_hint.configure(text=str(exc), bootstyle="danger")
+            self._status(str(exc), "danger")
+            return False
+        self._general_archive_gate_active = False
+        self._engine_hint.configure(text=ENGINE_HINTS[ENGINE_PY_GENERAL], bootstyle="secondary")
+        if was_gated and not self._operation_running():
+            self._start_btn.configure(state=NORMAL)
+            self._status("Ready", "secondary")
+        return True
+
     @staticmethod
     def _used_block_files_for(output_path: str) -> list[str]:
         root, _ext = os.path.splitext(output_path)
@@ -457,6 +491,8 @@ class MakeImageDialog(ttk.Toplevel):
         return self._used_block_files_for(self._output_path)
 
     def _start(self):
+        if self._general_archive_mode and not self._refresh_general_archive_gate():
+            return
         idx = self._drive_cb.current()
         if idx < 0 or idx >= len(self._drives):
             self._status("No drive selected.", "danger")
@@ -941,7 +977,8 @@ class MakeImageDialog(ttk.Toplevel):
 
     def _finish_buttons(self):
         if self.winfo_exists():
-            self._start_btn.configure(state=NORMAL)
+            if not self._general_archive_mode or self._refresh_general_archive_gate():
+                self._start_btn.configure(state=NORMAL)
             self._stop_btn.configure(state=DISABLED)
 
     def _on_close(self):
