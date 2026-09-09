@@ -1,0 +1,70 @@
+{
+  "created_at": "2026-09-09T06:17:42.663416Z",
+  "data": {
+    "agent_name": "Codex",
+    "commands": [
+      {
+        "exit_code": 0,
+        "name": ".\\scripts\\Install-UsedBlockDependencies.ps1 -CheckOnly",
+        "summary": "All ten WSL commands are installed and Partclone reports a version."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts\\test_used_block_archive.py",
+        "summary": "All 7 archive schema, tamper, range, capacity, and gaming-gate checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "python scripts\\test_engine_wiring.py",
+        "summary": "All 18 engine and missing-dependency UI gate checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "ruff check and ruff format --check on touched Python files",
+        "summary": "Lint and format checks passed."
+      },
+      {
+        "exit_code": 0,
+        "name": "mypy --follow-imports=skip --ignore-missing-imports used_block_archive.py",
+        "summary": "The modified dependency module passed isolated type checking."
+      }
+    ],
+    "completed_items": [
+      "Centralized the ten required WSL commands and improved missing-tool reporting.",
+      "Disabled Start immediately when the general used-block profile lacks prerequisites.",
+      "Added a Debian/Ubuntu WSL installer with CheckOnly, WhatIf, and an explicit install prompt.",
+      "Installed Partclone and verified all dependencies in the default Ubuntu 26.04 WSL instance.",
+      "Committed the five approved paths as ef9a7f8."
+    ],
+    "evidence_links": [],
+    "findings": [
+      "Partclone reports v0.3.44 after installation.",
+      "No disk was attached, captured, restored, or otherwise modified.",
+      "Full mypy remains noisy from pre-existing transitive project errors; isolated used_block_archive.py type-check passed."
+    ],
+    "git_base": "c255e52",
+    "git_head": "e6493d9",
+    "kind": "validation",
+    "next_steps": [],
+    "open_questions": [],
+    "relevant_paths": [
+      "OdinM_py/used_block_archive.py",
+      "OdinM_py/ui/make_image_dialog.py",
+      "OdinM_py/scripts/Install-UsedBlockDependencies.ps1",
+      "OdinM_py/scripts/test_engine_wiring.py",
+      "OdinM_py/Implementations/General_Used_Block_Archive_Profile_20260828.md"
+    ],
+    "resolves_checkpoint_ids": [],
+    "risks": [
+      "Physical capture, disposable-target restore, and supervised PAA boot remain unvalidated Phase 4 work."
+    ],
+    "summary": "Used-block dependency gate and opt-in installer implemented, installed in Ubuntu WSL, and software-validated.",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c"
+  },
+  "prefix": "active",
+  "record_id": "checkpoint-e0f4504cad40a18929965c3cff1f59e3",
+  "record_type": "checkpoint",
+  "request_fingerprint": "9fd48c0bbc01990225364e0840ac3551d97b15469efc87addbd07e34ffa3f5e1",
+  "schema_version": 2,
+  "session_id": "5e368042-307b-4c77-bd68-5e724d620509"
+}
