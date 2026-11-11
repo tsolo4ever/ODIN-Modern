@@ -1,0 +1,18 @@
+{
+  "created_at": "2026-10-31T06:18:02.297115Z",
+  "data": {
+    "handoff_id": "handoff-2c17af700c6d2f2ef52b468a9de5064d",
+    "linked_validation": false,
+    "recovered": false,
+    "released_claims": [],
+    "signed_out_at": "2026-10-31T06:18:02.276748Z",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "warnings": []
+  },
+  "prefix": "active",
+  "record_id": "finalization-bc5e181b8fc2ebb4cd6d59bc80b755b5",
+  "record_type": "finalization",
+  "request_fingerprint": "479a358d1629186dca8f7646dc3a1f9ee06b7d7fff1bb19f09ade55a239591dd",
+  "schema_version": 2,
+  "session_id": "5707c353-2540-4c44-a182-d18c380a31a0"
+}

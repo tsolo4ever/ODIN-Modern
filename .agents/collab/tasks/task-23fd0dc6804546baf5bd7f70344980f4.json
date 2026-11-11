@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-11-11T12:52:12.887757Z",
+  "data": {
+    "agent_name": "Codex commit review",
+    "expected_paths": [
+      "OdinM_py/used_block_source_session.py",
+      "OdinM_py/used_block_archive.py",
+      "OdinM_py/pyimager_worker.py",
+      "OdinM_py/ui/make_image_dialog.py",
+      "OdinM_py/scripts/test_used_block_source_session.py",
+      "OdinM_py/Implementations/Used_Block_Source_Handoff_20261003.md"
+    ],
+    "plan_link": null,
+    "scope": "Commit software-validated source-session handoff fix; preserve local configuration/build stamps and pending physical acceptance. No hardware operation or push.",
+    "title": "Review and commit existing tested work"
+  },
+  "prefix": "active",
+  "record_id": "task-23fd0dc6804546baf5bd7f70344980f4",
+  "record_type": "task",
+  "request_fingerprint": "2fff4c01198cf37fcf7599e42670b4e4cc3722c07e540ca6b4d4aba718125298",
+  "schema_version": 2,
+  "session_id": "ddace38a-5d01-4e15-9128-baf2ebc06004"
+}

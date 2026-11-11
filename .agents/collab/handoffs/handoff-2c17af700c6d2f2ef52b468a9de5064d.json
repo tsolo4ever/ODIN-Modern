@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-10-31T06:17:59.220603Z",
+  "data": {
+    "acknowledgement_requested": true,
+    "agent_name": "Codex",
+    "blockers": [],
+    "completed_items": [
+      "Read-only inventory: local origin is GitHub, but Forgejo also has a main at d9bcae08bf7cac17e31a1173a3e788520cadd774. Its .github/workflows/protect-coordination-records.yml still uses GitHub defaults and CLI commenting. No .forgejo workflow exists in that fetched tree. AGENTS points to CLAUDE.md as primary rules; that differs from the canonical-AGENTS convention in the current workspace. Excluded after the user selected the five named active projects; no C++/Python code, build, runtime, disk operation, or workflow change was made."
+    ],
+    "evidence_links": [],
+    "git_base": "",
+    "git_head": "",
+    "next_steps": [],
+    "open_questions": [],
+    "reason": "User selected the five named active repositories.",
+    "relevant_paths": [],
+    "status": "completed",
+    "summary": "Read-only workflow inventory complete; excluded by active-project scope.",
+    "target_agent_label": "",
+    "target_reader_id": "",
+    "task_id": "task-555b8d38c2963d614df2fb2caf97ff3c",
+    "validation_checkpoint_ids": []
+  },
+  "prefix": "active",
+  "record_id": "handoff-2c17af700c6d2f2ef52b468a9de5064d",
+  "record_type": "handoff",
+  "request_fingerprint": "4f58ffa34282112cdc504c38531685e8e2579e20c53b6e5530afe0f7a3a356ad",
+  "schema_version": 2,
+  "session_id": "5707c353-2540-4c44-a182-d18c380a31a0"
+}
