@@ -218,8 +218,9 @@ class MakeImageDialog(ttk.Toplevel):
         )
         self._pbar.grid(row=8, column=0, columnspan=3, sticky=EW, pady=(0, 4))
 
-        self._status_lbl = ttk.Label(outer, text="Ready", bootstyle="secondary")
-        self._status_lbl.grid(row=9, column=0, columnspan=3, sticky=W, pady=(0, 8))
+        self._status_text = ttk.StringVar(value="Ready")
+        self._status_entry = ttk.Entry(outer, textvariable=self._status_text, state="readonly")
+        self._status_entry.grid(row=9, column=0, columnspan=3, sticky=EW, pady=(0, 8))
 
         # Buttons
         btn_frame = ttk.Frame(outer)
@@ -606,13 +607,21 @@ class MakeImageDialog(ttk.Toplevel):
                 self._status(str(exc), "danger")
                 return
         if self._general_archive_mode:
+            if not messagebox.askyesno(
+                "Temporarily release source from Windows?",
+                f"Disk {drive.disk_number}: {drive.source_display}\n\nClose files and applications using this source. "
+                "ODIN will temporarily release it for preflight and capture, then restore Windows access. "
+                "Busy volumes will stop the operation. Continue?", parent=self,
+            ):
+                return
             try:
-                self._status("Running read-only filesystem and adapter preflight…", "info")
+                self._status("Preparing source and checking filesystems…", "info")
                 self.update_idletasks()
                 discovery = discover_used_block_source(
                     drive.disk_number,
                     expected_size=drive.size_bytes,
                     expected_serial=drive.hw_serial,
+                    output_path=output,
                 )
             except UsedBlockArchiveError as exc:
                 self._status(str(exc), "danger")
@@ -625,7 +634,7 @@ class MakeImageDialog(ttk.Toplevel):
                     f"{item['adapter']}  {item['uuid']}"
                 )
             summary = (
-                f"Source: Disk {drive.disk_number}, {drive.source_display}\n"
+                f"Source: Disk {discovery['disk_number']}, {drive.source_display}\n"
                 f"Partclone: {discovery['partclone_version']}\n\n"
                 + "\n".join(partition_lines)
                 + "\n\nOutput: "
@@ -667,7 +676,6 @@ class MakeImageDialog(ttk.Toplevel):
             if not overwrite:
                 self._status("Backup cancelled — output file already exists.", "warning")
                 return
-
         self._output_path = output
         self._backup_drive_size = drive.size_bytes
         self._progress_var.set(0)
@@ -694,6 +702,7 @@ class MakeImageDialog(ttk.Toplevel):
                 sha1=True,
                 compact=self._compact_mode,
                 used_block_archive=self._general_archive_mode,
+                expected_source=discovery["source_identity"] if self._general_archive_mode else None,
                 expected_size=drive.size_bytes,
                 expected_serial=drive.hw_serial,
                 cleanup_script=cleanup_script,
@@ -818,7 +827,7 @@ class MakeImageDialog(ttk.Toplevel):
         else:
             self._progress_var.set(0)
             self._set_step(0, "failed")
-            self._status("Backup FAILED.", "danger")
+            self._status(getattr(self._worker, "error", "") or "Backup FAILED.", "danger")
             self._finish_buttons()
 
     # ── hash step ─────────────────────────────────────────────────────────────
@@ -973,7 +982,8 @@ class MakeImageDialog(ttk.Toplevel):
 
     def _status(self, text: str, style: str = "secondary"):
         if self.winfo_exists():
-            self._status_lbl.configure(text=text, bootstyle=style)
+            self._status_text.set(text)
+            self._status_entry.configure(bootstyle=style)
 
     def _finish_buttons(self):
         if self.winfo_exists():

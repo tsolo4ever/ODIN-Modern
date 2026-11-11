@@ -75,6 +75,7 @@ class PyImagerWorker:
         expected_size: int = 0,
         expected_serial: str = "",
         cleanup_script: str | None = None,
+        expected_source: dict | None = None,
     ):
         self._root = root
         self._disk = disk_number
@@ -86,6 +87,8 @@ class PyImagerWorker:
         self._used_block_archive = used_block_archive
         self._expected_size = expected_size
         self._expected_serial = expected_serial.strip()
+        self._expected_source = dict(expected_source) if expected_source is not None else None
+        self.error = ""
         self._cleanup_script = (cleanup_script or "").strip()
         self._on_progress = on_progress
         self._on_log = on_log
@@ -120,7 +123,8 @@ class PyImagerWorker:
             else:
                 meta = self._capture_compact() if self._compact else self._capture_raw()
         except Exception as exc:  # noqa: BLE001 - surfaced to the UI
-            self._fire_log(f"pyimager failed: {type(exc).__name__}: {exc}")
+            self.error = f"{type(exc).__name__}: {exc}"
+            self._fire_log(f"pyimager failed: {self.error}")
             self._finish(CloneStatus.FAILED)
             return
 
@@ -225,6 +229,7 @@ class PyImagerWorker:
                 output,
                 expected_size=self._expected_size,
                 expected_serial=self._expected_serial,
+                expected_source=self._expected_source,
                 should_cancel=self._cancel.is_set,
                 on_progress=self._progress_percent,
                 on_log=self._fire_log,

@@ -29,14 +29,13 @@ from ext4_compact_capture import (
     _run,
     _run_wsl,
     _run_wsl_script,
-    _set_source_read_only,
-    _wait_for_attached_disk,
     _wsl_disks,
     _wsl_mbr_sha256,
     _wsl_path,
     _wsl_partitions,
 )
 from scripts import pyimager
+from used_block_source_session import SourceSession, hash_source_ranges
 
 
 ARCHIVE_SUFFIX = ".odin-archive"
@@ -386,22 +385,20 @@ def discover_used_block_source(
     *,
     expected_size: int,
     expected_serial: str,
+    output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Run the complete read-only adapter and layout gate before confirmation."""
     version = check_prerequisites()
-    if pyimager.volumes_on_disk(disk_number):
-        raise UsedBlockArchiveError(
-            "General used-block capture requires a source with no Windows-mounted volumes."
-        )
-    physical_path = rf"\\.\PhysicalDrive{disk_number}"
-    attached = False
+    session = None
     source_size = 0
     sector_size = 0
     mbr_sha256 = ""
     layout = None
     source_info: dict[str, Any] = {}
     try:
-        with pyimager.Win32Disk(physical_path) as disk:
+        session = SourceSession(disk_number, paths=([output_path] if output_path else []))
+        disk_number = session.disk_number
+        with pyimager.Win32Disk(session.physical_path) as disk:
             source_size = disk.size
             sector_size = disk.sector_size
             source_info = disk.device_info()
@@ -418,17 +415,14 @@ def discover_used_block_source(
                 )
             except CompactImageError as exc:
                 raise UsedBlockArchiveError(f"Only a valid MBR layout is supported: {exc}") from exc
+            session.check_layout(layout.partitions)
             disk.seek(0)
             mbr = disk.read(512)
             if len(mbr) != 512:
                 raise UsedBlockArchiveError("Could not read the source MBR.")
             mbr_sha256 = hashlib.sha256(mbr).hexdigest()
 
-        before = _wsl_disks()
-        _run(["wsl.exe", "--mount", physical_path, "--bare"])
-        attached = True
-        source_device = _wait_for_attached_disk(before, source_size, mbr_sha256)
-        _set_source_read_only(source_device)
+        source_device = session.attach(mbr_sha256)
         actual_partitions = _wsl_partitions(source_device, sector_size)
         active_swaps = {
             line.strip()
@@ -506,8 +500,11 @@ def discover_used_block_source(
                     "adapter": adapter,
                 }
             )
+        session.verify()
+        session.close()
         return {
-            "disk_number": disk_number,
+            "disk_number": session.disk_number,
+            "source_identity": dict(session.identity),
             "disk_size": source_size,
             "serial": str(source_info.get("serial") or "").strip(),
             "model": str(source_info.get("model") or "").strip(),
@@ -516,14 +513,14 @@ def discover_used_block_source(
         }
     except UsedBlockArchiveError:
         raise
-    except Ext4CompactCaptureError as exc:
+    except (Ext4CompactCaptureError, OSError, ValueError) as exc:
         raise UsedBlockArchiveError(str(exc)) from exc
     finally:
-        if attached:
+        if session:
             try:
-                _run(["wsl.exe", "--unmount", physical_path])
-            except Exception:
-                pass
+                session.close()
+            except Ext4CompactCaptureError as exc:
+                raise UsedBlockArchiveError(str(exc)) from exc
 
 
 def capture_used_block_archive(
@@ -532,31 +529,31 @@ def capture_used_block_archive(
     *,
     expected_size: int,
     expected_serial: str,
+    expected_source: dict | None = None,
     should_cancel: Callable[[], bool],
     on_progress: Callable[[int], None],
     on_log: Callable[[str], None],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Capture a source disk without writing to or mounting it."""
+    """Capture a source while its filesystems remain unmounted in WSL."""
     version = check_prerequisites()
     output = archive_path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    physical_path = rf"\\.\PhysicalDrive{disk_number}"
-    attached = False
-    source_device = ""
-    before: dict[str, int] = {}
+    session = None
+    stage_root = None
     started = datetime.now(UTC)
-    stage_root = Path(tempfile.mkdtemp(prefix="odinm-used-block-"))
     source_size = 0
     sector_size = 0
     source_info: dict[str, Any] = {}
     layout = None
     mbr_sha256 = ""
     try:
-        if pyimager.volumes_on_disk(disk_number):
-            raise UsedBlockArchiveError(
-                "General used-block capture requires a source with no Windows-mounted volumes."
-            )
-        with pyimager.Win32Disk(physical_path) as disk:
+        session = SourceSession(
+            disk_number, expected_source=expected_source, paths=[output],
+            should_cancel=should_cancel, on_log=on_log,
+        )
+        disk_number = session.disk_number
+        output.parent.mkdir(parents=True, exist_ok=True)
+        stage_root = Path(tempfile.mkdtemp(prefix="odinm-used-block-"))
+        with pyimager.Win32Disk(session.physical_path) as disk:
             source_size = disk.size
             sector_size = disk.sector_size
             source_info = disk.device_info()
@@ -573,6 +570,7 @@ def capture_used_block_archive(
                 )
             except CompactImageError as exc:
                 raise UsedBlockArchiveError(f"Only a valid MBR layout is supported: {exc}") from exc
+            session.check_layout(layout.partitions)
             if not layout.partitions:
                 raise UsedBlockArchiveError("The source MBR contains no supported partitions.")
             first_lba = min(item.start_lba for item in layout.partitions)
@@ -599,11 +597,7 @@ def capture_used_block_archive(
                 raise UsedBlockArchiveError("Could not read the source MBR.")
             mbr_sha256 = hashlib.sha256(mbr).hexdigest()
 
-        before = _wsl_disks()
-        _run(["wsl.exe", "--mount", physical_path, "--bare"])
-        attached = True
-        source_device = _wait_for_attached_disk(before, source_size, mbr_sha256)
-        _set_source_read_only(source_device)
+        source_device = session.attach(mbr_sha256)
         partitions = _wsl_partitions(source_device, sector_size)
         active_swaps = {
             line.strip()
@@ -704,39 +698,33 @@ def capture_used_block_archive(
             )
             on_progress(min(55, 5 + int(50 * index / len(ordered_partitions))))
 
-        _run(["wsl.exe", "--unmount", physical_path])
-        attached = False
+        session.verify()
+        verified_boot = hash_source_ranges(
+            source_device, [(item["offset"], item["length"]) for item in boot_regions],
+            should_cancel=should_cancel, on_progress=lambda _pct: None,
+        )
+        if any(old["sha256"] != new["sha256"] for old, new in zip(boot_regions, verified_boot, strict=True)):
+            raise UsedBlockArchiveError("Source boot/layout bytes changed during handoff.")
         all_range_records: list[dict[str, Any]] = list(boot_regions)
-        with pyimager.Win32Disk(physical_path) as disk:
-            current_info = disk.device_info()
-            current_serial = str(current_info.get("serial") or "").strip()
-            disk.seek(0)
-            current_mbr = disk.read(512)
-            if disk.size != source_size or hashlib.sha256(current_mbr).hexdigest() != mbr_sha256:
-                raise UsedBlockArchiveError("Source disk changed during capture.")
-            if (
-                expected_serial
-                and current_serial
-                and current_serial.casefold() != expected_serial.casefold()
-            ):
-                raise UsedBlockArchiveError("Source disk identity changed during capture.")
-            restorable = [item for item in records if item["action"] == "restore"]
-            for index, record in enumerate(restorable, start=1):
+        restorable = [item for item in records if item["action"] == "restore"]
+        for index, record in enumerate(restorable, start=1):
 
-                def range_progress(
-                    pct: int, current_index: int = index, count: int = len(restorable)
-                ) -> None:
-                    on_progress(55 + int(35 * ((current_index - 1) + pct / 100) / max(count, 1)))
+            def range_progress(
+                pct: int, current_index: int = index, count: int = len(restorable)
+            ) -> None:
+                on_progress(55 + int(35 * ((current_index - 1) + pct / 100) / max(count, 1)))
 
-                hashed = _hash_disk_ranges(
-                    disk,
-                    range_specs[record["number"]],
-                    should_cancel=should_cancel,
-                    on_progress=range_progress,
-                )
-                addressed = [_address_range(item, record["member"]) for item in hashed]
-                record["ranges"] = addressed
-                all_range_records.extend(addressed)
+            hashed = hash_source_ranges(
+                source_device, range_specs[record["number"]],
+                should_cancel=should_cancel, on_progress=range_progress,
+            )
+            addressed = [_address_range(item, record["member"]) for item in hashed]
+            record["ranges"] = addressed
+            all_range_records.extend(addressed)
+        session.verify()
+        session.close()  # A cleanup failure must prevent archive publication.
+        if should_cancel():
+            raise UsedBlockArchiveCancelled("Used-block archive capture was cancelled.")
 
         finished = datetime.now(UTC)
         manifest = {
@@ -792,12 +780,14 @@ def capture_used_block_archive(
     except (Ext4CompactCaptureError, OSError, ValueError, zipfile.BadZipFile) as exc:
         raise UsedBlockArchiveError(str(exc)) from exc
     finally:
-        if attached:
-            try:
-                _run(["wsl.exe", "--unmount", physical_path])
-            except Exception:
-                pass
-        shutil.rmtree(stage_root, ignore_errors=True)
+        try:
+            if session:
+                session.close()
+        except Ext4CompactCaptureError as exc:
+            raise UsedBlockArchiveError(str(exc)) from exc
+        finally:
+            if stage_root:
+                shutil.rmtree(stage_root, ignore_errors=True)
 
 
 def _require_exact_keys(value: Any, name: str, keys: set[str]) -> dict[str, Any]:
