@@ -28,6 +28,7 @@ from guarded_restore import (
     MultiFlashNativeRestoreWorker,
     requires_native_restore,
 )
+from odinm_version import VERSION_TEXT
 from partition_reader import get_image_hash_region
 from partition_waiter import PartitionTableWaiter
 from pyimager_worker import PyImagerRestoreWorker, randomize_disk_signature
@@ -42,7 +43,7 @@ from ui.main_window import (
     sync_flash_widget,
 )
 
-APP_TITLE = "OdinM_py v2 — Multi-Drive Clone Tool"
+APP_TITLE = f"OdinM_py v{VERSION_TEXT} — Multi-Drive Clone Tool"
 
 
 MIN_WIDTH = 780

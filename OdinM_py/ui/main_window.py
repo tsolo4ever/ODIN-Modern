@@ -20,6 +20,7 @@ from clone_worker import CloneStatus
 from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER
 from guarded_flash_safety import DiskIdentity
 from guarded_restore import GuardedImagePlan
+from odinm_version import VERSION_TEXT
 from ui.guarded_single_flash import GuardedSingleFlashFrame, MODE_GUARDED, MODE_MULTI
 from ui.slot_widget import SlotWidget
 
@@ -581,7 +582,7 @@ class MainWindow(ttk.Frame):
     def _show_about(self):
         messagebox.showinfo(
             "About OdinM_py",
-            "OdinM_py v2\nPython UI for multi-drive cloning (ODIN or the "
+            f"OdinM_py v{VERSION_TEXT}\nPython UI for multi-drive cloning (ODIN or the "
             "built-in pyimager engine).\n\nBuilt with ttkbootstrap.",
             parent=self._root_win,
         )

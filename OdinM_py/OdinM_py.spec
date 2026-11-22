@@ -4,7 +4,30 @@
 #   .venv\Scripts\pyinstaller.exe --clean OdinM_py.spec
 # Output: dist\OdinM_py.exe  (single-file, UAC elevation built-in)
 
+import runpy
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.win32 import versioninfo
+
+version = runpy.run_path(str(Path(SPECPATH) / 'odinm_version.py'))
+file_version = (*version['VERSION'], 0)
+version_text = version['VERSION_TEXT']
+version_resource = versioninfo.VSVersionInfo(
+    ffi=versioninfo.FixedFileInfo(filevers=file_version, prodvers=file_version),
+    kids=[
+        versioninfo.StringFileInfo([
+            versioninfo.StringTable('040904B0', [
+                versioninfo.StringStruct('FileDescription', 'OdinM_py Multi-Drive Clone Tool'),
+                versioninfo.StringStruct('FileVersion', version_text),
+                versioninfo.StringStruct('ProductName', 'OdinM_py'),
+                versioninfo.StringStruct('ProductVersion', version_text),
+                versioninfo.StringStruct('OriginalFilename', 'OdinM_py.exe'),
+            ]),
+        ]),
+        versioninfo.VarFileInfo([versioninfo.VarStruct('Translation', [1033, 1200])]),
+    ],
+)
 
 # ttkbootstrap ships theme JSON/CSS data files that must travel with the exe
 datas = collect_data_files('ttkbootstrap')
@@ -65,6 +88,7 @@ exe = EXE(
     a.datas,
     [],
     name='OdinM_py',
+    version=version_resource,
     icon=r'..\src\ODINM\res\OdinM.ico',
     debug=False,
     bootloader_ignore_signals=False,
