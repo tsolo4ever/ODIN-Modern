@@ -17,6 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from _confirmation_test_support import FakeConfirmationManager  # noqa: E402
+
 from config_manager import ENGINE_ODIN, ENGINE_PYIMAGER  # noqa: E402
 from drive_manager import DriveInfo  # noqa: E402
 
@@ -99,7 +101,7 @@ def check(name, got, want):
 
 
 app_module.OdinMApp._show_flash_widget = lambda self: None
-app = app_module.OdinMApp(_FakeConfig())
+app = app_module.OdinMApp(_FakeConfig(), confirmation_manager_factory=FakeConfirmationManager)
 app._root.withdraw()
 
 tmp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".img")

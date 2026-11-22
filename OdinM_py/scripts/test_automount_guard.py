@@ -219,6 +219,7 @@ class AutomountTests(unittest.TestCase):
         app._verify_workers = {0: worker("verify")}
         app._guarded_restore = SimpleNamespace(worker=worker("guarded"))
         app._partition_waiters = {0: SimpleNamespace(stop=lambda: events.append("waiter"))}
+        app._confirmation = SimpleNamespace(close=lambda: None)
         app.wait_for_flash_shutdown()
         self.assertEqual(
             events,

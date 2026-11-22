@@ -188,6 +188,7 @@ class RetainedFailureTests(unittest.TestCase):
         app = object.__new__(app_module.OdinMApp)
         app.logs = []
         app.events = []
+        app._confirmation = SimpleNamespace(get=lambda _idx: None)
         app._window = SimpleNamespace(
             multi_flash_active=True,
             image_path=__file__,
@@ -210,6 +211,7 @@ class RetainedFailureTests(unittest.TestCase):
         app._wsl_bridge_blocks = lambda _operation: False
         worker = object.__new__(restore.MultiFlashNativeRestoreWorker)
         worker._disk_number = 3
+        worker._isolation = None
         worker._retained_volume_locks = [FakeVolume(app.events)]
         worker.result = None
         worker.status = CloneStatus.FAILED

@@ -1032,6 +1032,7 @@ def restore_and_verify(
     on_log: Callable[[str], None] | None = None,
     randomize_signature: bool = False,
     retain_volume_locks: bool = False,
+    isolation: Any = None,
 ) -> GuardedRestoreResult:
     started = time.monotonic()
     log = on_log or (lambda _line: None)
@@ -1048,6 +1049,13 @@ def restore_and_verify(
     )
     current = decision.disk
     raw_path = current.raw_device_path
+    if isolation is not None:
+        isolation.validate(current)
+        if plan.image_format in {"used-block-archive", "odin-used-block"}:
+            raise GuardedRestoreError(
+                "Windows-isolated targets require a complete-disk/all-block image; "
+                "used-block restore requires releasing Windows ownership for WSL"
+            )
 
     if plan.image_format == "used-block-archive":
         return _restore_used_block_archive(
@@ -1096,7 +1104,11 @@ def restore_and_verify(
         return retained
 
     try:
-        locked = volume_locker(_drive_letters(current.mounted_volumes), on_log=log)
+        if isolation is None:
+            locked = volume_locker(_drive_letters(current.mounted_volumes), on_log=log)
+        else:
+            isolation.validate(current)
+            log("Reusing the target's Confirm isolation; Windows volume locks stay held.")
         with plan.source_path.open("rb") as source, disk_factory(raw_path, write=True) as target:
             target.seek(0)
             while bytes_written < plan.write_bytes:
@@ -1564,6 +1576,7 @@ class MultiFlashNativeRestoreWorker:
         expected_model: str = "",
         randomize_signature: bool = True,
         retain_volume_locks: bool = False,
+        isolation: Any = None,
         store: ProtectedHardwareStore | None = None,
         target_provider: Callable[..., DiskIdentity] = resolve_multi_flash_target,
         partition_policy_provider: Callable[[str], tuple[int, ...]] = (
@@ -1580,6 +1593,7 @@ class MultiFlashNativeRestoreWorker:
         self._expected_model = expected_model
         self._randomize_signature = randomize_signature
         self._retain_volume_locks = retain_volume_locks
+        self._isolation = isolation
         self._store = store or ProtectedHardwareStore()
         self._target_provider = target_provider
         self._partition_policy_provider = partition_policy_provider
@@ -1599,12 +1613,16 @@ class MultiFlashNativeRestoreWorker:
 
     @property
     def has_retained_locks(self) -> bool:
-        return bool(self._retained_volume_locks)
+        return bool(self._retained_volume_locks) or bool(
+            self._isolation is not None and self._isolation.active
+        )
 
     def release_retained_locks(self) -> None:
         locks = self._retained_volume_locks
         self._retained_volume_locks = []
         release_volume_locks(locks)
+        if self._isolation is not None:
+            self._isolation.close()
 
     def start(self) -> None:
         if self.status == CloneStatus.RUNNING:
@@ -1664,6 +1682,7 @@ class MultiFlashNativeRestoreWorker:
                 on_log=self._fire_log,
                 randomize_signature=self._randomize_signature,
                 retain_volume_locks=self._retain_volume_locks,
+                isolation=self._isolation,
             )
             self._retained_volume_locks = list(self.result.retained_volume_locks)
             self.status = (

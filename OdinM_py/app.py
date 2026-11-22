@@ -6,6 +6,7 @@ OdinMApp — wires config, drive monitor, clone workers, and UI together.
 import os
 import time
 from collections import deque
+from dataclasses import replace
 from tkinter import messagebox
 
 import ttkbootstrap as ttk
@@ -13,6 +14,7 @@ from ttkbootstrap.constants import *
 
 from clone_worker import CloneStatus, CloneWorker
 from config_manager import ConfigManager
+from confirmed_disk import ConfirmationManager
 from drive_manager import (
     DriveInfo,
     DriveMonitor,
@@ -52,7 +54,7 @@ CONFIRM_LOCK_GRACE_MS = 15 * 60 * 1000  # preserve confirmation across a brief r
 
 
 class OdinMApp:
-    def __init__(self, config: ConfigManager):
+    def __init__(self, config: ConfigManager, *, confirmation_manager_factory=ConfirmationManager):
         self._config = config
 
         self._root = ttk.Window(
@@ -107,6 +109,7 @@ class OdinMApp:
         if self._config.get_show_flash_widget():
             self._show_flash_widget()
 
+        self._confirmation = confirmation_manager_factory(self._root)
         self._monitor = DriveMonitor(self._root, self._on_drives_changed)
         self._monitor.refresh()  # populate the initial slot state on launch
         self._root.after_idle(self._show_startup_interlock_warning)
@@ -129,6 +132,7 @@ class OdinMApp:
             thread = worker._thread
             if thread is not None:
                 thread.join()
+        self._confirmation.close()
 
     # ── callback wiring ───────────────────────────────────────────────────────
 
@@ -178,6 +182,8 @@ class OdinMApp:
         self._guarded_restore.prepare(disk, plan)
 
     def _can_enter_guarded_mode(self) -> tuple[bool, str]:
+        if self._confirmation.busy or any(self._confirmation.get(i) for i in range(NUM_SLOTS)):
+            return False, "Remove isolated Multi Flash disks and finish confirmation first."
         active_workers = any(w.status == CloneStatus.RUNNING for w in self._workers.values())
         active_verifiers = any(w.status == HashStatus.RUNNING for w in self._verify_workers.values())
         if active_workers or active_verifiers or self._queue or self._partition_waiters:
@@ -212,9 +218,8 @@ class OdinMApp:
         disks. A disk matching a slot's pending confirm-lock expiry
         (reconnected within its 15-minute grace) reclaims that exact slot,
         resumes being watched, and needs no fresh Confirm click. Already-
-        occupied slots are left completely alone - once confirmed, that
-        slot's own DriveMonitor.watch_slot() call is what notices a removal;
-        this function never touches an occupied slot's contents.
+        unconfirmed occupants refresh their metadata in place. Confirmed
+        slots retain their own watcher and live operation state.
         """
         # Apply max drive size filter — keeps oversized drives (e.g. a dev
         # USB stick) out of slots and auto-clone entirely. 0 = no limit.
@@ -246,16 +251,19 @@ class OdinMApp:
         # yet (watch_slot only starts once a slot is confirmed), so a
         # manual refresh is the only thing that can notice one of these
         # disappeared before the operator got to Confirm it.
-        current_disk_nums = {d.disk_number for d in drives}
+        current_by_number = {d.disk_number: d for d in drives}
         for i in range(NUM_SLOTS):
             prev = self._drives[i]
             if prev is None:
                 continue
             if self._locked_disk_nums.get(i) == prev.disk_number:
                 continue  # confirmed - its own watch_slot() owns this
-            if prev.disk_number in current_disk_nums:
-                continue  # still there
+            if prev.disk_number in current_by_number:
+                self._drives[i] = current_by_number[prev.disk_number]
+                self._flash_displayed_disk_nums.pop(i, None)
+                continue
             self._drives[i] = None
+            self._confirmation.release(i)
             pending = self._auto_clone_pending.pop(prev.disk_number, None)
             if pending is not None:
                 self._root.after_cancel(pending)
@@ -316,6 +324,7 @@ class OdinMApp:
         drive = self._drives[idx]
         disk_number = drive.disk_number if drive is not None else self._locked_disk_nums.get(idx)
         self._drives[idx] = None
+        self._confirmation.release(idx)
         if disk_number is not None:
             self._finished_disk_nums.discard(disk_number)
             pending = self._auto_clone_pending.pop(disk_number, None)
@@ -379,19 +388,16 @@ class OdinMApp:
         refresh reclaim path in _on_drives_changed() and the automatic
         watch_for_return() path above."""
         self._drives[idx] = d
+        self._locked_disk_nums.pop(idx, None)
         job = self._lock_expiry_jobs.pop(idx, None)
         if job is not None:
             self._root.after_cancel(job)
         self._window.log(
             f"[Slot {idx + 1}] Reconnected within its confirm "
-            "grace period — still locked, no re-confirm needed."
-        )
-        self._monitor.watch_slot(
-            idx, d.disk_number,
-            on_missing=lambda i=idx: self._on_slot_disk_missing(i),
+            "grace period — re-isolating before returning to ready."
         )
         self._window.update_drives(self._drives, self._locked_disk_nums)
-        self._try_auto_clone(idx)
+        self._confirm_slot(idx)
 
     def _try_auto_clone(self, idx: int):
         """If auto-clone is on and this now-confirmed slot is otherwise
@@ -444,20 +450,52 @@ class OdinMApp:
         self._start_slot(idx)
 
     def _confirm_slot(self, idx: int):
-        """Operator clicked the "Confirm" status badge - lock this slot onto
-        its currently-detected disk number and start watching that specific
-        disk (independent of every other slot) for removal. Refuses
-        (silently) if the drive already vanished before the click was
-        processed."""
+        """Acquire filesystem isolation before a slot becomes ready to flash."""
+        if self._wsl_bridge_blocks("target isolation"):
+            return
         drive = self._drives[idx]
         if drive is None:
             return
+        if self._locked_disk_nums.get(idx) == drive.disk_number and self._confirmation.get(idx):
+            return
+        self._window.log(f"[Slot {idx + 1}] Isolating Disk {drive.disk_number} from Windows...")
+        self._confirmation.request(
+            idx, drive, self._window.image_path,
+            lambda lease, i=idx: self._finish_confirmation(i, lease),
+            lambda error, i=idx: self._confirmation_failed(i, error),
+        )
+
+    def _confirmation_failed(self, idx, error):
+        self._locked_disk_nums.pop(idx, None)
+        self._window.update_drives(self._drives, self._locked_disk_nums)
+        self._window.log(f"[Slot {idx + 1}] Confirm failed: {error}")
+
+    def _finish_confirmation(self, idx, lease):
+        drive = self._drives[idx]
+        if drive is None or drive.disk_number != lease.disk.disk_number:
+            self._confirmation.release(idx)
+            return
+        previous = self._workers.get(idx)
+        if previous is not None:
+            thread = getattr(previous, "_thread", None)
+            if previous.status == CloneStatus.RUNNING or (thread and thread.is_alive()):
+                self._confirmation.release(idx)
+                self._window.log(f"[Slot {idx + 1}] Wait for the previous flash to stop, then Confirm.")
+                return
+            self._workers.pop(idx)
+        self._drives[idx] = replace(drive, first_letter="", all_letters=[])
+        self._window.update_drives(self._drives, self._locked_disk_nums)
         self._locked_disk_nums[idx] = drive.disk_number
         expiry = self._lock_expiry_jobs.pop(idx, None)
         if expiry is not None:
             self._root.after_cancel(expiry)
         self._window.confirm_slot(idx)
-        self._window.log(f"[Slot {idx + 1}] Confirmed — locked to Disk {drive.disk_number}.")
+        self._window.log(
+            f"[Slot {idx + 1}] Confirmed — Disk {drive.disk_number} volumes locked and "
+            "Windows mount points removed. Isolation stays held until removal or app exit."
+        )
+        self._flash_displayed_disk_nums.pop(idx, None)
+        self._mirror_drives_to_flash()
         self._monitor.watch_slot(
             idx, drive.disk_number,
             on_missing=lambda i=idx: self._on_slot_disk_missing(i),
@@ -507,9 +545,12 @@ class OdinMApp:
             self._window.log(f"[Error] Slot {idx + 1} has no drive.")
             return
         existing = self._workers.get(idx)
-        if (
-            isinstance(existing, MultiFlashNativeRestoreWorker)
-            and existing.has_retained_locks
+        held = self._confirmation.get(idx)
+        if existing is not None and existing.status in {
+            CloneStatus.DONE, CloneStatus.FAILED, CloneStatus.STOPPED,
+        } and (
+            (held is not None and held.active)
+            or (isinstance(existing, MultiFlashNativeRestoreWorker) and existing.has_retained_locks)
         ):
             self._window.log(
                 f"[Error] Slot {idx + 1} is holding its disk locked — "
@@ -553,8 +594,13 @@ class OdinMApp:
             return
         image = self._window.image_path
         size_bytes = drive.size_bytes
-        keep_completed_locked = self._config.get_keep_completed_disks_locked()
-        use_native_restore = requires_native_restore(image) or keep_completed_locked
+        isolation = self._confirmation.get(idx)
+        if isolation is None or not isolation.active:
+            self._window.log(f"[Slot {idx + 1}] Confirm again before flashing: isolation is absent.")
+            return
+        use_native_restore = (
+            requires_native_restore(image) or self._config.get_keep_completed_disks_locked()
+        )
         phase_state = {"name": "native-start" if use_native_restore else "legacy"}
         self._speed_samples[idx] = deque(maxlen=6)  # 6 points = 5 intervals
 
@@ -608,7 +654,8 @@ class OdinMApp:
                 expected_serial=drive.hw_serial,
                 expected_model=drive.model,
                 randomize_signature=True,
-                retain_volume_locks=keep_completed_locked,
+                retain_volume_locks=True,
+                isolation=isolation,
             )
         elif use_pyimager:
             worker = PyImagerRestoreWorker(
@@ -816,7 +863,10 @@ class OdinMApp:
                 # (see _verify_slot()), or just pull the card and skip it.
                 drain_now = True
         else:
-            if isinstance(worker, MultiFlashNativeRestoreWorker) and worker.has_retained_locks:
+            held = self._confirmation.get(idx)
+            if (held is not None and held.active) or (
+                isinstance(worker, MultiFlashNativeRestoreWorker) and worker.has_retained_locks
+            ):
                 self._window.log(
                     f"[Slot {idx + 1}] Unverified disk remains locked — "
                     "remove it before retrying."

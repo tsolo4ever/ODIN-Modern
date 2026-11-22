@@ -44,6 +44,7 @@ def _bare_app(*, multi_active: bool = True):
     instance._queue = []
     instance._partition_waiters = {}
     instance._auto_clone_pending = {}
+    instance._confirmation = SimpleNamespace(busy=False, get=lambda _idx: None)
     return instance
 
 

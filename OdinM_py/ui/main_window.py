@@ -167,10 +167,8 @@ class MainWindow(ttk.Frame):
         `drives` is indexed BY SLOT (length NUM_SLOTS, None for an empty
         slot) - the same sticky mapping app.py uses for launching/verifying,
         never a repacked list of only currently-present drives. A slot's
-        widget is only touched (set_drive/reset/set_awaiting_confirm) when
-        its disk_number actually changes since the last call - otherwise a
-        blip affecting some OTHER slot would re-render this one and wipe its
-        live progress/speed/eta for no reason.
+        confirmed widget is only reset when its disk_number changes, preserving
+        live progress/speed/eta. Unconfirmed metadata is refreshed on every scan.
 
         `locked` is app.py's slot_index -> confirmed disk_number map. A
         newly-appearing disk that matches its slot's locked entry (a
@@ -198,7 +196,9 @@ class MainWindow(ttk.Frame):
             d = drives[i] if i < len(drives) else None
             disk_num = d.disk_number if d is not None else None
             if self._displayed_disk_nums.get(i) == disk_num:
-                continue  # unchanged - don't disturb live progress/speed/eta
+                if d is not None and locked.get(i) != disk_num:
+                    slot.set_awaiting_confirm(d.display)
+                continue
             self._displayed_disk_nums[i] = disk_num
             if d is None:
                 slot.reset()

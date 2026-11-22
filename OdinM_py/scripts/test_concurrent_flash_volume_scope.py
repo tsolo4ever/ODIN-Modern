@@ -27,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from _confirmation_test_support import FakeConfirmationManager  # noqa: E402
+
 from scripts import pyimager  # noqa: E402
 
 from config_manager import ENGINE_PYIMAGER  # noqa: E402
@@ -198,7 +200,7 @@ class _FakePyImagerRestoreWorker:
 
 app_module.OdinMApp._show_flash_widget = lambda self: None
 app_module.PyImagerRestoreWorker = _FakePyImagerRestoreWorker
-app = app_module.OdinMApp(_FakeConfig())
+app = app_module.OdinMApp(_FakeConfig(), confirmation_manager_factory=FakeConfirmationManager)
 app._root.withdraw()
 
 tmp_img2 = tempfile.NamedTemporaryFile(delete=False, suffix=".img")
@@ -214,10 +216,10 @@ app._drives[0] = DriveInfo(
     size_bytes=7969177600,
     hw_serial="000000000819",
 )
-app._locked_disk_nums[0] = 2
+app._confirm_slot(0)
 app._launch(0)
-check("PyImagerRestoreWorker received volumes stripped of the colon",
-      captured.get("volumes"), ["E"])
+check("PyImagerRestoreWorker reuses Confirm isolation without relocking removed letters",
+      captured.get("volumes"), [])
 check("disk_number passed through unchanged", captured.get("disk_number"), 2)
 
 app._root.destroy()
