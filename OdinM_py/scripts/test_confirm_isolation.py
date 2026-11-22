@@ -214,6 +214,120 @@ class IsolationTests(unittest.TestCase):
                 lease.close()
                 self.assertEqual(events, ["unlock", "close"])
 
+    def test_isolated_restore_verifies_then_sets_and_checks_signature_before_refresh(self):
+        for failure in (None, "raw", "policy", "cancel", "signature", "refresh"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as folder:
+                self._check_restore_order(folder, failure)
+
+    def _check_restore_order(self, folder, failure):
+        image = Path(folder) / "raw.img"
+        source = _raw(image)
+        plan = restore.preflight_image(image, 4096)
+        storage = bytearray(4096)
+        events = []
+        lease = isolation.ConfirmedDiskIsolation(disk(), [Volume(events)])
+        source_signature = source[440:444]
+        attached_signature = b"\x10\x20\x30\x40"
+        used_signature = b"\x11\x21\x31\x41"
+        new_signature = b"\x12\x22\x32\x42"
+        attached_disk = replace(
+            disk(),
+            disk_number=6,
+            unique_id="ATTACHED-DISK-6",
+            mbr_signature=int.from_bytes(attached_signature, "little"),
+        )
+
+        class InstrumentedDisk(FakeDisk):
+            def write(self, data):
+                events.append("write image" if len(data) == len(source) else "write signature")
+                return super().write(data)
+
+            def read(self, count):
+                if "write signature" in events:
+                    events.append("read signature")
+                    if failure == "signature":
+                        storage[440:444] = source_signature
+                elif not self.writable:
+                    events.append("read image")
+                    if failure == "raw":
+                        storage[444] ^= 1
+                return super().read(count)
+
+            def update_properties(self):
+                events.append("refresh")
+                return failure != "refresh"
+
+        def log(message):
+            if message.startswith("Mandatory read-back verification passed"):
+                events.append("SHA-256 passed")
+
+        def policy(*_args, **_kwargs):
+            self.assertIn("SHA-256 passed", events)
+            self.assertNotIn("refresh", events)
+            self.assertEqual(storage[440:444], source_signature)
+            if failure == "policy":
+                raise restore.GuardedRestoreError(
+                    "configured hash mismatch", target_not_trusted=True
+                )
+            events.append("policy checked")
+            return failure != "cancel"
+
+        def run():
+            return restore.restore_and_verify(
+                plan,
+                disk(),
+                _store(folder),
+                confirmed_disk_number=3,
+                inventory_provider=lambda: [disk(), attached_disk],
+                image_disk_provider=lambda _path: 0,
+                disk_factory=lambda _path, write=False: InstrumentedDisk(storage, write),
+                flush_disk=lambda _target: events.append("flush"),
+                partition_waiter=lambda _path: None,
+                on_log=log,
+                randomize_signature=True,
+                retain_volume_locks=True,
+                isolation=lease,
+            )
+
+        with (
+            patch.object(restore, "_configured_policy_checks", side_effect=policy),
+            patch.object(restore, "_issued_signatures", {int.from_bytes(used_signature, "little")}),
+            patch.object(
+                restore.os,
+                "urandom",
+                side_effect=(source_signature, attached_signature, used_signature, new_signature),
+            ) as draw,
+        ):
+            if failure in (None, "cancel"):
+                result = run()
+                self.assertEqual(result.cancelled, failure == "cancel")
+                self.assertEqual(result.signature_randomized, failure is None)
+            else:
+                with self.assertRaises(restore.GuardedRestoreError) as error:
+                    run()
+                self.assertTrue(error.exception.target_not_trusted)
+
+            if failure in (None, "signature", "refresh"):
+                self.assertEqual(draw.call_count, 4)
+                self.assertLess(events.index("policy checked"), events.index("write signature"))
+                self.assertGreater(events.index("read signature"), events.index("write signature"))
+            else:
+                draw.assert_not_called()
+                self.assertNotIn("write signature", events)
+
+        if failure in (None, "refresh"):
+            self.assertEqual(events[-4:], ["write signature", "flush", "read signature", "refresh"])
+            self.assertEqual(storage[440:444], new_signature)
+            self.assertEqual(storage[:440], source[:440])
+            self.assertEqual(storage[444 : len(source)], source[444:])
+        else:
+            self.assertNotIn("refresh", events)
+        self.assertTrue(lease.active)
+        self.assertNotIn("unlock", events)
+        self.assertNotIn("close", events)
+        lease.close()
+        self.assertEqual(events[-2:], ["unlock", "close"])
+
     def test_pending_isolation_is_not_ready_until_ui_delivery(self):
         root = Root()
         lease = isolation.ConfirmedDiskIsolation(disk(), [])

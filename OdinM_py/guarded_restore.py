@@ -61,6 +61,10 @@ from used_block_archive import (
 
 CHUNK_BYTES = 8 << 20
 MIN_SECTOR_BYTES = 512
+_MBR_SIGNATURE_START = 0x1B8
+_MBR_SIGNATURE_END = 0x1BC
+_signature_lock = threading.Lock()
+_issued_signatures: set[int] = set()
 HEX_SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 UUID_TEXT = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -148,25 +152,39 @@ def release_volume_locks(volumes: tuple[Any, ...] | list[Any]) -> None:
 def _randomize_locked_disk_signature(
     raw_path: str,
     *,
+    verified_sector: bytes,
+    attached_signatures: set[int],
     disk_factory: Callable[..., Any],
     flush_disk: Callable[[Any], None],
+    log: Callable[[str], None],
 ) -> bytes:
     with disk_factory(raw_path, write=True) as target:
+        sector_size = target.sector_size
         target.seek(0)
-        sector = target.read(MIN_SECTOR_BYTES)
-        if len(sector) != MIN_SECTOR_BYTES:
+        sector = target.read(sector_size)
+        if len(sector) != sector_size or sector != verified_sector:
             raise GuardedRestoreError(
-                f"short MBR read before signature change ({len(sector)}/{MIN_SECTOR_BYTES})",
+                "target MBR sector changed after verification",
                 target_not_trusted=True,
             )
-        signature = os.urandom(4)
-        while signature == b"\x00\x00\x00\x00":
-            signature = os.urandom(4)
-        patched = sector[:0x1B8] + signature + sector[0x1BC:]
+        source_signature = int.from_bytes(
+            sector[_MBR_SIGNATURE_START:_MBR_SIGNATURE_END], "little"
+        )
+        with _signature_lock:
+            unavailable = attached_signatures | _issued_signatures | {0, source_signature}
+            while (new_signature := int.from_bytes(os.urandom(4), "little")) in unavailable:
+                pass
+            _issued_signatures.add(new_signature)
+        signature = new_signature.to_bytes(4, "little")
+        patched = sector[:_MBR_SIGNATURE_START] + signature + sector[_MBR_SIGNATURE_END:]
         target.seek(0)
         if target.write(patched) != len(patched):
             raise GuardedRestoreError("short MBR signature write", target_not_trusted=True)
         flush_disk(target)
+        target.seek(0)
+        if target.read(sector_size) != patched:
+            raise GuardedRestoreError("MBR signature read-back mismatch", target_not_trusted=True)
+        log(f"Unique MBR signature {new_signature:08X} written and read back before Windows refresh.")
         if not target.update_properties():
             raise GuardedRestoreError(
                 "Windows disk-property refresh failed after signature change",
@@ -1037,18 +1055,26 @@ def restore_and_verify(
     started = time.monotonic()
     log = on_log or (lambda _line: None)
     progress = on_progress or (lambda _phase, _done, _total: None)
+    attached_signatures: set[int] = set()
+
+    def inventory_for_write() -> list[DiskIdentity]:
+        disks = inventory_provider()
+        attached_signatures.update(disk.mbr_signature for disk in disks)
+        return disks
+
     if confirmed_disk_number != expected.disk_number:
         raise GuardedRestoreError("typed confirmation does not match the selected disk number")
     decision = validate_ready_to_write(
         plan,
         expected,
         store,
-        inventory_provider=inventory_provider,
+        inventory_provider=inventory_for_write if randomize_signature else inventory_provider,
         image_disk_provider=image_disk_provider,
         on_progress=progress,
     )
     current = decision.disk
     raw_path = current.raw_device_path
+    defer_windows_refresh = isolation is not None
     if isolation is not None:
         isolation.validate(current)
         if plan.image_format in {"used-block-archive", "odin-used-block"}:
@@ -1126,7 +1152,7 @@ def restore_and_verify(
                 bytes_written += written
                 progress("write", bytes_written, plan.write_bytes)
             flush_disk(target)
-            if not cancelled and not target.update_properties():
+            if not cancelled and not defer_windows_refresh and not target.update_properties():
                 raise GuardedRestoreError(
                     "Windows disk-property refresh failed", target_not_trusted=True
                 )
@@ -1155,6 +1181,7 @@ def restore_and_verify(
             ) from exc
         target_hash = hashlib.sha256()
         verified_bytes = 0
+        verified_sector = b""
         with disk_factory(raw_path) as target:
             target.seek(0)
             while verified_bytes < plan.write_bytes:
@@ -1166,6 +1193,8 @@ def restore_and_verify(
                     raise GuardedRestoreError(
                         "short target read during verification", target_not_trusted=True
                     )
+                if randomize_signature and verified_bytes == 0:
+                    verified_sector = block[:target.sector_size]
                 target_hash.update(block)
                 verified_bytes += len(block)
                 progress("verify", verified_bytes, plan.write_bytes)
@@ -1186,7 +1215,7 @@ def restore_and_verify(
                 "mandatory target read-back SHA-256 mismatch", target_not_trusted=True
             )
         log(f"Mandatory read-back verification passed: SHA-256 {target_digest}")
-        if not _configured_policy_checks(
+        policy_passed = _configured_policy_checks(
             plan,
             raw_path,
             disk_factory=disk_factory,
@@ -1194,7 +1223,8 @@ def restore_and_verify(
             should_cancel=should_cancel,
             on_progress=progress,
             on_log=log,
-        ):
+        )
+        if not policy_passed or (should_cancel is not None and should_cancel()):
             return GuardedRestoreResult(
                 bytes_written,
                 plan.sha256,
@@ -1206,14 +1236,27 @@ def restore_and_verify(
                 retained_volume_locks=retain_locked_volumes(),
             )
         signature_randomized = False
+        if isolation is not None:
+            isolation.validate(current)
         if randomize_signature:
             _randomize_locked_disk_signature(
                 raw_path,
+                verified_sector=verified_sector,
+                attached_signatures=attached_signatures,
                 disk_factory=disk_factory,
                 flush_disk=flush_disk,
+                log=log,
             )
             signature_randomized = True
             log("Disk signature randomized while the verified volume lock remained held.")
+        elif defer_windows_refresh:
+            with disk_factory(raw_path, write=True) as target:
+                if not target.update_properties():
+                    raise GuardedRestoreError(
+                        "Windows disk-property refresh failed", target_not_trusted=True
+                    )
+        if defer_windows_refresh:
+            log("Windows disk-property refresh completed after verification.")
         if retain_volume_locks:
             log("Completed target remains locked until physical removal or application exit.")
         return GuardedRestoreResult(

@@ -60,6 +60,7 @@ class DiskIdentity:
     removable: bool = False
     system_reasons: tuple[str, ...] = ()
     classification_complete: bool = True
+    mbr_signature: int = 0
 
     @property
     def raw_device_path(self) -> str:
@@ -282,6 +283,7 @@ $items=foreach($disk in $disks){
         Number=$disk.Number; UniqueId=$disk.UniqueId; SerialNumber=$disk.SerialNumber
         Model=$disk.Model; Manufacturer=$disk.Manufacturer; FriendlyName=$disk.FriendlyName
         Size=$disk.Size; BusType=$disk.BusType; Path=$disk.Path; Location=$disk.Location
+        MbrSignature=$disk.Signature
         Volumes=$volumes; SystemReasons=@($reasons | Sort-Object -Unique)
     }
 }
@@ -356,6 +358,7 @@ def query_windows_storage_inventory(
                     mounted_volumes=volumes,
                     removable=bool(removable_provider(number)),
                     system_reasons=reasons,
+                    mbr_signature=int(item.get("MbrSignature") or 0),
                 )
             )
     except (KeyError, TypeError, ValueError) as exc:
