@@ -34,12 +34,29 @@ def main():
     from config_manager import ConfigManager
     from app import OdinMApp
     from runtime_interlock import register_odin_runtime
+    from automount_guard import AutomountError, AutomountGuard
 
-    with register_odin_runtime():
-        config = ConfigManager()
-        app = OdinMApp(config)
-        app.run()
+    try:
+        with AutomountGuard() as automount, register_odin_runtime():
+            config = ConfigManager()
+            app = OdinMApp(config)
+            app._window.log(
+                "[Safety] Windows automount disabled while Odin is open. "
+                + (
+                    "The previous enabled setting will be restored on close."
+                    if automount.was_enabled
+                    else "It was already disabled and will remain disabled on close."
+                )
+            )
+            try:
+                app.run()
+            finally:
+                app.wait_for_flash_shutdown()
+    except AutomountError as exc:
+        ctypes.windll.user32.MessageBoxW(None, str(exc), "Odin automount protection", 0x10)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

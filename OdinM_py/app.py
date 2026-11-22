@@ -114,6 +114,22 @@ class OdinMApp:
     def run(self):
         self._root.mainloop()
 
+    def wait_for_flash_shutdown(self) -> None:
+        """Finish active disk operations before main restores Windows automount."""
+        workers = list(self._workers.values()) + list(self._verify_workers.values())
+        if self._guarded_restore.worker is not None:
+            workers.append(self._guarded_restore.worker)
+        for waiter in self._partition_waiters.values():
+            waiter.stop()
+        for worker in workers:
+            thread = worker._thread
+            if thread is not None and thread.is_alive():
+                worker.stop()
+        for worker in workers:
+            thread = worker._thread
+            if thread is not None:
+                thread.join()
+
     # ── callback wiring ───────────────────────────────────────────────────────
 
     def _wire_callbacks(self):
@@ -171,7 +187,7 @@ class OdinMApp:
             and worker.has_retained_locks
             for worker in self._workers.values()
         ):
-            return False, "Remove completed Multi Flash disks before entering guarded mode."
+            return False, "Remove locked Multi Flash disks before entering guarded mode."
         return True, ""
 
     def _enter_guarded_mode(self):
@@ -496,7 +512,7 @@ class OdinMApp:
             and existing.has_retained_locks
         ):
             self._window.log(
-                f"[Error] Slot {idx + 1} is holding a completed disk locked — "
+                f"[Error] Slot {idx + 1} is holding its disk locked — "
                 "remove it before starting another flash."
             )
             return
@@ -747,9 +763,17 @@ class OdinMApp:
         # re-trigger until the card is physically removed and reinserted.
         # Failed clones remain eligible for retry on reseat.
         drive = self._drives[idx]
+        worker = self._workers.get(idx)
+        if isinstance(worker, MultiFlashNativeRestoreWorker) and (
+            drive is None or drive.disk_number != worker._disk_number
+        ):
+            # Removal can precede the worker's final handoff of retained handles.
+            worker.release_retained_locks()
+            self._window.log(f"[Slot {idx + 1}] Flash ended after target removal.")
+            self._drain_queue()
+            return
         if drive is not None and status == CloneStatus.DONE:
             self._finished_disk_nums.add(drive.disk_number)
-        worker = self._workers.get(idx)
         native_verified = bool(
             isinstance(worker, MultiFlashNativeRestoreWorker)
             and worker.result is not None
@@ -792,6 +816,11 @@ class OdinMApp:
                 # (see _verify_slot()), or just pull the card and skip it.
                 drain_now = True
         else:
+            if isinstance(worker, MultiFlashNativeRestoreWorker) and worker.has_retained_locks:
+                self._window.log(
+                    f"[Slot {idx + 1}] Unverified disk remains locked — "
+                    "remove it before retrying."
+                )
             drain_now = True
         self._speed_samples.pop(idx, None)
         self._window.set_slot_speed(idx, "")
@@ -813,6 +842,11 @@ class OdinMApp:
             )
             return
         worker = self._workers.get(idx)
+        if isinstance(worker, MultiFlashNativeRestoreWorker) and worker.has_retained_locks:
+            self._window.log(
+                f"[Verify] Slot {idx + 1} remains locked — remove it before verification."
+            )
+            return
         if idx in self._queue or (
             worker is not None and worker.status == CloneStatus.RUNNING
         ):

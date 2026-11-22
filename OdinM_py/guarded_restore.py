@@ -77,9 +77,16 @@ class GuardedImageError(ValueError):
 
 
 class GuardedRestoreError(RuntimeError):
-    def __init__(self, message: str, *, target_not_trusted: bool = False):
+    def __init__(
+        self,
+        message: str,
+        *,
+        target_not_trusted: bool = False,
+        retained_volume_locks: tuple[Any, ...] = (),
+    ):
         super().__init__(message)
         self.target_not_trusted = target_not_trusted
+        self.retained_volume_locks = retained_volume_locks
 
 
 @dataclass(frozen=True)
@@ -1079,6 +1086,15 @@ def restore_and_verify(
     locked = []
     bytes_written = 0
     cancelled = False
+
+    def retain_locked_volumes() -> tuple[Any, ...]:
+        nonlocal locked
+        if not retain_volume_locks:
+            return ()
+        retained = tuple(locked)
+        locked = []
+        return retained
+
     try:
         locked = volume_locker(_drive_letters(current.mounted_volumes), on_log=log)
         with plan.source_path.open("rb") as source, disk_factory(raw_path, write=True) as target:
@@ -1112,6 +1128,7 @@ def restore_and_verify(
                 True,
                 bytes_written > 0,
                 time.monotonic() - started,
+                retained_volume_locks=retain_locked_volumes(),
             )
         if bytes_written != plan.write_bytes:
             raise GuardedRestoreError("write length was incomplete", target_not_trusted=True)
@@ -1130,15 +1147,8 @@ def restore_and_verify(
             target.seek(0)
             while verified_bytes < plan.write_bytes:
                 if should_cancel is not None and should_cancel():
-                    return GuardedRestoreResult(
-                        bytes_written,
-                        plan.sha256,
-                        target_hash.hexdigest(),
-                        False,
-                        True,
-                        True,
-                        time.monotonic() - started,
-                    )
+                    cancelled = True
+                    break
                 block = target.read(min(CHUNK_BYTES, plan.write_bytes - verified_bytes))
                 if not block:
                     raise GuardedRestoreError(
@@ -1147,6 +1157,17 @@ def restore_and_verify(
                 target_hash.update(block)
                 verified_bytes += len(block)
                 progress("verify", verified_bytes, plan.write_bytes)
+        if cancelled:
+            return GuardedRestoreResult(
+                bytes_written,
+                plan.sha256,
+                target_hash.hexdigest(),
+                False,
+                True,
+                True,
+                time.monotonic() - started,
+                retained_volume_locks=retain_locked_volumes(),
+            )
         target_digest = target_hash.hexdigest()
         if verified_bytes != plan.write_bytes or target_digest != plan.sha256:
             raise GuardedRestoreError(
@@ -1170,6 +1191,7 @@ def restore_and_verify(
                 True,
                 True,
                 time.monotonic() - started,
+                retained_volume_locks=retain_locked_volumes(),
             )
         signature_randomized = False
         if randomize_signature:
@@ -1180,10 +1202,7 @@ def restore_and_verify(
             )
             signature_randomized = True
             log("Disk signature randomized while the verified volume lock remained held.")
-        retained_locks: tuple[Any, ...] = ()
         if retain_volume_locks:
-            retained_locks = tuple(locked)
-            locked = []
             log("Completed target remains locked until physical removal or application exit.")
         return GuardedRestoreResult(
             bytes_written,
@@ -1194,12 +1213,17 @@ def restore_and_verify(
             False,
             time.monotonic() - started,
             signature_randomized,
-            retained_locks,
+            retain_locked_volumes(),
         )
-    except GuardedRestoreError:
+    except GuardedRestoreError as exc:
+        exc.retained_volume_locks = retain_locked_volumes()
         raise
     except Exception as exc:
-        raise GuardedRestoreError(str(exc), target_not_trusted=bytes_written > 0) from exc
+        raise GuardedRestoreError(
+            str(exc),
+            target_not_trusted=bytes_written > 0,
+            retained_volume_locks=retain_locked_volumes(),
+        ) from exc
     finally:
         release_volume_locks(locked)
 
@@ -1651,6 +1675,7 @@ class MultiFlashNativeRestoreWorker:
                 )
         except Exception as exc:
             self.error = exc
+            self._retained_volume_locks = list(getattr(exc, "retained_volume_locks", ()))
             unsafe = bool(getattr(exc, "target_not_trusted", False))
             if self._cancel.is_set() and not unsafe:
                 self.status = CloneStatus.STOPPED
